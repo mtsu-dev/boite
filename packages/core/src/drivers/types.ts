@@ -27,7 +27,7 @@ import type {
   Usage,
 } from '@boite/contracts';
 import type { SpawnedChild, SpawnedProcess, SpawnOptions } from '../procs.ts';
-import type { LazyServerEntry, StdioServer } from '../mcp/lazy.ts';
+import type { McpRegistration, StdioServer } from '../mcp/lazy.ts';
 
 /**
  * The only way a driver writes anything. It journals and emits in one call, so
@@ -107,8 +107,9 @@ export interface StepDecision {
   swap: {
     /** The compacted session the thread now names. */
     sessionId: string;
-    /** The first message to send on it: what happened since the copy, as text, ending with a request to go on. */
+    /** The first message to send on it, ending with a request to go on. */
     tail: string;
+    attachments: import('@boite/contracts').ImageAttachment[];
     /** The context the compacted session holds, when the copy reported it. */
     postTokens: number | null;
     /**
@@ -139,6 +140,19 @@ export interface BackgroundCompactionSetting {
   tokens: number | null;
   background: boolean;
   ratios: { startRatio: number; minTokens: number; tailTokens: number; tailShare: number; maxFailures: number; timeoutMs: number };
+}
+
+export interface LateUsageEntry<T> {
+  id: TurnId;
+  startedAt: Turn['startedAt'];
+  tally: T;
+}
+
+/** One native process can revise any of its completed turns until it closes. */
+export interface LateUsageReports<T> {
+  load(nativeTurnId: string): LateUsageEntry<T> | undefined;
+  save(nativeTurnId: string, entry: LateUsageEntry<T>, usage?: Usage): void;
+  close(): void;
 }
 
 export interface TurnContext {
@@ -193,7 +207,7 @@ export interface TurnContext {
    * a new session instead. Built on demand; it throws what the core's own
    * continuation throws (historical images for an agent that takes none).
    */
-  continuation?(): { prompt: string; attachments: ImageAttachment[] };
+  continuation?(): { prompt: string; attachments: ImageAttachment[] } | Promise<{ prompt: string; attachments: ImageAttachment[] }>;
   /**
    * What this agent session already used, for an agent whose running totals
    * survive a resume: the last `Turn.agentTotals` the session recorded, else
@@ -245,8 +259,13 @@ export interface TurnContext {
   reportProgress?(phase: import('@boite/contracts').ThreadProgress['phase'], detail?: string | null): void;
   /** A provider signal that need not mean execution advanced. */
   reportProviderEvent?(): void;
+  /** A revised usage total received after the driver has returned the turn result. */
+  reportLateUsage?(usage: Usage): void;
+  openLateUsage?<T>(): LateUsageReports<T>;
   /** The running turn can now accept native user input. Does not report model progress. */
   inputReady?(): void;
+  /** Native output or acknowledgement proves the first prompt belongs to this resumable session. */
+  sessionAccepted?(sessionId: string): void;
   /** A native authentication refusal invalidates the account's passive status. */
   authenticationFailed?(): void;
   /**
@@ -321,7 +340,9 @@ export interface TurnContext {
    * `env` is the CLI's own environment. Null when the core gives sessions the
    * servers as configured.
    */
-  lazyMcp?(env: Record<string, string | undefined>, servers: Map<string, StdioServer>): { entries: Record<string, LazyServerEntry>; release(): void } | null;
+  lazyMcp?(env: Record<string, string | undefined>, servers: Map<string, StdioServer>): McpRegistration | null;
+  /** Changes when a provider session must pick up new MCP connections. */
+  mcpRevision?: string | null;
   /**
    * Terminates every process this thread launched, grandchildren included,
    * through the registry that traced them. For a driver whose only stop is the
@@ -334,7 +355,7 @@ export interface TurnContext {
 export type SessionContext = Pick<TurnContext,
   'thread' | 'account' | 'provider' | 'sessionId' | 'resumeAt' | 'sessionBefore' |
   'accountEnv' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'promptSuggestions' | 'suggestion' | 'autoCompactTokens' | 'backgroundCompaction' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
-  'background' | 'backgroundFinished' | 'wake' | 'notice' | 'loopWake' | 'spawnChild' | 'stopChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution' | 'modeRequired'>;
+  'background' | 'backgroundFinished' | 'wake' | 'notice' | 'loopWake' | 'spawnChild' | 'stopChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'mcpRevision' | 'protectedExecution' | 'modeRequired'>;
 
 type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
 /** Scalars only: never a prompt, a tool input or output, a command line or a token. */
@@ -425,9 +446,9 @@ export interface TurnHandle {
    * False means not ready, rejection means uncertain dispatch and must not be replayed.
    * A transport may call `onAccepted` at acknowledgement, before dispatching following output.
    */
-  steer?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void): Promise<boolean>;
+  steer?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean>;
   /** Native user input, when system coordination uses a separate tool-boundary hook. */
-  steerUser?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void): Promise<boolean>;
+  steerUser?(message: string, attachments?: ImageAttachment[], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean>;
 }
 
 /**

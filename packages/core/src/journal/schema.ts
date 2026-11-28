@@ -18,8 +18,10 @@ import { createUsageSlots } from './usage-slots.ts';
 import { createKeptProcesses } from './kept-processes.ts';
 import { createMessageStats } from './thread-stats.ts';
 import { ARTIFACT_ROW } from './artifact-references.ts';
+import { STATED_TURN } from './turn-rows.ts';
+import { createMessageSearch, ensureMessageSearchTriggers } from './message-search.ts';
 
-export const SCHEMA_VERSION = 53;
+export const SCHEMA_VERSION = 54;
 
 /** Raised when the journal was written by a newer core than this one. */
 export class JournalTooNewError extends Error {
@@ -272,6 +274,7 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     const replacement = definition.sql.replace(/CREATE TABLE (?:IF NOT EXISTS )?["`[]?threads["`\]]?/i, 'CREATE TABLE threads_next').replace(/project_id TEXT NOT NULL/i, 'project_id TEXT');
     db.exec(replacement);
     db.exec('INSERT INTO threads_next SELECT * FROM threads');
+    db.exec('DROP TRIGGER IF EXISTS message_search_insert; DROP TRIGGER IF EXISTS message_search_update; DROP TRIGGER IF EXISTS message_search_delete;');
     db.exec('DROP TABLE threads');
     db.exec('ALTER TABLE threads_next RENAME TO threads');
     db.exec('ALTER TABLE threads ADD COLUMN agent_session_id TEXT');
@@ -476,6 +479,7 @@ export function migrate(db: Database, file: string): { from: number; to: number 
       ) WITHOUT ROWID;`);
     version = 44;
   }
+  db.exec('CREATE INDEX IF NOT EXISTS composer_deliveries_thread ON composer_deliveries (thread_id, request_id)');
   if (version < 45) {
     // A new journal has no events to read; reading them anyway marks `events` for ANALYZE on SQLite before 3.46.
     createPendingQuestions(db, (row?.user_version ?? 0) > 0);
@@ -518,11 +522,12 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     db.exec('ALTER TABLE projects ADD COLUMN removed_at INTEGER');
     version = 52;
   }
+  if (!hasColumn('threads', 'interruption_read_at')) db.exec('ALTER TABLE threads ADD COLUMN interruption_read_at INTEGER');
   // The usage page's sums per 15 minutes, kept by the turn and thread writers and built once from every finished turn (`usage-slots.ts`).
-  if (version < 53) {
-    createUsageSlots(db);
-    version = 53;
-  }
+  // Some version 53 journals have interruption receipts but no usage slots.
+  if (!objects.has('usage_slots')) createUsageSlots(db);
+  if (!objects.has('messages_fts')) createMessageSearch(db);
+  else ensureMessageSearchTriggers(db);
   createSharedProjects(db);
   createSharedBoard(db);
   createSharedCompute(db);
@@ -570,13 +575,20 @@ function bindLegacyTurnRequests(db: Database): void {
 export function ensureIndexes(db: Database): void {
   db.exec("CREATE INDEX IF NOT EXISTS agent_message_reading ON agent_entities (json_extract(data, '$.scope.kind'), json_extract(data, '$.scope.id'), created_at, id) WHERE kind = 'message'");
   db.exec('CREATE INDEX IF NOT EXISTS thread_deletions_by_date ON thread_deletions (deleted_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS threads_project ON threads (project_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS threads_cwd_branch ON threads (cwd, branch)');
+  db.exec('CREATE INDEX IF NOT EXISTS threads_status ON threads (status)');
   db.exec('CREATE INDEX IF NOT EXISTS processes_by_started ON processes (thread_id, started_at DESC)');
+  // The few rows still open, which each startup closes (`closeLiveProcesses`).
+  db.exec('CREATE INDEX IF NOT EXISTS processes_live ON processes (thread_id) WHERE exited_at IS NULL');
   db.exec('CREATE INDEX IF NOT EXISTS turns_by_status ON turns (status)');
   db.exec("CREATE INDEX IF NOT EXISTS turns_active_by_thread ON turns (thread_id) WHERE status IN ('running', 'queued')");
   db.exec('CREATE INDEX IF NOT EXISTS messages_by_turn ON messages (thread_id, turn_id)');
   db.exec('CREATE INDEX IF NOT EXISTS turns_by_finished ON turns (finished_at)');
   // `requestSince` walks a busy thread's turns back from the newest on every summary.
   db.exec('CREATE INDEX IF NOT EXISTS turns_by_thread_queue ON turns (thread_id, queued_at, id) WHERE started_at IS NOT NULL');
+  // Read it backwards: SQLite includes rowid as the final key for equal timestamps.
+  db.exec(`CREATE INDEX IF NOT EXISTS turns_stated_by_thread ON turns (thread_id, started_at) WHERE ${STATED_TURN}`);
   // The few event types read back. Without them, restoring asynchronous questions
   // at startup read the whole events table, and every thread open walked all of
   // its thread's events for memory notices.

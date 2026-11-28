@@ -129,12 +129,17 @@ test('a step that cannot be asked for its final answer fails with a reason a ret
   clock.mockRestore();
   expect(step().error).toContain('completed without waking it, and asking for its final result failed: account signed out');
   expect(step().result).toBeNull();
-  // Signed in again, the retry runs the step in the same conversation and its answer is the result.
+  // Signed in again, the retry starts a new conversation and records the failed attempt.
   start.mockRestore();
   expect(await owner.call('workflows.control', { threadId, runId: run.id, action: 'retry', stepId: 'watch' })).toMatchObject({ status: 'running' });
-  await waitFor(() => runs.get(childId) !== first, 5000);
-  expect(step()).toMatchObject({ status: 'running', error: null, threadId: childId });
-  runs.get(childId)!.finish('CI passed after sign-in.');
+  await waitFor(() => {
+    const retryId = step().threadId;
+    return retryId !== null && retryId !== childId && runs.has(retryId);
+  }, 5000);
+  expect(step()).toMatchObject({
+    status: 'running', error: null, previousAttempts: [expect.objectContaining({ threadId: childId })],
+  });
+  runs.get(step().threadId!)!.finish('CI passed after sign-in.');
   await waitFor(() => step().status === 'done');
   expect(step()).toMatchObject({ result: 'CI passed after sign-in.', error: null });
 });

@@ -48,6 +48,10 @@ on it. When a device cannot reach a machine itself, it goes through another
 machine of the group that can; Settings, Machines and updates shows Connected
 through and the name of that machine.
 
+If an update fails, the machine row names the app, server or agent and gives
+the reason. For agents it distinguishes a failed version check from a failed
+installation.
+
 On Windows, Boite opens the local network only on private networks. The group
 card says when the firewall keeps it closed, with Allow on private networks,
 or when the network is public and must be marked private in Windows settings.

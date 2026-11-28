@@ -1,6 +1,6 @@
 import { archiveState } from '../merged-pr-archive-state.ts';
 import { worktreeRemovalOf } from '../worktree-cleanup-state.ts';
-import { backgroundWait, pullRequestWatchWaits, threadActive } from '@boite/contracts';
+import { backgroundWait, projectToolDiffs, pullRequestWatchWaits, threadActive, workingChildren } from '@boite/contracts';
 import type { BackgroundTask, BackgroundWait, MessageId, MessagePart, MoveNotice, PluginActor, RpcParams, ThreadId, ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { notFound } from '../errors.ts';
@@ -22,7 +22,8 @@ export function readToolOutput(core: Core, params: RpcParams<'messages.toolOutpu
 
 /** The whole call, for a card whose page deferred its output, input or documents. */
 export function readToolPart(core: Core, params: RpcParams<'messages.toolPart'>): { part: Extract<MessagePart, { type: 'tool' }> } {
-  return { part: journalledTool(core, params) };
+  const part = journalledTool(core, params);
+  return { part: params.diffsOnly === true ? projectToolDiffs(part) : part };
 }
 
 // The thread row as every part of the store writes it: one event, the row, and the clients told.
@@ -51,7 +52,7 @@ export function pendingMoveNote(core: Core, threadId: ThreadId): MoveNotice | nu
 }
 
 /** The row as a client sees it: the stored summary plus what only lives in memory. */
-export function withLoad(core: Core, thread: ThreadSummary): ThreadSummary {
+export function withLoad(core: Core, thread: ThreadSummary, options?: { delegationChanged: true }): ThreadSummary {
   const busy = thread.status === 'running' || thread.status === 'waiting';
   const archiveReason = thread.archived ? archiveState(core.journal, thread.id).reason : undefined;
   // Archive summaries are built before commit; what an archive puts away on
@@ -61,6 +62,10 @@ export function withLoad(core: Core, thread: ThreadSummary): ThreadSummary {
   const putAway = thread.archived && archiveReason?.type !== 'pr-merged';
   const tasks = putAway ? [] : core.threads?.agentState.background.get(thread.id) ?? [];
   const watches = core.pullRequestWatches?.of(thread.id) ?? [];
+  const wait = thread.parentThreadId || core.delegation?.remote.parentOf(thread.id) ? backgroundWaitOf(core, thread, tasks) : null;
+  const remoteSubagents = core.delegation?.remote.has(thread.id)
+    ? thread.archived ? null : workingChildren(core.delegation.remote.members(thread.id).map(agent => agent.thread)).get(thread.id) ?? null
+    : undefined;
   return {
     ...thread,
     archiveReason,
@@ -72,14 +77,18 @@ export function withLoad(core: Core, thread: ThreadSummary): ThreadSummary {
     requestSince: busy || tasks.length > 0 || watches.some(pullRequestWatchWaits) ? core.journal.requestSince(thread.id) : null,
     progress: busy ? core.threads?.progress?.get(thread.id) ?? null : null,
     backgroundWork: tasks.length === 0 ? null : { kinds: tasks.map(task => task.kind), since: Math.min(...tasks.map(task => task.startedAt)) },
-    backgroundWait: thread.parentThreadId || core.delegation?.remote.parentOf(thread.id) ? backgroundWaitOf(core, thread, tasks) : null,
+    backgroundWait: wait,
+    ...(wait?.state === 'interrupted' ? { interruptionReadAt: thread.interruptionReadAt ?? null } : {}),
     // An archived row, put away or done, has no move to apply.
     pendingMove: thread.archived ? null : core.threads?.moves?.pendingOf(thread.id) ?? null,
     moveNote: thread.agentSessionId ? null : pendingMoveNote(core, thread.id),
     pendingAnswers: putAway ? [] : [...(core.threads?.deferred?.deferredAnswers.get(thread.id) ?? [])],
     openQuestions: putAway ? 0 : core.threads?.cards?.openAsyncCount(thread.id) ?? 0,
     subagentQuestions: putAway ? [] : core.delegation?.questions(thread.id) ?? [],
+    // The last remote child can disappear before the change is published.
+    remoteSubagents: remoteSubagents === undefined && options?.delegationChanged ? null : remoteSubagents,
     retry: core.threads?.runner?.retryOf(thread.id) ?? core.threads?.resumes?.retryOf(thread.id) ?? null,
+    recovery: core.threads?.resumes?.recoveryOf(thread) ?? null,
     pullRequestWatches: watches,
     wake: core.wakes?.of(thread.id) ?? null,
   };

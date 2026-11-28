@@ -28,9 +28,12 @@ describe('Trail', () => {
     const trail = new Trail();
     for (const view of [thread('a'), thread('b'), thread('b'), thread('c')]) trail.visit(view);
     expect(trail.length).toBe(3);
+    expect([trail.can(-1), trail.can(1)]).toEqual([true, false]);
     trail.step(-1, all);
     trail.step(-1, all);
+    expect([trail.can(-1), trail.can(1)]).toEqual([false, true]);
     trail.visit(thread('d'));
+    expect(trail.can(1)).toBe(false);
     expect(trail.step(1, all)).toBeNull();
     expect(trail.step(-1, all)).toEqual(thread('a'));
   });
@@ -67,9 +70,9 @@ describe('exists', () => {
   const active = workspace.active;
   afterEach(() => { workspace.active = active; });
 
-  test('a Contacts page is no place to return to on a client that is not the owner', () => {
+  test('a Contacts page is no place to return to on a client that is not the owner, or once contacts are off', () => {
     // Class instances, as Stores are: a plain object would come back from the workspace as a proxy.
-    const client = (owner: boolean) => new (class { owner = owner })() as unknown as Store;
+    const client = (owner: boolean, contacts = true) => new (class { owner = owner; settings = { contacts }; })() as unknown as Store;
     const owner = client(true);
     workspace.active = owner;
     const page: View = { store: owner, page: 'home', contact: 'core-chris' };
@@ -77,5 +80,8 @@ describe('exists', () => {
     const paired = client(false);
     workspace.active = paired;
     expect(exists({ ...page, store: paired })).toBe(false);
+    const off = client(true, false);
+    workspace.active = off;
+    expect(exists({ ...page, store: off })).toBe(false);
   });
 });

@@ -1,9 +1,12 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { crc32, deflateSync } from 'node:zlib';
 import { INITIAL_PAGE_BYTES, type Message, type RpcResult } from '@boite/contracts';
+import { noisyPng as png } from './fixtures/noisy-png.ts';
 import { echoThread, startTestCore, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
+import { readMessageAttachment } from '../src/threads/attachment-read.ts';
 
 let harness: TestCore;
 
@@ -14,35 +17,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await harness.stop();
 });
-
-/** A real PNG with noise in it, base64: past the inline limit, and Bun can decode and blur it. */
-function png(width: number, height: number): string {
-  const chunk = (type: string, data: Buffer) => {
-    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
-    const length = Buffer.alloc(4);
-    length.writeUInt32BE(data.length);
-    const sum = Buffer.alloc(4);
-    sum.writeUInt32BE(crc32(body));
-    return Buffer.concat([length, body, sum]);
-  };
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
-  header[8] = 8;
-  header[9] = 2;
-  const rows = Buffer.alloc((width * 3 + 1) * height);
-  let seed = width * 31 + height;
-  for (let at = 0; at < rows.length; at += 1) {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    rows[at] = at % (width * 3 + 1) === 0 ? 0 : seed >> 23;
-  }
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', header),
-    chunk('IDAT', deflateSync(rows)),
-    chunk('IEND', Buffer.alloc(0)),
-  ]).toString('base64');
-}
 
 /** A screenshot-like PNG: a gradient with grain, which compresses badly as PNG and well as WebP. */
 function grainy(width: number, height: number): string {
@@ -96,6 +70,59 @@ const previews = (threadId: string) =>
   (harness.core.journal.db.query('SELECT COUNT(*) AS n FROM media_previews WHERE thread_id = ?').get(threadId) as { n: number }).n;
 
 describe('deferred pictures', () => {
+  test.each([
+    ['image/avif', 'media-preview.avif', 96, 54],
+    ['image/avif', 'media-preview-padded.avif', 96, 54],
+    ['image/webp', 'media-preview-animated.webp', 96, 54],
+    ['image/avif', 'media-preview-large.avif', 640, 360],
+  ] as const)('%s with unavailable decoder serves only a source that fits (%s)', async (mimeType, fixture, width, height) => {
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    const data = readFileSync(new URL(`./fixtures/${fixture}`, import.meta.url)).toString('base64');
+    const messageId = 'msg_bounded_fallback';
+    harness.core.journal.putMessage({
+      id: messageId, threadId, turnId: 'trn_seed', role: 'user', state: 'complete', createdAt: 1000,
+      parts: [{ type: 'file', data, mimeType, name: fixture }],
+    });
+    const { messages } = await client.call('threads.get', { threadId, compactFiles: true });
+    expect(messages[0]?.parts[0]).toMatchObject({ data: '', dataDeferred: true, width, height });
+    const encode = Bun.Image.prototype.bytes;
+    Bun.Image.prototype.bytes = async () => { throw new Error('codec unavailable'); };
+    const request = { threadId, messageId, partIndex: 0 };
+    try {
+      const copy = await client.call('messages.attachment', { ...request, previewMax: 192, ticket: true });
+      expect(copy.url).toBeUndefined();
+      const accepted = width <= 192;
+      expect(copy.data).toBe(accepted ? data : '');
+      if (accepted) expect(copy.mimeType).toBe(mimeType);
+      expect(await client.call('messages.attachment', request)).toEqual({ data });
+    } finally { Bun.Image.prototype.bytes = encode; }
+  });
+
+  test('a large compressed picture stays on the core and only its requested preview is sent', async () => {
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    // A flat screenshot can be under the wire threshold despite a large decoded surface.
+    const flat = Buffer.from(await new Bun.Image(Buffer.from(png(2000, 1125, { flat: true }), 'base64')).webp().bytes()).toString('base64');
+    expect(flat.length).toBeLessThan(8192);
+    const messageId = 'msg_large_compact';
+    harness.core.journal.putMessage({
+      id: messageId, threadId, turnId: 'trn_seed', role: 'user', state: 'complete', createdAt: 1000,
+      parts: [{ type: 'image', data: flat, mimeType: 'image/webp', alt: 'flat.webp' }],
+    });
+    const { messages } = await client.call('threads.get', { threadId, compactImages: true });
+    expect(messages[0]?.parts[0]).toMatchObject({ data: '', dataDeferred: true, width: 2000, height: 1125 });
+    const asked = { threadId, messageId, partIndex: 0 };
+    const copy = await client.call('messages.attachment', { ...asked, previewMax: 576, ticket: true });
+    expect(copy.url).toMatch(/^\/file\//);
+    const served = await fetch(`${harness.url}${copy.url}`);
+    expect(served.status).toBe(200);
+    const bytes = new Uint8Array(await served.arrayBuffer());
+    expect(await new Bun.Image(bytes).metadata()).toMatchObject({ width: 576, height: 324 });
+    expect(await client.call('messages.attachment', { ...asked, previewMax: 576, ticket: true })).toEqual(copy);
+    expect(await client.call('messages.attachment', asked)).toEqual({ data: flat });
+  });
+
   for (const method of ['threads.get', 'messages.list'] as const) {
     test(`${method} answers while image previews are still being prepared`, async () => {
       const client = await harness.connect();
@@ -292,6 +319,37 @@ describe('deferred pictures', () => {
     expect(await client.call('messages.attachment', { threadId, messageId: 'msg_gif', partIndex: 0, display: true })).toEqual({ data: gif });
   });
 
+  test('queued display conversions leave their originals in the journal until a slot is free', async () => {
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    const { core } = harness;
+    const ids = ['copy-first', 'copy-second', 'copy-queued'];
+    for (const [createdAt, id] of ids.entries()) core.journal.putMessage({
+      id, threadId, turnId: 'trn_seed', role: 'assistant', state: 'complete', createdAt,
+      parts: [{ type: 'image', mimeType: 'image/png', data: SHOT, alt: null }],
+    });
+    const paused = Promise.withResolvers<void>();
+    const bytes = Bun.Image.prototype.bytes;
+    const encode = spyOn(Bun.Image.prototype, 'bytes').mockImplementation(async function (this: Bun.Image) {
+      await paused.promise;
+      return await bytes.call(this);
+    });
+    const part = spyOn(core.journal, 'messagePart');
+    const requests = ids.map(messageId => readMessageAttachment(core, { threadId, messageId, partIndex: 0, display: true }));
+    try {
+      expect(encode).toHaveBeenCalledTimes(2);
+      expect(part.mock.calls.map(([messageId]) => messageId)).toEqual(ids.slice(0, 2));
+      paused.resolve();
+      expect((await Promise.all(requests)).every(result => result.data.length > 0)).toBe(true);
+      expect(part.mock.calls.map(([messageId]) => messageId)).toEqual(ids);
+    } finally {
+      paused.resolve();
+      await Promise.allSettled(requests);
+      encode.mockRestore();
+      part.mockRestore();
+    }
+  });
+
   test('with ticket a copy and an original come as a cached file route address, the same one while it lives', async () => {
     const client = await harness.connect();
     const { threadId } = await echoThread(harness, client);
@@ -468,5 +526,37 @@ describe('deferred pictures', () => {
     expect(previews(threadId)).toBe(1);
     harness.core.journal.deleteThreads([threadId]);
     expect(previews(threadId)).toBe(0);
+  });
+
+  test('an in-flight display conversion is scoped to its thread and never answers a concurrent wrong-thread read', async () => {
+    const client = await harness.connect();
+    const first = await echoThread(harness, client);
+    const other = await echoThread(harness, client);
+    harness.core.journal.putMessage({
+      id: 'msg_scoped_display', threadId: first.threadId, turnId: 'trn_seed', role: 'user', state: 'complete', createdAt: 4_000,
+      parts: [{ type: 'image', mimeType: 'image/png', data: SCREEN, alt: 'screen.png' }],
+    });
+    const encode = Bun.Image.prototype.bytes;
+    let entered = false;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    Bun.Image.prototype.bytes = async function () {
+      entered = true;
+      await gate;
+      return encode.call(this);
+    };
+    try {
+      const ownerRead = client.call('messages.attachment', { threadId: first.threadId, messageId: 'msg_scoped_display', partIndex: 0, display: true });
+      await waitFor(() => entered);
+      const wrongRead = client.call('messages.attachment', { threadId: other.threadId, messageId: 'msg_scoped_display', partIndex: 0, display: true });
+      expect(await thrown(wrongRead)).toThrow(/msg_scoped_display/);
+      release();
+      const ownerAnswer = await ownerRead;
+      expect(ownerAnswer.mimeType).toBe('image/webp');
+      expect(ownerAnswer.data.length).toBeGreaterThan(0);
+    } finally {
+      release();
+      Bun.Image.prototype.bytes = encode;
+    }
   });
 });

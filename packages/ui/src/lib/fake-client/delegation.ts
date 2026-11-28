@@ -1,6 +1,6 @@
 /** Delegation: a parent thread's team of child threads, their usage and letters. */
 import { errorText } from '../errors';
-import { collectNativeAgents, collectProcessAgents, CONVERSATION_PROFILE_ID, DEFAULT_DELEGATION_CONFIG, delegationNeeds, delegationReply, matchSpeed, providerEnabled, RpcErrorCode, SPEED_NEEDS_MODEL, speedRefusal, threadActive, type AgentLetter, type DelegatedAgent, type DelegationConfig, type DelegationModelChoice, type DelegationProfile, type DelegationView, type DelegationWaitResult, type RpcParams, type Message, type Thread, type ThreadId, type Turn } from '@boite/contracts';
+import { collectNativeAgents, collectProcessAgents, CONVERSATION_PROFILE_ID, DEFAULT_DELEGATION_CONFIG, delegationNeeds, delegationReply, matchSpeed, providerEnabled, RpcErrorCode, SPEED_NEEDS_MODEL, speedRefusal, threadActive, workingChildren, type AgentLetter, type DelegatedAgent, type DelegationConfig, type DelegationModelChoice, type DelegationProfile, type DelegationView, type DelegationWaitResult, type RpcParams, type Message, type Thread, type ThreadId, type Turn } from '@boite/contracts';
 import { fakeContextMode } from './context-mode';
 import { RpcFailure } from '../client';
 import { addUsage, emptyUsage, toSummary } from './shared';
@@ -65,7 +65,7 @@ export function pickModel(ctx: FakeContext, parent: Thread, config: DelegationCo
 function delegatedAgent(ctx: FakeContext, row: DelegationRow, rootId: ThreadId): DelegatedAgent {
   if (row.machine !== undefined) return remoteAgent(row, rootId, there => delegatedAgent(there, { threadId: row.threadId, profileId: row.profileId, task: row.task }, rootId));
   const thread = ctx.thread(row.threadId);
-  const summary = toSummary(thread);
+  const summary = toSummary(thread.parentThreadId ? thread : { ...thread, parentThreadId: rootId });
   const lastTurn = thread.turns.findLast(turn => turn.execution?.operation !== 'compact' && turn.execution?.operation !== 'keepalive') ?? null;
   const terminal = lastTurn !== null && !['queued', 'running'].includes(lastTurn.status);
   const result = terminal
@@ -85,8 +85,8 @@ function delegatedAgent(ctx: FakeContext, row: DelegationRow, rootId: ThreadId):
     ...(needsInput.length ? { needsInput } : {}), ...(worktree ? { worktree: structuredClone(worktree) } : {}) };
 }
 
-/** The real core projects chatbar question links in global parent summaries, without subscribing to the child. */
-export function watchQuestionParents(ctx: FakeContext): void {
+/** As in the core, parent rows receive the state of their subagents without a subscription. */
+export function watchSubagentParents(ctx: FakeContext): void {
   let scheduled = false;
   for (const event of ['question.asked', 'question.answered', 'delegation.changed', 'thread.updated'] as const) ctx.bus.observe(event, () => {
     if (scheduled) return;
@@ -98,18 +98,22 @@ export function watchQuestionParents(ctx: FakeContext): void {
       for (const root of ctx.threads.values()) {
         if (root.parentThreadId) continue;
         const rootId = root.id;
-        const rows: DelegationRow[] = [
-          ...(ctx.delegationAgents.get(rootId) ?? []).filter(row => row.machine),
-          ...ctx.workflows.childrenThere(rootId).map(child => ({ threadId: child.threadId, task: '', profileId: CONVERSATION_PROFILE_ID, machine: { coreId: child.coreId, name: fakeCore(child.coreId)?.identity.name ?? child.coreId } })),
-        ];
-        const remote = rows.filter(row => row.last !== undefined || fakeCore(row.machine!.coreId)?.threads.has(row.threadId))
-          .map(row => delegatedAgent(ctx, row, rootId))
+        const reported = (rows: DelegationRow[]) => rows
+          .filter(row => row.last !== undefined || fakeCore(row.machine!.coreId)?.threads.has(row.threadId))
+          .map(row => delegatedAgent(ctx, row, rootId));
+        const agents = reported((ctx.delegationAgents.get(rootId) ?? []).filter(row => row.machine));
+        const steps = reported(ctx.workflows.childrenThere(rootId).map(child => ({ threadId: child.threadId, task: '', profileId: CONVERSATION_PROFILE_ID, machine: { coreId: child.coreId, name: fakeCore(child.coreId)?.identity.name ?? child.coreId } })));
+        const remote = [...agents, ...steps]
           .filter(agent => !agent.thread.archived && agent.needsInput?.some(input => input.kind === 'question'))
           .map(agent => ({ threadId: agent.thread.id, title: agent.thread.title, ...(agent.machine ? { machine: agent.machine } : {}) }));
         const links = root.archived ? [] : [...local.filter(child => child.parentThreadId === rootId).map(child => ({ threadId: child.id, title: child.title })), ...remote];
-        if (JSON.stringify(root.subagentQuestions ?? []) === JSON.stringify(links)) continue;
+        const work = root.remoteSubagents !== undefined || agents.length > 0
+          ? root.archived ? null : workingChildren(agents.map(agent => agent.thread)).get(rootId) ?? null
+          : undefined;
+        if (JSON.stringify(root.subagentQuestions ?? []) === JSON.stringify(links) && JSON.stringify(root.remoteSubagents) === JSON.stringify(work)) continue;
         root.subagentQuestions = links;
-        ctx.touch(root);
+        root.remoteSubagents = work;
+        ctx.emit('thread.updated', structuredClone(toSummary(root)));
       }
     });
   });
@@ -231,13 +235,14 @@ export function seedDelegationDemo(ctx: FakeContext): void {
 /** A profile, or the conversation's own route, whose model may be the provider's default. */
 export type ChildRoute = Omit<DelegationProfile, 'model'> & { model: string | null };
 
-export function workflowChild(ctx: FakeContext, root: Thread, profile: ChildRoute, title: string, task: string): ThreadId {
+export function workflowChild(ctx: FakeContext, root: Thread, profile: ChildRoute, title: string, task: string, context?: unknown): ThreadId {
   const id = `t-${++ctx.seq}`;
   const at = ctx.now();
+  const contextMode = fakeContextMode(ctx.providers.find(entry => entry.id === profile.providerId) ?? { protocol: 'echo', name: profile.providerId }, context);
   const turn: Turn = { id: `turn-${id}`, threadId: id, status: 'running', queuedAt: at, startedAt: at, finishedAt: null, usage: null, error: null };
   const child: Thread = {
     ...delegationProject(ctx, root), id, parentThreadId: root.id, parentIsBot: root.agentSessionId ? true : undefined, agentSessionId: undefined, title, titleSource: 'user',
-    providerId: profile.providerId, accountId: profile.accountId, model: profile.model, effort: profile.effort,
+    providerId: profile.providerId, accountId: profile.accountId, model: profile.model, effort: profile.effort, contextMode,
     status: 'running', unread: false, archived: false, pinned: false,
     sessionId: null, sessionGeneration: 0, selectionVersion: 0, load: null, context: null, activity: undefined, moveNote: null,
     createdAt: at, updatedAt: at, messagesBefore: null, turns: [turn], commands: [],
@@ -292,7 +297,7 @@ function seedWorkflowDemo(ctx: FakeContext, rootId: ThreadId): void {
       limits: { maxConcurrent: 2 },
       steps: [
         { id: 'scan', title: 'List changed files', profile: 'implementer', task: 'List the source files of src/parser that changed this week.', output: { files: ['string'] } },
-        { id: 'review', title: 'Review each file', profile: 'reviewer', forEach: 'scan.files', task: 'Review {{item}} for malformed-input bugs. Do not edit files.', output: { bugs: [{ line: 'number', text: 'string' }] } },
+        { id: 'review', title: 'Review each file', profile: 'reviewer', context: 'light', forEach: 'scan.files', task: 'Review {{item}} for malformed-input bugs. Do not edit files.', output: { bugs: [{ line: 'number', text: 'string' }] } },
         { id: 'fix', title: 'Fix the bugs', profile: 'implementer', when: { path: 'review.bugs', notEmpty: true }, task: 'Fix these bugs, one commit each: {{review.bugs}}' },
         { id: 'tests', title: 'Add regression tests', profile: 'implementer', when: { path: 'review.bugs', notEmpty: true }, task: 'Add one failing test per bug, in test/parser only: {{review.bugs}}' },
         { id: 'report', title: 'Write the report', profile: 'reviewer', after: ['fix', 'tests'], task: 'Summarize what was reviewed and fixed: {{review}}' }

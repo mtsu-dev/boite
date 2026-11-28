@@ -29,9 +29,12 @@
   import { pullRequestLabel } from './ThreadHeadline.svelte';
   import { openExternal } from '../lib/links';
   import PluginSlotButtons from './PluginSlotButtons.svelte';
+  import WaitLine from './WaitLine.svelte';
+  import { threadWait } from '../lib/background';
   let { store }: { store: Store } = $props();
   let thread = $derived(store.openThread);
   const mobile = new MediaQuery('(max-width: 720px)');
+  const wait = $derived(store.connection === 'ready' ? threadWait(thread, store) : null);
   /** Under a phone's title: where the conversation lives, its machine once there are two. */
   let place = $derived.by(() => {
     if (!thread) return null;
@@ -148,16 +151,16 @@
   });
 
   /** The view's own tool, first on the menu. A phone has no Ctrl+F: this row is its way to the find bar. */
-  let tools = $derived.by((): MenuItem[] => thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }] : []);
+  let tools = $derived.by((): MenuItem[] => thread ? [{ id: 'find', preload: 'find', label: strings.palette.find, glyph: Search }] : []);
   /**
    * One menu on a desktop and a phone: find, then the frequent actions, then
    * the named group, which opens in place (`Menu.svelte`): its bot, its title,
    * its folder, its pull request first. A phone's has no path.
    */
-  let menuShown = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, place: where, showDone: true, phone: mobile.current }) : []);
+  let menuShown = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, place: where, showDone: true, exportConversation: true, phone: mobile.current }) : []);
   /** The right-click's two levels, which the shared context menu swaps through the picks. */
   let toolItems = $derived(thread ? threadToolItems(store, thread, { lead: identity, place: where }) : []);
-  let desktopItems = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, place: where, showDone: true }) : []);
+  let desktopItems = $derived(thread ? threadMenuItems(store, thread, { tools, lead: identity, place: where, showDone: true, exportConversation: true }) : []);
   /** Every row in view on a desktop: the first level and its group stay short, but a long bot name still wants the room. */
   const MENU_CAP = 560;
   function titleAction(action: string) {
@@ -233,7 +236,13 @@
             <span class="ui-label">{thread.title}</span>
           </button>
           <!-- On a phone the title reads as text over its place, and the one menu closes the header's row. -->
-          {#if mobile.current}<span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place}<span class="title-place ui-label" data-testid="thread-place">{#if place.project}<span class="place-project">{place.project}</span>{/if}{#if place.machine}<MachinePlace host={place.machine} />{/if}</span>{/if}</span>{/if}
+          {#if mobile.current}
+            <span class="title-lines" class:waiting={wait !== null}>
+              <span class="title-text ui-label">{thread.title}</span>
+              {#if wait}<WaitLine {wait} />{/if}
+              {#if place}<span class="title-place ui-label" data-testid="thread-place">{#if place.project}<span class="place-project">{place.project}</span>{/if}{#if place.machine}<MachinePlace host={place.machine} />{/if}</span>{/if}
+            </span>
+          {/if}
           <!-- A small chevron exposes thread actions on the desktop. -->
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <span class="title-menu">
@@ -243,6 +252,7 @@
           </span>
           <!-- The desktop's crumb names project and thread; the machine follows in the phone's muted form, once there are two. -->
         {/if}
+        {#if wait && !mobile.current}<span class="header-wait"><WaitLine {wait} /></span>{/if}
         {@const pending = pendingLine(thread)}
         {#if pending}
           <!-- A move asked for while the turn runs. A phone keeps only the mark; its sidebar row carries the words. -->
@@ -308,6 +318,7 @@
 
 <style>
   .thread-header { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 100%; }
+  .header-wait { min-width: 0; max-width: 32%; }
   .title {
     height: var(--control);
     padding: 0 6px;
@@ -403,10 +414,11 @@
     .title.team { max-width: none; }
     /* Back, the title, then the menu at the row's end, whatever the header draws between. */
     .title-menu { order: 1; }
-    /* app.css's icon button, its box as large as its 44 px target. */
-    .title-menu :global(.trigger.icon-button) { margin: calc((var(--icon-button-target) - var(--icon-button)) / 2); }
-    .title-lines { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; line-height: 1.25; font-weight: 600; color: var(--color-foreground); }
+    /* Full touch target on phone so the thread menu is easy to hit with a thumb. */
+    .title-menu :global(.trigger.icon-button) { width: var(--touch-target); height: var(--touch-target); min-width: var(--touch-target); min-height: var(--touch-target); margin: 0; }
+    .title-lines { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; overflow: hidden; line-height: 1.25; font-weight: 600; color: var(--color-foreground); }
     .title-lines ~ .spacer { display: none; }
+    .title-lines.waiting { line-height: 1.1; }
     /* Two lines stacked: a label's ascender room and its trim to the capitals would pull the second over the first. */
     .title-lines > .ui-label { margin-block: 0; padding-block: 0; text-box: normal; }
     /* A long title takes a second line rather than losing its end. */

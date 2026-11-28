@@ -1,12 +1,14 @@
 <script lang="ts">
+  import SettingsSection from './SettingsSection.svelte';
+  import SettingField from './SettingField.svelte';
   import { errorText } from '../lib/errors';
-  import { parseChord, type KeybindingCommand } from '@boite/contracts';
+  import { isWheelCommand, parseChord, parseChordFor, type KeybindingCommand } from '@boite/contracts';
   import { RotateCcw, Search, X } from '@lucide/svelte';
   import SyncMark from './SyncMark.svelte';
-  import InfoTip from './InfoTip.svelte';
   import { commandLabel } from '../lib/commands.svelte';
   import { openOwnFile } from '../lib/links';
-  import { COMMAND_GROUPS, chordFromEvent, chordParts, isMac, scopeOf } from '../lib/keybindings';
+  import { COMMAND_GROUPS, chordFromEvent, chordFromWheel, chordParts, isMac, scopeOf } from '../lib/keybindings';
+  import { recordingWheel } from '../lib/zoom';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
 
@@ -32,7 +34,7 @@
     return COMMAND_GROUPS.map((group) => ({
       id: group.id,
       rows: group.commands
-        .map((id) => ({ id, label: commandLabel(id), parts: partsOf(id), custom: store.bindings[id].custom }))
+        .map((id) => ({ id, label: commandLabel(id), parts: partsOf(id), custom: store.bindings[id].custom, wheel: isWheelCommand(id) }))
         .filter((row) => needle === '' || row.label.toLowerCase().includes(needle) || row.id.includes(needle) || (row.parts?.join('+').toLowerCase().includes(needle) ?? false))
     })).filter((group) => group.rows.length > 0);
   });
@@ -60,7 +62,8 @@
     const parsed = parseChord(text);
     if (!parsed.ok) return null;
     const wanted = chordParts(parsed.chord, mac).join('+');
-    const meets = (other: KeybindingCommand) => scopeOf(other) === scopeOf(id) || other === 'terminal' || id === 'terminal';
+    // A wheel chord and a key's never meet: one is turned, the other pressed.
+    const meets = (other: KeybindingCommand) => isWheelCommand(other) === isWheelCommand(id) && (scopeOf(other) === scopeOf(id) || other === 'terminal' || id === 'terminal');
     for (const group of COMMAND_GROUPS) {
       for (const other of group.commands) {
         if (other !== id && meets(other) && partsOf(other)?.join('+') === wanted) return other;
@@ -120,12 +123,23 @@
       );
       return;
     }
+    // The wheel's row takes no key: the modifiers above wait for the wheel, the rest is refused.
+    if (isWheelCommand(id)) {
+      problem = { id, message: strings.keyboard.wheelOnly };
+      held = [];
+      return;
+    }
     const parsed = parseChord(text);
     if (!parsed.ok) {
       problem = { id, message: strings.keyboard.needsModifier };
       held = [];
       return;
     }
+    save(id, text);
+  }
+
+  /** A chord heard on the row: saved, unless another command answers to it and the user has to say. */
+  function save(id: KeybindingCommand, text: string) {
     stop();
     problem = null;
     const other = takenBy(id, text);
@@ -135,6 +149,35 @@
     }
     void apply(id, text);
   }
+
+  /**
+   * The wheel's row records the first turn of the wheel with the modifiers
+   * held. Listened to, and cancellable, only while that row records, so the
+   * page does not scroll under it and the zoom's old chord zooms nothing.
+   */
+  function onwheel(event: WheelEvent) {
+    const id = recording;
+    if (id === null || !isWheelCommand(id)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const text = chordFromWheel(event, mac);
+    if (!parseChordFor(id, text).ok) {
+      problem = { id, message: strings.keyboard.wheelNeedsModifier };
+      held = [];
+      return;
+    }
+    save(id, text);
+  }
+
+  $effect(() => {
+    if (recording === null || !isWheelCommand(recording)) return;
+    recordingWheel(true);
+    window.addEventListener('wheel', onwheel, { capture: true, passive: false });
+    return () => {
+      window.removeEventListener('wheel', onwheel, true);
+      recordingWheel(false);
+    };
+  });
 
   function onkeyup(event: KeyboardEvent) {
     if (recording === null) return;
@@ -165,55 +208,61 @@
 <svelte:window onkeydowncapture={onkeydown} onkeyupcapture={onkeyup} onpointerdowncapture={onoutside} onfocusincapture={onoutside} onblur={stop} />
 
 <div class="page" data-testid="keyboard-page">
-  <header class="top">
-    <div>
-      <h1 class="ui-label-box"><span class="ui-label">{strings.settings.tabs.keyboard}</span><InfoTip topic={strings.settings.tabs.keyboard} text={strings.keyboard.intro} /></h1>
-    </div>
-    {#if anyCustom}
-      <button class="quiet small" data-testid="keybindings-reset-all" disabled={busy} onclick={() => void resetAll()}><RotateCcw size={14} /><span class="ui-label">{strings.keyboard.resetAll}</span></button>
-    {/if}
-  </header>
-
+  {#if anyCustom}<button class="quiet small reset-all" data-testid="keybindings-reset-all" disabled={busy} onclick={() => void resetAll()}><RotateCcw size={14} /><span class="ui-label">{strings.keyboard.resetAll}</span></button>{/if}
   <label class="search">
     <Search size={15} />
     <input bind:value={filter} placeholder={strings.keyboard.search} aria-label={strings.keyboard.search} spellcheck="false" data-testid="keybindings-filter" />
   </label>
 
   {#if store.keybindings && store.keybindings.errors.length > 0}
-    <section class="card problems" data-testid="keybinding-problems">
-      <h2>{strings.keyboard.problems}</h2>
+    <SettingsSection class="problems" title={strings.keyboard.problems} testid="keybinding-problems">
       <p class="intro">{strings.keyboard.problemsHint}</p>
-      <ul>
+      <ul class="problem-list">
         {#each store.keybindings.errors as error (error)}
           <li class="mono" data-testid="keybinding-error">{error}</li>
         {/each}
       </ul>
-    </section>
+    </SettingsSection>
   {/if}
 
   {#each groups as group (group.id)}
-    <section class="group" aria-labelledby="settings-keys-{group.id}">
-      <h2 class="section-label" id="settings-keys-{group.id}">{strings.keyboard.groups[group.id]}</h2>
-      <div class="card list">
-        {#each group.rows as row (row.id)}
-          <div class="row" data-testid="keybinding-row" data-command={row.id} data-recording={recording === row.id || undefined} class:custom={row.custom} class:recording={recording === row.id}>
-            <div class="what">
-              <span class="label" title={row.id}>{row.label}</span>
-              {#if row.custom}<span class="tag">{strings.keyboard.custom}</span>{/if}
-              <SyncMark {store} key={`keybinding:${row.id}`} />
+    <SettingsSection id="settings-keys-{group.id}" title={strings.keyboard.groups[group.id]}>
+      {#each group.rows as row (row.id)}
+        {#snippet conflictNote()}
+          {#if conflict?.id === row.id}
+            {@const chosen = parseChord(conflict.chord)}
+            <div class="row-note" data-testid="keybinding-conflict">
+              <span class="ui-label">{fill(strings.keyboard.conflict, { chord: chosen.ok ? chordParts(chosen.chord, mac).join('+') : conflict.chord, command: commandLabel(conflict.other) })}</span>
+              <span class="note-actions">
+                <button class="primary small" data-testid="keybinding-replace" onclick={() => void replace()}><span class="ui-label">{strings.keyboard.replace}</span></button>
+                <button class="quiet small" onclick={() => (conflict = null)}><span class="ui-label">{strings.common.cancel}</span></button>
+              </span>
             </div>
+          {/if}
+        {/snippet}
+        <SettingField title={row.label} field={false}
+          class={[row.custom && 'custom', recording === row.id && 'recording'].filter(Boolean).join(' ')}
+          data-testid="keybinding-row" data-command={row.id} data-recording={recording === row.id || undefined}
+          children={conflict?.id === row.id ? conflictNote : undefined}
+          hint={row.wheel ? strings.keyboard.wheelHint : undefined}
+          error={problem?.id === row.id ? problem.message : undefined}>
+          {#snippet actions()}
+            {#if row.custom}<span class="tag">{strings.keyboard.custom}</span>{/if}
+            <SyncMark {store} key={`keybinding:${row.id}`} />
+          {/snippet}
+          {#snippet control(attributes)}
             <div class="keys">
               {#if recording === row.id}
                 <span class="capture" data-testid="keybinding-capture" role="status">
                   {#if held.length > 0}
-                    {#each held as part, index (part)}{#if index > 0}<span class="plus ui-label">+</span>{/if}<kbd class="kbd">{part}</kbd>{/each}<span class="plus ui-label">+</span>
+                    {#each held as part, index (part)}{#if index > 0}<span class="plus ui-label">+</span>{/if}<kbd class="kbd">{part}</kbd>{/each}<span class="plus ui-label">+</span>{#if row.wheel}<span class="ui-label">{strings.keyboard.wheelKey}</span>{/if}
                   {:else}
-                    <span class="ui-label">{strings.keyboard.record}</span>
+                    <span class="ui-label">{row.wheel ? strings.keyboard.recordWheel : strings.keyboard.record}</span>
                   {/if}
                 </span>
                 <button class="quiet small" onclick={stop}><span class="ui-label">{strings.common.cancel}</span></button>
               {:else}
-                <button class="chord" data-testid="keybinding-edit" title={strings.keyboard.change} disabled={busy} onclick={() => start(row.id)}>
+                <button class="chord" aria-describedby={attributes['aria-describedby']} data-testid="keybinding-edit" title={strings.keyboard.change} disabled={busy} onclick={() => start(row.id)}>
                   <span class="caps" data-testid="keybinding-key">
                     {#if row.parts === null}
                       <span class="none ui-label">{strings.keyboard.none}</span>
@@ -232,36 +281,24 @@
                 </span>
               {/if}
             </div>
-            {#if conflict?.id === row.id}
-              {@const chosen = parseChord(conflict.chord)}
-              <div class="row-note" data-testid="keybinding-conflict">
-                <span class="ui-label">{fill(strings.keyboard.conflict, { chord: chosen.ok ? chordParts(chosen.chord, mac).join('+') : conflict.chord, command: commandLabel(conflict.other) })}</span>
-                <span class="note-actions">
-                  <button class="primary small" data-testid="keybinding-replace" onclick={() => void replace()}><span class="ui-label">{strings.keyboard.replace}</span></button>
-                  <button class="quiet small" onclick={() => (conflict = null)}><span class="ui-label">{strings.common.cancel}</span></button>
-                </span>
-              </div>
-            {/if}
-            {#if problem?.id === row.id}<p class="row-note bad" role="alert"><span class="ui-label">{problem.message}</span></p>{/if}
-          </div>
-        {/each}
-      </div>
-    </section>
+          {/snippet}
+        </SettingField>
+      {/each}
+    </SettingsSection>
   {:else}
     <p class="intro">{strings.keyboard.noMatch}</p>
   {/each}
 
-  <section class="card file" id="settings-keybinding-file">
-    <div class="file-text">
-      <span class="file-name"><span class="ui-label">{strings.keyboard.file}</span><InfoTip topic={strings.keyboard.file} text={strings.keyboard.fileHint} /></span>
+  <SettingsSection id="settings-keybinding-file" title={strings.keyboard.file} info={strings.keyboard.fileHint}>
+    <div class="file">
       <span class="mono path" data-testid="keybindings-path">{store.keybindings?.path ?? ''}</span>
+      {#if store.pickerAvailable}
+        <button type="button" data-testid="keybindings-open" disabled={!store.keybindings} onclick={() => void openFile()}><span class="ui-label">{strings.keyboard.openFile}</span></button>
+      {:else}
+        <button type="button" data-testid="keybindings-copy" disabled={!store.keybindings} onclick={() => void store.copy(store.keybindings?.path ?? '')}><span class="ui-label">{strings.keyboard.copyPath}</span></button>
+      {/if}
     </div>
-    {#if store.pickerAvailable}
-      <button type="button" data-testid="keybindings-open" disabled={!store.keybindings} onclick={() => void openFile()}><span class="ui-label">{strings.keyboard.openFile}</span></button>
-    {:else}
-      <button type="button" data-testid="keybindings-copy" disabled={!store.keybindings} onclick={() => void store.copy(store.keybindings?.path ?? '')}><span class="ui-label">{strings.keyboard.copyPath}</span></button>
-    {/if}
-  </section>
+  </SettingsSection>
 </div>
 
 <style>
@@ -275,23 +312,7 @@
     width: 100%;
     max-width: var(--settings-width);
   }
-  :global(.settings) .page > header.top {
-    margin-bottom: 4px;
-  }
-  .page .list.card,
-  .page > .card {
-    max-width: var(--settings-width);
-    margin-bottom: 0;
-  }
-  .top {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-  }
-  .top h1 {
-    margin-bottom: 6px;
-  }
+  .page > .reset-all { width: auto; align-self: flex-end; }
   .intro {
     margin: 0;
     color: var(--color-muted-foreground);
@@ -326,46 +347,10 @@
     outline: none;
   }
 
-  .group {
-    display: grid;
-    gap: 8px;
-  }
-  .group h2 {
-    margin: 4px 0 0;
-  }
-  .page .list {
-    padding: 0;
-    overflow: hidden;
-  }
-  .row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 6px 16px;
-    min-height: var(--row);
-    padding: 7px 10px 7px 16px;
-    transition: background var(--dur-2) var(--ease-out-quint);
-  }
-  .row + .row {
-    border-top: 1px solid var(--color-border);
-  }
-  .row.recording {
-    background: var(--color-hover);
-  }
-  .what {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    min-width: 0;
-  }
-  .label {
-    font-size: var(--text-sm);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+  .page :global(.recording) { background: var(--color-hover); }
   .tag {
     flex: none;
+    margin-inline-start: var(--space-2);
     font-size: var(--text-xs);
     color: var(--color-subtle);
   }
@@ -441,7 +426,6 @@
     color: var(--color-muted-foreground);
   }
   .row-note {
-    grid-column: 1 / -1;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -455,18 +439,15 @@
     display: inline-flex;
     gap: 6px;
   }
-  .bad {
-    color: var(--color-danger);
-  }
 
-  .problems {
+  .page :global(.problems) {
     border-color: var(--color-danger);
   }
-  .problems ul {
+  .problem-list {
     margin: 8px 0 0;
     padding-left: 18px;
   }
-  .problems li {
+  .problem-list li {
     font-size: var(--text-sm);
     margin-bottom: 4px;
   }
@@ -475,20 +456,10 @@
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 14px 20px;
-  }
-  .file-text {
-    display: grid;
-    gap: 2px;
-    flex: 1;
-    min-width: 0;
-  }
-  .file-name {
-    display: inline-flex;
-    align-items: center;
-    font-weight: 400;
+    min-height: var(--control);
   }
   .path {
+    flex: 1;
     word-break: break-all;
     color: var(--color-muted-foreground);
     font-size: var(--text-sm);
@@ -498,10 +469,5 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .capture { animation: none; }
-  }
-  @media (max-width: 720px) {
-    .top { flex-direction: column; gap: 8px; }
-    .row { grid-template-columns: 1fr; padding-right: 12px; }
-    .keys { justify-content: flex-start; }
   }
 </style>

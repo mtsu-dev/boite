@@ -49,8 +49,8 @@ test('phone settings expose browser profiles and allowed windows only to owners 
   await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home]')`);
   const rows = `[...document.querySelectorAll('[data-testid=mobile-settings-home] .row')].map(row => row.dataset.testid)`;
   // Home lists the desktop's families; the owner-only pages (accounts, plugins, the brain, the browser's profiles, System's compaction, Diagnostics) leave a paired phone.
-  const expected = ['settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage', 'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'];
-  const ownerOnly = ['settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-brain', 'settings-tab-browser', 'settings-tab-advanced', 'settings-tab-diagnostics'];
+  const expected = ['settings-tab-general', 'settings-tab-voice', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-mcp', 'settings-tab-brain', 'settings-tab-limits', 'settings-tab-usage', 'settings-tab-browser', 'mobile-settings-connection', 'settings-tab-advanced', 'settings-tab-experiments', 'settings-tab-diagnostics'];
+  const ownerOnly = ['settings-tab-accounts', 'settings-tab-plugins', 'settings-tab-mcp', 'settings-tab-brain', 'settings-tab-browser', 'settings-tab-advanced', 'settings-tab-diagnostics'];
   expect(await page.evaluate<string[]>(rows)).toEqual(expected);
   expect(await page.evaluate(`document.querySelector('[data-testid=settings-tab-resources]') === null && document.querySelector('[data-testid=settings-tab-keyboard]') === null`)).toBe(true);
   // An owner finds the browser profiles under Browser and the windows agents may see under Machines.
@@ -243,10 +243,56 @@ test('model sheets stay on screen and browser Back closes the sheet without losi
   await capture('mobile-installation.png');
 }, 15_000);
 
+test('phone list search and the composer survive a round trip through desktop width', async () => {
+  const origin = await page.evaluate<string>('location.origin');
+  const resize = (mobile: boolean) => page.send('Emulation.setDeviceMetricsOverride', {
+    width: mobile ? 390 : 1280, height: 844, deviceScaleFactor: 1, mobile,
+  });
+  const composer = "document.querySelector('[data-testid=composer-input]')";
+  const header = "document.querySelector('[data-testid=mobile-header]')";
+  const list = "document.querySelector('[data-testid=mobile-list]')";
+  const search = "document.querySelector('[data-testid=mobile-search]')";
+  const captures = process.env['BOITE_E2E_CAPTURES'];
+  await page.navigate('about:blank');
+  await resize(false);
+  await page.navigate(`${origin}/?fake=1&open=recent`);
+  await page.waitFor(composer);
+  expect(await page.evaluate(`!${header}`)).toBe(true);
+  await page.evaluate(`void (globalThis.__resizeComposer = ${composer})`);
+  await resize(true);
+  await page.waitFor(header);
+  await navigateMobile('mobile-conversations');
+  await page.waitFor(`${list}?.querySelectorAll('[data-thread-id]').length > 1`);
+  const unfiltered = await page.evaluate<number>(`${list}.querySelectorAll('[data-thread-id]').length`);
+  await page.click('[data-testid=mobile-search-open]');
+  await page.type('[data-testid=mobile-search]', 'Boite');
+  await page.waitFor(`${list}?.querySelectorAll('[data-thread-id]').length < ${unfiltered}`);
+  const filtered = await page.evaluate(`[...${list}.querySelectorAll('[data-thread-id]')].map(row => row.dataset.threadId)`);
+  expect(filtered).not.toHaveLength(0);
+  await page.waitFor(screensSettled);
+  await resize(false);
+  await page.waitFor(`innerWidth === 1280 && (!${header} || !${header}.checkVisibility())`);
+  expect(await page.evaluate(`${composer} === globalThis.__resizeComposer`)).toBe(true);
+  if (captures) {
+    await page.settleAnimations();
+    await page.screenshot(join(captures, 'resize-desktop-1280.png'));
+  }
+  await resize(true);
+  await page.waitFor(`innerWidth === 390 && ${list}?.checkVisibility()`);
+  if (captures) {
+    await page.waitFor(`!document.querySelector('.app > .body')?.checkVisibility({ contentVisibilityAuto: true, visibilityProperty: true }) && ${screensSettled}`);
+    await page.settleAnimations();
+    await page.screenshot(join(captures, 'resize-phone-390.png'));
+  }
+  expect(await page.evaluate(`${search}?.value ?? null`)).toBe('Boite');
+  expect(await page.evaluate(`[...${list}.querySelectorAll('[data-thread-id]')].map(row => row.dataset.threadId)`)).toEqual(filtered);
+  expect(await page.evaluate(`${composer} === globalThis.__resizeComposer`)).toBe(true);
+}, 15_000);
+
 test('returning to a long conversation preserves the reading position', async () => {
   const origin = await page.evaluate<string>('location.origin');
   await page.navigate(`${origin}/?fake=1&open=recent&long=1`);
-  await page.waitFor(`document.querySelector('[data-testid=thread-title]')?.textContent.includes('Four hundred')`);
+  await page.waitFor(`document.querySelector('[data-testid=thread-title]')?.textContent.includes('Four hundred') && document.querySelector('[data-testid=timeline] [data-mid]')`);
   await page.evaluate(`(() => { const t=document.querySelector('[data-testid=timeline]'); t.scrollTop = t.scrollHeight - t.clientHeight - 1200; t.dispatchEvent(new Event('scroll')); })()`);
   await capture('mobile-long-reading.png');
   const visibleAnchor = `(() => { const t=document.querySelector('[data-testid=timeline]'); const top=t.getBoundingClientRect().top; const m=[...t.querySelectorAll('[data-mid]')].find(m=>m.getBoundingClientRect().bottom>top); return {id:m.dataset.mid,offset:m.getBoundingClientRect().top-top}; })()`;
@@ -281,7 +327,7 @@ test('leaving a long conversation right after a scroll returns to that scroll', 
   })()` }) as { identifier: string };
   try { await page.navigate(`${origin}/?fake=1&open=recent&long=1`); }
   finally { await page.send('Page.removeScriptToEvaluateOnNewDocument', { identifier }); }
-  await page.waitFor(`document.querySelector('[data-testid=thread-title]')?.textContent.includes('Four hundred')`);
+  await page.waitFor(`document.querySelector('[data-testid=thread-title]')?.textContent.includes('Four hundred') && document.querySelector('[data-testid=timeline] [data-mid]')`);
   await page.settleAnimations();
   await page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))');
   await page.evaluate(`(() => { globalThis.__holdMeasurements = true; const t=document.querySelector('[data-testid=timeline]'); t.scrollTop = t.scrollHeight - t.clientHeight - 1200; t.dispatchEvent(new Event('scroll')); })()`);
@@ -396,7 +442,7 @@ test('Appearance in French at 360 px keeps every label beside its choices readab
     await navigateMobile('mobile-settings');
     await page.click('[data-testid=settings-tab-appearance]');
     await page.click('[data-testid=locale-fr]');
-    await page.waitFor(`document.querySelector('[data-testid=appearance-page] h1')?.textContent.includes('Style et langue')`);
+    await page.waitFor(`document.querySelector('[data-testid=mobile-settings-header] h1')?.textContent.includes('Style et langue')`);
     // Language and theme are segmented choices, the text and code faces a choice list (ChoiceSelect).
     const rows = await page.evaluate<Array<{ text: string; clipped: boolean; overlap: boolean; narrow: boolean }>>(`[...document.querySelectorAll('[data-testid=appearance-page] .switch-row')].filter(row => row.querySelector('.segmented, [data-testid=font-current], [data-testid=font-mono-current]')).map(row => {
       const text = row.querySelector('.text'), t = text.getBoundingClientRect(), s = row.querySelector('.segmented, [data-testid=font-current], [data-testid=font-mono-current]').getBoundingClientRect();
@@ -432,7 +478,7 @@ test('a phone pins and archives a thread without a right-click, from the header 
   await page.click('[data-testid=thread-menu-trigger]');
   await page.waitFor(`document.querySelector('[data-testid=thread-menu-trigger-menu]')`);
   // The thread's own actions; the panel has its door, so the menu does not repeat it.
-  expect(await page.evaluate(`[...document.querySelectorAll('[data-testid=thread-menu-trigger-menu] [data-value]')].map(row => row.dataset.value)`)).toEqual(['find', 'rename', 'retitle', 'pin', 'done', 'archive', 'move', 'delete']);
+  expect(await page.evaluate(`[...document.querySelectorAll('[data-testid=thread-menu-trigger-menu] [data-value]')].map(row => row.dataset.value)`)).toEqual(['find', 'export-thread', 'rename', 'retitle', 'pin', 'copy-thread-id', 'done', 'archive', 'move', 'delete']);
   await capture('mobile-thread-menu.png');
   await page.evaluate('history.back()');
   await page.waitFor(`!document.querySelector('[data-testid=thread-menu-trigger-menu]')`);
@@ -464,6 +510,8 @@ test('a paired phone deletes a thread from its list and the toast offers undo', 
   await page.waitFor(`document.querySelector('[data-testid=mobile-thread-menu-${id}-menu] [data-value=delete]')`);
   await capture('mobile-paired-thread-delete-menu.png');
   await page.click(`[data-testid=mobile-thread-menu-${id}-menu] [data-value=delete]`);
+  await page.waitFor(`document.querySelector('[data-testid=confirm-ok]')`);
+  await page.click('[data-testid=confirm-ok]');
   await page.waitFor(`!document.querySelector('[data-testid=mobile-thread-${id}]') && !__boiteTest.workspace.active.threads.some(t => t.id === ${JSON.stringify(id)})`);
   await capture('mobile-paired-thread-deleted.png');
   expect(await page.evaluate('__boiteTest.workspace.active.error')).toBeNull();

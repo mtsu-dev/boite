@@ -14,13 +14,15 @@ const query = (id: string) => document.querySelector<HTMLElement>(`[data-testid=
 
 beforeEach(async () => {
   vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+  vi.stubGlobal('createImageBitmap', async () => ({ width: 780, height: 600, close() {} }));
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   liveViews.reset();
   client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
   await client.call('threads.subscribe', { threadId: thread });
 });
 afterEach(async () => {
   if (app) await unmount(app); app = undefined;
-  store?.detach(); client?.close(); vi.useRealTimers(); vi.restoreAllMocks();
+  store?.detach(); client?.close(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   document.body.innerHTML = ''; localStorage.clear(); liveViews.reset();
 });
 
@@ -52,7 +54,12 @@ test('nothing streams before Show; Show watches the picked tab, Hide covers it a
   query('agent-browser-show')!.click(); await settle();
   await vi.advanceTimersByTimeAsync(300); await settle();
   expect(frames().at(-1)![1]).toMatchObject({ threadId: thread, tabId: shop.tabId });
-  expect(query('remote-browser-frame')).not.toBeNull();
+  // A status update for the same active tab must leave the painted frame interactive.
+  expect(query('remote-browser-frame')?.closest('button')?.disabled).toBe(false);
+  await client.call('browser.command', { threadId: thread, tabId: shop.tabId, action: { kind: 'activate' } });
+  await settle();
+  expect(query('remote-browser-frame')?.closest('button')?.disabled).toBe(false);
+  expect(frames()).toHaveLength(1);
   const tabs = document.querySelectorAll<HTMLButtonElement>('[data-testid=agent-browser-tab]');
   expect([...tabs].map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'true']);
   tabs[0]!.click(); await settle();
@@ -94,7 +101,7 @@ test('the owner opens a page from a new tab, watches it without a cover and clos
   field.value = 'shop.example/cart'; field.dispatchEvent(new Event('input', { bubbles: true })); await settle();
   submit(); submit(); await settle();
   expect(opens()).toHaveLength(before + 1);
-  expect(calls).toHaveBeenCalledWith('browser.command', { threadId: thread, action: { kind: 'open', url: 'https://shop.example/cart' } });
+  expect(calls).toHaveBeenCalledWith('browser.command', { threadId: thread, action: { kind: 'open', url: 'https://shop.example/cart', manual: true } });
   // His own page opens live, on the tab he just made.
   expect(query('agent-browser-cover')).toBeNull();
   expect(query('remote-browser')).not.toBeNull();
@@ -112,6 +119,20 @@ test('the owner opens a page from a new tab, watches it without a cover and clos
   expect(opens()).toHaveLength(before + 2);
 });
 
+test('a show event without a live tab keeps the owner’s new-tab draft', async () => {
+  const subscriptions = vi.spyOn(client, 'on');
+  app = mount(AgentBrowserSurface, { target: document.body, props: { store, threadId: thread } }); await settle();
+  await open('https://example.com/docs'); await settle();
+  query('agent-browser-new')!.click(); await settle();
+  const field = query('agent-browser-start-address') as HTMLInputElement;
+  field.value = 'example.org'; field.dispatchEvent(new Event('input', { bubbles: true })); await settle();
+  const show = subscriptions.mock.calls.find(([event]) => event === 'browser.remoteChanged')![1];
+  show({ threadId: thread, live: false, tabs: [], show: true });
+  await open('https://example.com/next'); await settle();
+  expect(query('agent-browser-draft')).not.toBeNull();
+  expect((query('agent-browser-start-address') as HTMLInputElement).value).toBe('example.org');
+});
+
 test('the desktop of the machine that runs the browser shows the page at once, without a cover', async () => {
   vi.useFakeTimers();
   const calls = vi.spyOn(client, 'call');
@@ -122,6 +143,19 @@ test('the desktop of the machine that runs the browser shows the page at once, w
   expect(query('agent-browser-cover')).toBeNull();
   expect(query('agent-browser-hide')).toBeNull();
   expect(calls.mock.calls.some(([method]) => method === 'browser.remoteStream')).toBe(true);
+});
+
+test('the cookies pill changes the selected tab to another profile on its machine', async () => {
+  await client.call('settings.set', { browserProfiles: [{ id: 'work', name: 'Work' }] });
+  const { tabId } = await open('https://example.com/docs');
+  app = mount(AgentBrowserSurface, { target: document.body, props: { store, threadId: thread } }); await settle();
+  expect(query('agent-browser-cookies')?.dataset.profile).toBe('default');
+  query('agent-browser-cookie-menu')!.click(); await settle();
+  document.querySelector<HTMLButtonElement>('[role=menuitem][data-value=work]')!.click(); await settle();
+  expect(query('agent-browser-cookies')?.textContent).toContain('Work');
+  expect((await client.call('browser.remoteStatus', { threadId: thread })).tabs).toMatchObject([
+    { tabId, profile: 'work', url: 'https://example.com/docs' },
+  ]);
 });
 
 test('a paired phone watches the agent tabs but cannot open or close one', async () => {

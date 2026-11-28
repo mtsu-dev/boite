@@ -10,22 +10,22 @@ export const strings = {
     projectFailedThreads: '{project}: {count} failed',
     projectMixedThreads: '{project}: {waiting} need you, {failed} failed',
     loadingProjects: 'Loading projects',
+    threadListFailed: 'Could not load all conversations from {machine}.',
+    threadListRetrying: 'Reloading conversations from {machine}.',
     projectDoneThreads: '{project}: {count} done',
     projectArchivedThreads: '{project}: {count} archived',
-    /** The fold under the list for projects with no open conversation, and what choosing one does. */
-    idleProjects: 'Idle projects',
+    /** The fold under the list for projects without a single conversation, and what choosing one does. */
+    idleProjects: 'No threads',
     /** The section on top of the Projects view: projects whose every conversation is at work, so nothing there waits on the user. */
     workingProjects: 'Working',
     workingProjectsHint: 'Every conversation in these projects is at work. A project moves down once one needs you.',
-    /** The section under the open projects: nothing open, conversations archived to pick up again. */
-    laterProjects: 'Set aside',
-    laterProjectsHint: 'Conversations you archived to pick up later, in projects with nothing else open.',
-    idleProjectsHint: 'Nothing to do here: no open or set-aside conversation. Choose one to start a thread.',
+    /** The section under the open projects: conversations, none at work and none waiting on the user. */
+    pausedProjects: 'Inactive',
+    pausedProjectsHint: 'Nothing runs in these projects and nothing waits on you. A project moves up once a thread starts or needs you.',
+    idleProjectsHint: 'No thread in these projects, running or stopped. Choose one to start a thread.',
     filter: 'Filter',
     /** The Filter menu's group of switches: what the list folds away or shows. */
     filterDisplay: 'Display',
-    /** The archive in the list column: the way back to the threads. */
-    backToThreads: 'Back to the threads',
     /** A filter on, as a chip under the list's head (FilterChips.svelte): its press removes it. */
     filterClear: 'Remove the {name} filter',
     /** Recent's filter on the rows still at work, named on its chip. */
@@ -45,11 +45,15 @@ export const strings = {
     /** The same action once they show: a press folds them back. */
     lessThreads: 'Show less',
     displayView: 'View',
+    /** The list head's two arrows: the views this window showed, as a mouse's back and forward buttons walk them. */
+    history: 'History', historyBack: 'Back', historyForward: 'Forward',
     displayOrder: 'Sort by',
     groupWorkingRow: 'Working threads',
-    groupIdleRow: 'Idle projects',
+    groupIdleRow: 'Inactive projects',
     showDoneRow: 'Done threads',
     showDoneHint: 'Lists finished threads after the live ones, in Projects and Recent. This device only.',
+    mochiLayoutRow: 'Mochi layout',
+    mochiLayoutHint: 'Shows the side rail with your mochis, teams and shortcuts along the left edge. This device only.',
     autoArchiveMergedPrHint: 'After every PR merges or closes, Boite asks the agent whether the conversation is done. Applies to this project.',
     autoRemoveWorktreesHint: 'An hour after every conversation in a worktree is done or archived, Boite deletes the worktree if nothing would be lost: its last commit is on another branch, or a merged pull request has that exact commit. A merged branch goes too. Uncommitted changes always stay. Applies to this project.',
     noActiveProjects: 'No conversations need attention.',
@@ -60,6 +64,7 @@ export const strings = {
     doneWhyMoving: 'Moving',
     doneToast: 'Marked "{title}" done',
     doneLoadFailed: 'Some completed threads could not be loaded.',
+    archivedLoadFailed: 'Some archived threads could not be loaded.',
     /** The pull request under a done or archived conversation, which opens it on the forge. */
     prMerged: '#{number} merged',
     prClosed: '#{number} closed',
@@ -69,12 +74,15 @@ export const strings = {
     reopenThread: 'Move to Recent',
     reopenNamedThread: 'Move "{title}" to Recent',
     doneNotice: 'This thread is done',
+    archivedNotice: 'This thread was set aside',
     /** Above the composer, or the done notice, of a thread whose worktree Boite removed. */
     contactHold: {
       title: 'Contact mail holds this thread',
+      toolsTitle: 'Contact mail restricts tools',
+      toolsBody: 'Boite limits sensitive tools because this conversation has read messages from a contact.',
       body: 'Its history holds messages from {contacts}, sent outside a shared project. Boite cannot bound what that mail asks, so it refuses every turn here.',
       trust: 'Trust this history',
-      trustTip: 'The agent then runs with its usual tools and reads that mail like the rest of its history.',
+      trustTip: 'Trusting the history lifts the restrictions caused by that mail.',
       ownerOnly: 'Trust it from the computer that runs this Boite.'
     },
     worktreeGone: {
@@ -110,6 +118,7 @@ export const strings = {
     settings: 'Settings',
     projectMenu: 'Project actions',
     copyPath: 'Copy path',
+    copyThreadId: 'Copy thread ID',
     manageProject: 'Manage project',
     renameProject: 'Rename project',
     projectName: 'Project name',
@@ -132,7 +141,7 @@ export const strings = {
     projectMissingBody: 'The folder {path} does not exist any more: it was deleted, moved or renamed. Put it back to keep working here, or remove the project from Boite.',
     projectMissingCheck: 'Check again',
     removeProjectTitle: 'Remove {project} from Boite?',
-    removeProjectBody: 'Its threads, their history and usage stay saved: add the folder again to bring them back. Files on disk stay where they are.',
+    removeProjectBody: 'Its conversations stop. Add the same folder again to recover their history and reopen the ones that were open. Files on disk stay in place.',
     remove: 'Remove',
     threadMenu: 'Thread actions',
     /** A pencil on a thread's row: something typed in its box and not sent. */
@@ -194,6 +203,10 @@ export const strings = {
     unpin: 'Unpin',
     archive: 'Archive',
     deleteUnavailable: 'Update Boite on the machine hosting this conversation to delete it. The conversation has been kept.',
+    deleteThreadTitle: 'Delete "{title}"?',
+    deleteThreadForever: 'This machine keeps deleted conversations indefinitely, until you permanently delete them.',
+    deleteThreadDay: 'This machine keeps deleted conversations for 1 day, then permanently deletes their history.',
+    deleteThreadDays: 'This machine keeps deleted conversations for {count} days, then permanently deletes their history.',
     deletedToast: 'Deleted "{title}". You can restore it from Settings.',
     /** The toast after an archive, with its way back: the button and Ctrl+Z. */
     archivedToast: 'Archived "{title}"',

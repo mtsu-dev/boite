@@ -3,7 +3,7 @@ import { afterEach, expect, spyOn, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ThreadSummary, WorkflowPlan, WorkflowRun } from '@boite/contracts';
+import type { ThreadSummary, Usage, WorkflowPlan, WorkflowRun } from '@boite/contracts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -16,12 +16,12 @@ const restores: (() => void)[] = [];
 afterEach(async () => { for (const h of cores.splice(0)) await h.stop(); for (const restore of restores.splice(0)) restore(); });
 
 /** Each turn answers `reply(prompt)`; null holds it until stopped. Every prompt is kept by thread. */
-function scripted(reply: (prompt: string, ctx: TurnContext) => string | null) {
+function scripted(reply: (prompt: string, ctx: TurnContext) => string | null, usage: (prompt: string) => Usage | null = () => null) {
   const prompts = new Map<string, string[]>();
   const held = new Set<string>();
   restores.push(setDriver('echo', { protocol: 'echo', startTurn(ctx: TurnContext) {
     prompts.set(ctx.thread.id, [...(prompts.get(ctx.thread.id) ?? []), ctx.prompt]);
-    const done: TurnResult = { status: 'done', sessionId: `session:${ctx.thread.id}`, usage: null };
+    const done: TurnResult = { status: 'done', sessionId: `session:${ctx.thread.id}`, usage: usage(ctx.prompt) };
     const text = reply(ctx.prompt, ctx);
     if (text !== null) {
       const id = ctx.emit.startMessage('assistant');
@@ -31,7 +31,7 @@ function scripted(reply: (prompt: string, ctx: TurnContext) => string | null) {
     }
     held.add(ctx.thread.id);
     const finished = Promise.withResolvers<TurnResult>();
-    return { done: finished.promise, stop() { held.delete(ctx.thread.id); finished.resolve({ status: 'stopped', sessionId: null, usage: null }); } };
+    return { done: finished.promise, stop() { held.delete(ctx.thread.id); finished.resolve({ ...done, status: 'stopped', sessionId: null }); } };
   } }));
   return { prompts, held };
 }
@@ -128,7 +128,10 @@ test('a step on another machine runs there after a step here, and its JSON outpu
     if (prompt.includes('does not match this workflow step')) return `${'🦊'.repeat(1_000)}${'x'.repeat(13_990)}\n${JSON_BLOCK({ count: 2 })}`;
     if (prompt.includes('step count')) return 'Two files.';
     return 'Summary read.';
-  });
+  }, prompt => ({
+    inputTokens: prompt.includes('does not match this workflow step') ? 9 : 5,
+    outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, costUsdEquivalent: null,
+  }));
   const { desk, pc, owner, threadId, pcId, machine, onPc, run } = await setup();
   const plan: WorkflowPlan = { name: 'Across', steps: [
     { id: 'scan', task: 'List the files.', output: { files: ['string'] } },
@@ -142,6 +145,8 @@ test('a step on another machine runs there after a step here, and its JSON outpu
   expect(child).toBeDefined();
   const count = run(started.id).nodes[1]!.instances[0]!;
   expect(count).toMatchObject({ status: 'done', output: { count: 2 }, threadId: null, providerId: 'echo' });
+  expect(count.usage).toMatchObject({ inputTokens: 14, outputTokens: 2 });
+  expect(run(started.id).usage).toMatchObject({ inputTokens: 19, outputTokens: 3 });
   expect(count.machine).toMatchObject({ name: pc.core.coordination.identity().name, coreId: pcId, childId: child!.id, corrections: 1 });
   // It ran there, on what the step before it returned here.
   const first = prompts.get(child!.id)![0]!;
@@ -206,7 +211,17 @@ test('a remote step whose failure cannot be saved is logged, and does not leave 
 });
 
 for (const restart of [false, true]) test(`stopping the run${restart ? ' after a caller restart' : ''} stops its step on the other machine`, async () => {
-  const { held } = scripted(prompt => (prompt.includes('step slow') ? null : 'ok'));
+  const usage = { inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, costUsdEquivalent: null };
+  const followUpUsage = { ...usage, inputTokens: 50 };
+  const followUpPrompt = 'Follow up.';
+  const isFollowUp = (prompt: string): boolean => prompt.includes(followUpPrompt);
+  const isInitial = (prompt: string): boolean => !isFollowUp(prompt) && prompt.includes('step slow');
+  let stoppedContext: TurnContext | undefined;
+  const { held } = scripted((prompt, ctx) => {
+    if (!isInitial(prompt)) return 'ok';
+    stoppedContext = ctx;
+    return null;
+  }, prompt => isFollowUp(prompt) ? followUpUsage : isInitial(prompt) ? usage : null);
   const deskDir = restartable();
   const { desk, pc, owner, threadId, pcId, machine, onPc, run } = await setup(true, { desk: deskDir });
   const started = await owner.call('workflows.start', { threadId, requestId: 'stop-1', plan: { name: 'Stop', steps: [{ id: 'slow', machine, project: 'notes', task: 'Read every page.' }] } });
@@ -230,6 +245,32 @@ for (const restart of [false, true]) test(`stopping the run${restart ? ' after a
   await caller.core.delegation.remote.flush(pcId);
   await waitFor(() => !held.has(childId) && pc.core.threads.require(childId).status !== 'running', 1_000);
   expect(pc.core.journal.listTurns(childId).at(-1)?.status).toBe('stopped');
+  const step = () => caller.core.workflows.get(threadId, started.id).nodes[0]!.instances[0]!;
+  const state = () => caller.core.delegation.remote.record(threadId, step().machine!.requestId)?.state;
+  // A flush is a no-op while the outbox's own timer is sending: wait for the report, not for one flush.
+  const reported = async (done: (last: NonNullable<ReturnType<typeof state>>['lastTurn']) => boolean) => {
+    await pc.core.delegation.remote.flush(caller.core.coordination.card().coreId);
+    await waitFor(() => done(state()?.lastTurn ?? null));
+  };
+  await reported(last => last?.status === 'stopped');
+  const stopped = state()?.lastTurn;
+  expect(stopped).toMatchObject({ status: 'stopped', usage });
+  expect(step().usage).toMatchObject(usage);
+  expect(state()?.workflowStop?.turn.id).toBe(stopped?.id);
+
+  const member = await pc.connect();
+  const followUp = await member.call('turns.start', { threadId: childId, prompt: followUpPrompt });
+  await waitFor(() => pc.core.journal.getTurn(followUp.id)?.finishedAt != null);
+  await reported(last => last?.id === followUp.id && last.finishedAt != null);
+  expect(state()?.lastTurn).toMatchObject({ id: followUp.id, usage: followUpUsage });
+  expect(state()?.workflowStop?.turn.id).toBe(stopped?.id);
+  expect(step().usage).toMatchObject(usage);
+
+  const revised = { ...usage, outputTokens: 12 };
+  stoppedContext!.reportLateUsage!(revised);
+  await pc.core.delegation.remote.flush(caller.core.coordination.card().coreId);
+  await waitFor(() => state()?.workflowStop?.turn.usage?.outputTokens === 12);
+  expect(step().usage).toMatchObject(revised);
 });
 
 test('a run stopped before the start answer came stops its subagent there once a report names it', async () => {
@@ -264,7 +305,8 @@ test('a run stopped before the start answer came stops its subagent there once a
 });
 
 test('a restart of the other machine keeps its step at work, and the turn it resumes settles the step', async () => {
-  const { held, prompts } = scripted(prompt => (prompt.startsWith('Boite restarted') ? 'Read after the restart.' : prompt.includes('step slow') ? null : 'ok'));
+  const restartLead = 'Boite restarted during the previous turn.';
+  const { held, prompts } = scripted(prompt => (prompt.includes(restartLead) ? 'Read after the restart.' : prompt.includes('step slow') ? null : 'ok'));
   const pcDir = restartable();
   const { desk, pc, owner, threadId, deskId, machine, onPc, run } = await setup(true, { pc: pcDir });
   const started = await owner.call('workflows.start', { threadId, requestId: 'member-restart-1', plan: { name: 'Restart', steps: [{ id: 'slow', machine, project: 'notes', task: 'Read.' }] } });
@@ -300,7 +342,7 @@ test('a restart of the other machine keeps its step at work, and the turn it res
   cores.push(await startTestCore({ dataDir: pcDir, port }));
 
   await waitFor(() => run(started.id).status === 'done', 10_000);
-  expect(prompts.get(childId)!.at(-1)).toStartWith('Boite restarted');
+  expect(prompts.get(childId)!.at(-1)).toContain(`${restartLead} Verify interrupted commands and resume where you stopped.`);
   expect(run(started.id).nodes[0]!.instances[0]).toMatchObject({ status: 'done', result: 'Read after the restart.' });
 });
 

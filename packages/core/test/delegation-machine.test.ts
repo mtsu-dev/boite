@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { RpcErrorCode, type DelegatedAgent, type ModelInfo, type RpcParams } from '@boite/contracts';
+import { mergeWorkingChildren, RpcErrorCode, threadState, workingChildren, type DelegatedAgent, type ModelInfo, type RpcParams, type ThreadSummary } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { connect, type CoreClient } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
@@ -35,7 +35,7 @@ function answering(stopping?: () => Promise<void>) {
     const finished = Promise.withResolvers<TurnResult>();
     held.set(ctx.thread.id, () => { held.delete(ctx.thread.id); answer(); finished.resolve(done); });
     const end = () => finished.resolve({ status: 'stopped', sessionId: null, usage: null });
-    return { done: finished.promise, stop() { held.delete(ctx.thread.id); if (stopping) void stopping().then(end); else end(); } };
+    return { done: finished.promise, setPermissionMode: async () => true, stop() { held.delete(ctx.thread.id); if (stopping) void stopping().then(end); else end(); } };
   } }));
   const wakes = (threadId: string) => (prompts.get(threadId) ?? []).filter(prompt => prompt.includes('Boite delegation messages')).length;
   return { prompts, held, wakes };
@@ -73,8 +73,40 @@ async function setup(allow = true) {
 
 const TWIN_MODELS: ModelInfo[] = [
   { id: 'twin-a', name: 'Twin A', default: true, effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'high', label: 'High' }], default: 'high' } },
-  { id: 'twin-b', name: 'Twin B', effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'max', label: 'Max' }], default: 'max' } },
+  { id: 'twin-b', name: 'Twin B', aliases: [{ id: 'twin-b-max', effort: 'max' }, { id: 'twin-b-low', effort: 'low' }], effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'max', label: 'Max' }], default: 'max' } },
 ];
+
+test('a parent row counts its remote subagent before opening the conversation and clears when it finishes', async () => {
+  const { held } = answering();
+  const { desk, owner, threadId, spawn } = await setup();
+  const updates: ThreadSummary[] = [];
+  owner.on('thread.updated', row => { if (row.id === threadId) updates.push(row); });
+  const child = await spawn('Review the index HOLD-ON', '--project', 'notes');
+  await waitFor(() => {
+    const report = desk.core.delegation.remote.members(threadId)[0]?.thread;
+    return report?.status === 'running' && report.runningSince != null;
+  });
+  const rows = await owner.call('threads.list', {});
+  const parent = rows.find(row => row.id === threadId)!;
+  const children = mergeWorkingChildren(workingChildren(rows).get(threadId) ?? null, parent.remoteSubagents ?? null);
+  expect(rows.some(row => row.id === child.thread.id)).toBe(false);
+  expect(threadState(parent, children)).toBe('delegating');
+  expect(children).toEqual({ count: 1, asking: 0, since: desk.core.delegation.remote.members(threadId)[0]!.thread.runningSince ?? null });
+  await waitFor(() => updates.at(-1)?.remoteSubagents?.count === 1);
+
+  await owner.call('turns.start', { threadId, prompt: 'Review the glossary HOLD-ON' });
+  await waitFor(() => held.has(threadId));
+  const selected = await owner.call('threads.update', { threadId, permissionMode: 'yolo' });
+  const selectionUpdates = () => updates.filter(row => row.selectionVersion === selected.selectionVersion);
+  await waitFor(() => selectionUpdates().length >= 2);
+  expect(selectionUpdates().every(row => row.remoteSubagents?.count === 1)).toBe(true);
+
+  await waitFor(() => held.has(child.thread.id));
+  held.get(child.thread.id)!();
+  await waitFor(() => !desk.core.delegation.remote.busy(threadId));
+  expect((await owner.call('threads.list', {})).find(row => row.id === threadId)?.remoteSubagents).toBeNull();
+  await waitFor(() => updates.at(-1)?.remoteSubagents === null);
+});
 
 test('remote child questions update the parent question summary and clear after another client answers', async () => {
   answering();
@@ -103,6 +135,24 @@ async function twinProvider(h: TestCore, owner: CoreClient): Promise<void> {
   h.core.accounts.ensureDefaults();
 }
 
+test('remote delegation keeps the effort encoded in an allowed legacy model', async () => {
+  answering();
+  const { desk, pc, owner, pcOwner, threadId, machine, cli, spawn } = await setup();
+  await twinProvider(desk, owner);
+  await twinProvider(pc, pcOwner);
+  const account = desk.core.accounts.list().find(row => row.providerId === 'twin')!;
+  const thread = desk.core.threads.require(threadId);
+  desk.core.journal.putThread({ ...thread, providerId: 'twin', accountId: account.id, model: 'twin-b-low', effort: null });
+  const config = desk.core.delegation.config(threadId);
+  await owner.call('delegation.configure', { threadId, config: { ...config, anyModel: false } });
+  const denied = await cli(['delegate', 'spawn', 'Wrong level', '--machine', machine, '--project', 'notes', '--model', 'twin-b-max']);
+  expect(denied.err).toContain('limited subagents');
+  const overridden = await cli(['delegate', 'spawn', 'Wrong level alone', '--machine', machine, '--project', 'notes', '--effort', 'max']);
+  expect(overridden.err).toContain('limited subagents');
+  const child = await spawn('Allowed level', '--project', 'notes', '--model', 'twin-b-low');
+  expect(pc.core.threads.require(child.thread.id)).toMatchObject({ model: 'twin-b', effort: 'low' });
+});
+
 test('a subagent on another machine runs on the parent\'s model there, or on the one named from that machine\'s list, in the project named like the parent\'s', async () => {
   const { prompts } = answering();
   const { desk, pc, owner, pcOwner, threadId, notes, notesPath, machine, cli, spawn, childrenOnPc } = await setup();
@@ -112,7 +162,9 @@ test('a subagent on another machine runs on the parent\'s model there, or on the
   await owner.call('delegation.configure', { threadId, config: { ...config, anyModel: false } });
   expect((await owner.call('delegation.models', { threadId, machine })).anyModel).toBe(false);
   await owner.call('delegation.configure', { threadId, config });
-  expect((await owner.call('delegation.models', { threadId, machine })).anyModel).toBe(true);
+  const remoteCatalog = await owner.call('delegation.models', { threadId, machine });
+  expect(remoteCatalog.anyModel).toBe(true);
+  expect(remoteCatalog.choices.find(row => row.model === 'twin-b')?.aliases).toContainEqual({ id: 'twin-b-max', effort: 'max' });
 
   // Without --project it takes the project of that machine named like the parent's; the PC has none.
   const unnamed = await cli(['delegate', 'spawn', 'Read the notes', '--machine', machine, '--request-id', 'model-0']);
@@ -134,7 +186,7 @@ test('a subagent on another machine runs on the parent\'s model there, or on the
     threadId, title: parent.title, projectId: parent.projectId, project: 'test', machine: desk.core.coordination.identity().name,
   } });
 
-  const named = await spawn('Read the notes', '--project', 'notes', '--model', 'twin-b', '--effort', 'low', '--request-id', 'model-2');
+  const named = await spawn('Read the notes', '--project', 'notes', '--model', 'twin/twin-b-max', '--effort', 'low', '--request-id', 'model-2');
   expect(pc.core.threads.require(named.thread.id)).toMatchObject({ projectId: notes.id, cwd: notesPath, providerId: 'twin', model: 'twin-b', effort: 'low' });
   expect(named.profileId).toBe('twin/twin-b');
 
@@ -436,7 +488,7 @@ test('a member whose Boite does not know these operations is reported too old, a
   expect(desk.core.delegation.remote.holds(threadId, 'old-1')).toBe(false);
 });
 
-test('a parent archived or deleted before its child there was named retires that child once a report names it', async () => {
+test('archiving a parent or removing its project retires an unnamed remote child once it reports', async () => {
   const { held } = answering();
   const { desk, pc, owner, threadId, pcId, deskId, machine, cli, childrenOnPc } = await setup();
   const request = desk.core.coordination.request.bind(desk.core.coordination);
@@ -460,25 +512,26 @@ test('a parent archived or deleted before its child there was named retires that
   expect(pc.core.threads.require(child.id).archived).toBe(true);
   expect(held.has(child.id)).toBe(false);
 
-  // Deleted for good: nothing of that parent stays here but the retirement, until a report names its child.
+  // Removing the project hides the parent and keeps its delegation so a late report can still retire the child.
   mkdirSync(join(desk.dataDir, 'other'), { recursive: true });
   const project = await owner.call('projects.add', { path: join(desk.dataDir, 'other'), name: 'Other' });
   const parent = desk.core.threads.require(threadId);
   const other = await owner.call('threads.create', { projectId: project.id, providerId: parent.providerId, accountId: parent.accountId, title: 'Second helper' });
   away = true;
-  expect((await cli(['delegate', 'spawn', 'Read HOLD-ON', '--machine', machine, '--project', 'notes', '--request-id', 'delete-lost'], desk, other.id)).err).toContain('lost start reply');
+  expect((await cli(['delegate', 'spawn', 'Read HOLD-ON', '--machine', machine, '--project', 'notes', '--request-id', 'remove-lost'], desk, other.id)).err).toContain('lost start reply');
   const orphan = childrenOnPc().find(thread => thread.id !== child.id)!;
   await waitFor(() => held.has(orphan.id));
-  await owner.call('threads.remove', { threadId: other.id });
-  desk.core.journal.db.query('UPDATE thread_deletions SET deleted_at = 0 WHERE thread_id = ?').run(other.id);
-  desk.core.threads.purgeDeleted();
-  expect(desk.core.delegation.remote.has(other.id)).toBe(false);
+  await owner.call('projects.remove', { projectId: project.id });
+  expect(desk.core.journal.getThread(other.id)).toBeNull();
+  expect(desk.core.delegation.remote.has(other.id)).toBe(true);
   away = false;
   await pc.core.delegation.remote.flush(deskId);
   await desk.core.delegation.remote.flush(pcId);
-  // Before, the report of a parent this machine forgot was dropped, and the child kept working there.
   expect(pc.core.threads.require(orphan.id).archived).toBe(true);
   expect(held.has(orphan.id)).toBe(false);
+
+  expect(await owner.call('projects.add', { path: project.path })).toMatchObject({ id: project.id });
+  expect(await owner.call('threads.get', { threadId: other.id })).toMatchObject({ id: other.id, archived: false });
 });
 
 test('a stop sent again because its answer was lost does not stop the instruction that follows it', async () => {

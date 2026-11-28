@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { ArrowLeft, Brain, ChevronDown, Ellipsis, Archive, MessageSquarePlus, Pause, Play, RotateCcw, Search, Settings2 } from '@lucide/svelte';
+  import { ArrowLeft, Brain, ChevronDown, Ellipsis, Search, Settings2 } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, ThreadSummary } from '@boite/contracts';
-  import { moodOf, liveState, liveStep, resetBuiltin, waitingOn, type AgentsView } from '../../lib/agents.svelte';
-  import { confirmArchive } from '../../lib/agent-menu';
-  import { startNewConversation } from '../../lib/agent-new-session';
+  import { moodOf, liveState, liveStep, waitingOn, type AgentsView } from '../../lib/agents.svelte';
+  import { agentLifecycleItems, pickAgentLifecycle } from '../../lib/agent-menu';
+  import { threadWait } from '../../lib/background';
   import { dateTime } from '../../lib/schedule';
   import type { AgentPane } from '../../lib/store/layout.svelte';
   import type { Store } from '../../lib/store.svelte';
@@ -11,6 +11,7 @@
   import { minuteClock } from '../../lib/clock.svelte';
   import Menu from '../Menu.svelte';
   import Elapsed from '../Elapsed.svelte';
+  import WaitLine from '../WaitLine.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
   import { avatarLit } from '../../lib/avatar-lit';
   import StatusMark from '../StatusMark.svelte';
@@ -18,6 +19,8 @@
   import PanelDoor from '../PanelDoor.svelte';
   import { separator, type MenuItem } from '../../lib/menu';
   import { routeGone } from '../../lib/agent-route';
+  import { threadExportItem } from '../../lib/thread-menu';
+  import { openThreadExport } from '../../lib/thread-export-request.svelte';
   import { tick } from 'svelte';
 
   /**
@@ -50,6 +53,8 @@
   /** What it waits on: the question it asked, else the permission it needs. */
   const pending = $derived(waitingOn(store, thread?.id));
   const state = $derived(liveState(agent, status, thread, !!pending));
+  /** A failure outranks what the thread still waits on: its line says the error, never the shell or the checks left running. */
+  const wait = $derived(store.connection === 'ready' && agent.status === 'active' && state !== 'error' ? threadWait(thread, store) : null);
   const step = $derived(liveStep(status, thread));
   const since = $derived(thread?.status === 'running' ? thread.runningSince ?? thread.progress?.since ?? null : null);
   /** The panel button, as on a thread's header: it opens the panel on the desk, whose selector holds every other panel. */
@@ -76,32 +81,19 @@
 
   /** The thread menu's order: the view's own Find first, then what is done to the bot, its danger last. */
   const menuItems = $derived<MenuItem[]>([
-    ...(thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }, separator('sep-find')] : []),
+    ...(thread ? [{ id: 'find', preload: 'find', label: strings.palette.find, glyph: Search }, threadExportItem(), separator('sep-find')] : []),
     { id: 'settings', label: labels.settings, glyph: Settings2 },
     { id: 'brain', label: labels.brain, glyph: Brain },
-    ...(store.owner && agent.status !== 'archived' ? [
-      ...(thread ? [{ id: 'new-session', label: labels.newConversation.menu, glyph: MessageSquarePlus }] : []),
-      agent.status === 'paused' ? { id: 'resume', label: labels.resume, glyph: Play } : { id: 'pause', label: labels.pause, glyph: Pause },
-      // A built-in bot is never archived: Reset takes the place of Archive.
-      agent.builtin ? { id: 'reset', label: labels.builtin.reset, glyph: RotateCcw, danger: true } : { id: 'archive', label: labels.archive, glyph: Archive, danger: true },
-    ] : []),
+    ...(store.owner && agent.status !== 'archived' ? agentLifecycleItems(agent, !!thread) : []),
   ]);
 
-  async function setStatus(next: AgentProfile['status']) {
-    const latest = view.snapshot?.profiles.find(p => p.id === agent.id) ?? agent;
-    const { id, revision, createdAt: _created, updatedAt: _updated, ...value } = latest;
-    await view.call('agents.profile.save', { id, expectedRevision: revision, value: { ...value, status: next } });
-  }
-  async function pick(id: string) {
+  function pick(id: string) {
     if (id === 'find') {
       store.findOpen = true;
       store.findRequest += 1;
-    } else if (id === 'settings' || id === 'brain') onpane(id);
-    else if (id === 'pause') await setStatus('paused');
-    else if (id === 'resume') await setStatus('active');
-    else if (id === 'reset') await resetBuiltin(view, agent);
-    else if (id === 'new-session') await startNewConversation(view, agent, store);
-    else if (id === 'archive' && await confirmArchive(agent.name)) await setStatus('archived');
+    } else if (id === 'export-thread' && thread) openThreadExport(store, thread);
+    else if (id === 'settings' || id === 'brain') onpane(id);
+    else pickAgentLifecycle(view, agent, id, store);
   }
 </script>
 
@@ -122,7 +114,8 @@
         <span class="agent-live" data-state={state} aria-live="polite" data-testid="agent-live">
           <!-- One signal per state: the mark carries the hue, the words stay neutral (AgentRow.svelte). -->
           {#if state === 'working' || state === 'waiting' || state === 'error'}<StatusMark tone={state === 'working' ? 'running' : state} label={labels.state[state]} />{/if}
-          {#if state === 'working'}
+          {#if wait}<WaitLine {wait} />
+          {:else if state === 'working'}
             <span class="agent-live-text">{step ?? labels.state.working}</span>
             {#if since !== null}<span class="agent-live-time">· <Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
           {:else if state === 'queued'}
@@ -145,15 +138,16 @@
   {#if !onback}
     <!-- The view menu right after the name, as a thread's chevron after its title. -->
     <span class="agent-head-menu">
-      <Menu placement="bottom" variant="text" label={labels.more} heading={agent.name} testid="agent-menu" items={menuItems} onpick={id => void pick(id)}>
+      <Menu placement="bottom" variant="text" label={labels.more} heading={agent.name} testid="agent-menu" items={menuItems} onpick={pick}>
         <ChevronDown size={16} />
       </Menu>
     </span>
+    {#if wait && store.sidebarCollapsed}<span class="header-wait"><WaitLine {wait} /></span>{/if}
   {/if}
   <nav class="agent-head-actions" aria-label={agent.name}>
     <PanelDoor {store} count={panelCount} ontoggle={togglePanel} testid="agent-desk-toggle" />
     {#if onback}
-      <Menu placement="bottom" align="end" variant="ghost" label={labels.more} heading={agent.name} testid="agent-menu" items={menuItems} onpick={id => void pick(id)}>
+      <Menu placement="bottom" align="end" variant="ghost" label={labels.more} heading={agent.name} testid="agent-menu" items={menuItems} onpick={pick}>
         <Ellipsis size={18} strokeWidth={1.75} />
       </Menu>
     {/if}
@@ -161,6 +155,7 @@
 </header>
 
 <style>
+  .header-wait { min-width: 0; max-width: 32%; }
   .agent-crumb { flex: none; height: var(--control); padding: 0 6px; margin-left: -6px; color: var(--color-muted-foreground); font-weight: 500; }
   .agent-crumb:hover { color: var(--color-foreground); }
   /* The slash sits midway, as in a thread's "project / title": the name's button has a narrower inset than a title's. */

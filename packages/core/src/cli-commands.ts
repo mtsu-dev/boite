@@ -13,8 +13,8 @@ export const BUILTIN_COMMANDS: ReadonlySet<string> = new Set([
   'help', 'mcp',
   // cli.ts
   'ask', 'attach', 'bot', 'browse', 'browser', 'contacts', 'delegate', 'desktop', 'device', 'diff', 'goal', 'issue',
-  'journal-check', 'logs', 'open', 'pr', 'preview', 'preview-close', 'projects', 'secret', 'server', 'settings', 'show',
-  'state', 'status', 'task', 'team', 'thread', 'threads', 'todo', 'view', 'where', 'window', 'workflow', 'plugin',
+  'journal-check', 'logs', 'open', 'pr', 'preview', 'preview-close', 'projects', 'proof', 'secret', 'server', 'settings', 'show',
+  'state', 'status', 'task', 'team', 'thread', 'threads', 'todo', 'transcripts', 'view', 'where', 'window', 'workflow', 'plugin',
   // control-cli.ts
   'questions', 'answer', 'permissions', 'allow', 'deny',
   // The spellings `canonicalCommand` rewrites: `mochi` is the one help shows, `agent` and `agents` are old.
@@ -98,7 +98,7 @@ export const BOT_HELP = `  mochi memory                   a mochi's MEMORY.md an
                                  (--section <title>: under that heading, else at
                                  the end; --replace <start>: in place of the one
                                  line that starts so, refused on none or several)
-  mochi routines                 its routines: schedule, next run, last outcome
+  mochi routines|triggers        list routines or event triggers
   mochi schedule <json>          name, prompt, schedule; optional id (an edit keeps what it leaves out), enabled and check (a command: wake only when it prints something new)
   mochi unschedule <routine-id>  remove one routine
   mochi watch|unwatch <thread-id>

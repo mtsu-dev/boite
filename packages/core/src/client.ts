@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, RPC_PATH } from '@boite/contracts';
+import { PROTOCOL_VERSION, RPC_PATH, RpcErrorCode } from '@boite/contracts';
 import { TextSocket, UpgradeError } from './ws-client.ts';
 import type {
   CoreInfo,
@@ -31,6 +31,8 @@ export interface ConnectOptions {
   headers?: Record<string, string>;
   /** The newer events this client takes in place of their older form (`hello` `accepts`). */
   accepts?: HelloAccepted[];
+  /** Every frame the core sends, as received, before it is parsed. The transfer bench counts them. */
+  onFrame?: (raw: string) => void;
 }
 
 export interface CoreClient {
@@ -64,6 +66,10 @@ class RpcCallError extends Error {
     super(rpc.message);
     this.name = 'RpcCallError';
   }
+}
+
+export function isMethodNotFound(error: unknown): boolean {
+  return error instanceof RpcCallError && error.rpc.code === RpcErrorCode.MethodNotFound;
 }
 
 function socketUrl(url: string): string {
@@ -116,6 +122,7 @@ export async function connect(url: string, token: string, options: ConnectOption
   };
 
   socket.onMessage((raw) => {
+    options.onFrame?.(raw);
     let frame: { id?: unknown; method?: unknown; params?: unknown; result?: unknown; error?: RpcError };
     try {
       frame = JSON.parse(raw) as typeof frame;

@@ -17,6 +17,7 @@
   import type { AgentPane } from '../lib/store/layout.svelte';
   import { watchTeams, type TeamRow } from '../lib/teams.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsShownAnywhere } from '../lib/contacts-anywhere';
   import { contactsParts } from '../lib/contacts-entry';
   import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectView } from '../lib/project-view.svelte';
@@ -24,12 +25,12 @@
   import { teamsParts } from '../lib/teams-entry';
   import { separator, type MenuItem } from '../lib/menu';
   import { contextMenu } from '../lib/context-menu.svelte';
+  import { longPress } from '../lib/long-press';
   import { dragWindow } from '../lib/window-drag';
   import { isMac } from '../lib/keybindings';
   import { railBotState, threadsNeedingYou, type RailBotState } from '../lib/app-rail';
   import { feedThread, inbox } from '../lib/inbox.svelte';
   import { activityFeed, readableThreads } from '../lib/activity-feed';
-  import { followActivityReturn } from '../lib/activity-return.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import { avatarLit } from '../lib/avatar-lit';
   import MachineStatus, { type MachineLine } from './MachineStatus.svelte';
@@ -40,7 +41,7 @@
   import { parts } from '../lib/deferred-parts';
   import { QuotaReorder } from '../lib/quota-reorder.svelte';
   import { railOrder } from '../lib/rail-order.svelte';
-  import { subagentsAtWork, threadsAtWork } from '../lib/work-counts';
+  import { subagentsAtWork, threadsAtWork, workCountLabel } from '../lib/work-counts';
 
   /**
    * The column down the window's left edge, on a desktop, the same in every
@@ -62,11 +63,11 @@
   const botsOn = $derived(experimentOn('resident-agents'));
   const teamsOn = $derived(botsOn);
   const contactsOn = $derived(contactsShown(store));
+  /** A request waits on the machine that holds the contact, which may not be the one in view. */
+  const contactsAnywhere = $derived(contactsShownAnywhere(store));
 
   // Every machine's bots stay read while the rail is drawn, so their pictures say how each one stands.
   followAgentDirectories(() => stores, () => botsOn);
-  // Acting from Activity opens a thread; this rail lives as long as the desktop frame, so it walks the way back.
-  followActivityReturn();
   const watchedTeams = watchTeams(() => teamsOn ? machines : []);
 
   /** Pinned bots first, then in the order they were made: a picture keeps its place as its bot talks. */
@@ -93,13 +94,9 @@
   const waitingLabel = $derived(waiting === 1 ? strings.app.rail.waitingOne : fill(strings.app.rail.waitingMany, { count: String(waiting) }));
   /** The conversations at work on every machine, as the projects' Working counts read them: the Threads button's count. */
   const working = $derived(threadsAtWork(stores));
-  const workingLabel = $derived(working === 1 ? strings.app.rail.workingOne : fill(strings.app.rail.workingMany, { count: String(working) }));
   /** Their subagents at work, the lighter number under it. */
   const helpers = $derived(subagentsAtWork(stores));
-  const busyLabel = $derived([
-    working ? workingLabel : null,
-    helpers ? helpers === 1 ? strings.app.rail.subagentsOne : fill(strings.app.rail.subagentsMany, { count: String(helpers) }) : null
-  ].filter(Boolean).join(', ') || null);
+  const busyLabel = $derived(workCountLabel(working, helpers));
   const tally = (value: number) => value > 99 ? '99+' : count(value);
   const unreadLabel = (value: number) => value === 1 ? strings.app.rail.unreadOne : fill(strings.app.rail.unreadMany, { count: String(value) });
   /**
@@ -171,7 +168,6 @@
     if (store.page !== 'chat') store.showChat();
     store.sidebarCollapsed = false;
   }
-  /** Activity takes the main card, as the phone's tab takes the screen: the open thread steps back to a draft, its panels with it. */
   /**
    * A middle click on Activity takes its finished rows off on every machine without opening it, each machine's on its
    * own core; failures, stops, questions and permissions stay. The feed is read at the click, not kept by the rail.
@@ -183,8 +179,9 @@
   function clearFinished(event: MouseEvent) {
     if (event.button !== 1) return;
     const rows = activityFeed(machines.flatMap(machine => machine.store.threads.filter(feedThread).map(thread => ({ machine, thread, project: undefined }))));
-    for (const [machine, ids] of readableThreads(rows, ['done'])) void machine.store.markRead(ids);
+    for (const [machine, requests] of readableThreads(rows, ['done'])) void machine.store.markRead(requests);
   }
+  /** Activity takes the main card, as the phone's tab takes the screen: the open thread steps back to a draft, its panels with it. */
   function showActivity() {
     inbox.open = true;
     // The Contacts page holds the main card: Activity takes it back.
@@ -252,13 +249,23 @@
     ], id => { if (id === 'bot') newBot(store); else if (id === 'team') newTeam(store); else botEngine(store); }, anchor);
   }
   /**
-   * A bot's picture has its row's menu (`agentMenuItems`) on a right click, answered through its own machine since
+   * A bot's picture has its row's menu (`agentMenuItems`), answered through its own machine since
    * ids can collide between machines. The rail has no name field: Rename opens its settings, as the column's head does.
    */
   function botMenu(event: MouseEvent, { machine, row }: Bot) {
+    if (reorder.dragging !== null) { event.preventDefault(); return; }
     const agent = row.profile;
     const items = agentMenuItems(machine.store, agent, { open: machine.store === store && openBot === agent.id, leaving: !!row.status?.leaving });
     contextMenu.open(event, items, action => void pickBot(machine, agent, action));
+  }
+
+  function botKeys(event: KeyboardEvent, id: string) {
+    if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+      event.preventDefault();
+      event.currentTarget?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      return;
+    }
+    reorder.keyboard(event, id);
   }
   /**
    * `agent` is the profile the menu was drawn from: Pin and Pause do what their label said, and each save reads the
@@ -322,7 +329,7 @@
 
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
-    if (!contactsOn || ContactRequestNotice) return;
+    if (!contactsAnywhere || ContactRequestNotice) return;
     void contactsParts.ContactRequestNotice().then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
 </script>
@@ -330,17 +337,17 @@
 <!-- Its name beside a rail button under the pointer or the keyboard, and its key when it has one: the button's
      own accessible name already says it, so the label is drawn for the eye alone. -->
 {#snippet railName(label: string, key: string | null = null, note: string | null = null, keyId: string | undefined = undefined)}
-  <span class="rail-name" aria-hidden="true"><span class="ui-label">{label}</span>{#if note}<span class="ui-label note">{note}</span>{/if}{#if key}<span class="kbd" id={keyId}>{key}</span>{/if}</span>
+  <span class="rail-name tooltip-surface" aria-hidden="true"><span class="ui-label">{label}</span>{#if note}<span class="ui-label note">{note}</span>{/if}{#if key}<span class="kbd" id={keyId}>{key}</span>{/if}</span>
 {/snippet}
 {#snippet statusName(label: string, note: string | null)}{@render railName(label, null, note)}{/snippet}
 <!-- The limits' card: the sentence, then a line each for the wait and the use outside Douane; an address in them blurred. -->
 {#snippet limitsName(label: string, lines: string[])}
-  <span class="rail-name stack-name" aria-hidden="true" data-testid="limits-card"><span class="ui-label"><PrivateText text={label} /></span>{#each lines as line, index (index)}<span class="ui-label note"><PrivateText text={line} /></span>{/each}</span>
+  <span class="rail-name tooltip-surface stack-name" aria-hidden="true" data-testid="limits-card"><span class="ui-label"><PrivateText text={label} /></span>{#each lines as line, index (index)}<span class="ui-label note"><PrivateText text={line} /></span>{/each}</span>
 {/snippet}
 <!-- The machines' card: its name and what a click does ("Machines · click to filter"), the trouble if any, then each
      machine on a line of its own with the state dot the filter's menu shows. -->
 {#snippet machinesName(label: string, hint: string | null, note: string | null, lines: MachineLine[])}
-  <span class="rail-name machines-name" aria-hidden="true" data-testid="machine-status-card">
+  <span class="rail-name tooltip-surface machines-name" aria-hidden="true" data-testid="machine-status-card">
     <span class="title"><span class="ui-label">{label}</span>{#if hint}<span class="ui-label note">· {hint}</span>{/if}</span>{#if note}<span class="ui-label note">{note}</span>{/if}
     {#each lines as line (line.id)}<span class="machine-line" data-tone={line.tone}><span class="state-dot" aria-hidden="true"></span><span class="ui-label">{line.name}</span><span class="ui-label note">{line.state}</span></span>{/each}
   </span>
@@ -381,7 +388,7 @@
     </div>
   {/if}
   <!-- What contacts ask arrives as a toast; Activity lists it, the Bots list's Contacts side holds the rest. -->
-  {#if contactsOn && ContactRequestNotice}<ContactRequestNotice {store} />{/if}
+  {#if contactsAnywhere && ContactRequestNotice}<ContactRequestNotice {store} />{/if}
 
   {#if botsOn}
     <span class="separator" aria-hidden="true"></span>
@@ -396,8 +403,9 @@
           {@const look = lookOf(state, unread, selected)}
           <div class="slot" class:selected class:dragging={reorder.dragging === entry.key} role="listitem" data-rail-id={entry.key}>
             <button type="button" class="bot" class:dim={state === 'paused'} aria-label={unread && !selected ? `${labelOf(bot.row.profile.name, state)}, ${unreadLabel(unreadCount)}` : labelOf(bot.row.profile.name, state)}
-              aria-current={selected ? 'page' : undefined} aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state} data-look={look}
-              onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
+              aria-current={selected ? 'page' : undefined} aria-keyshortcuts="ArrowUp ArrowDown Home End Shift+F10 ContextMenu" aria-haspopup="menu"
+              data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-machine-id={bot.machine.id} data-preload-view="agents" data-preload-thread={bot.row.status?.threadId ?? undefined} data-state={state} data-look={look}
+              use:longPress onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => botKeys(event, entry.key)}
               onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)} oncontextmenu={(event) => botMenu(event, bot)}>
               <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected} mood={moodOfState(state, look)}
                 lit={look === 'working' || avatarLit({ open: selected, attention: state === 'waiting', failed: state === 'failed', unread })} />
@@ -417,7 +425,7 @@
           {@const news = !!row.chat?.unread && !selected}
           <div class="slot" class:selected class:dragging={reorder.dragging === entry.key} role="listitem" data-rail-id={entry.key}>
             <button type="button" class="bot team" aria-label={news ? `${row.team.name}, ${strings.app.rail.unread}` : row.team.name} aria-current={selected ? 'page' : undefined}
-              aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-team" data-team-id={row.team.id}
+              aria-keyshortcuts="ArrowUp ArrowDown Home End" data-testid="rail-team" data-team-id={row.team.id} data-machine-id={row.machine.id} data-preload-view="team" data-preload-thread={row.team.threadId}
               onpointerdown={(event) => reorder.start(event, entry.key)} onkeydown={(event) => reorder.keyboard(event, entry.key)}
               onclick={() => openTeamChat(row)} oncontextmenu={(event) => teamMenu(event, row)}>
               <AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={44} squircle lit={avatarLit({ open: selected, unread: news })} />
@@ -575,12 +583,7 @@
     align-items: center;
     gap: 8px;
     padding: 5px 9px;
-    border: 1px solid var(--overlay-edge);
-    border-radius: var(--radius-sm);
-    background: var(--overlay-surface);
-    box-shadow: var(--shadow-overlay);
-    color: var(--color-foreground);
-    font-size: var(--text-sm);
+    --tooltip-radius: var(--radius-sm);
     font-weight: 500;
     white-space: nowrap;
     pointer-events: none;
@@ -615,16 +618,20 @@
   .separator { flex: none; width: 28px; height: 1px; background: var(--color-edge); }
   /* 4 px of its own above and below, taken back from the rail's gaps: the scroller clips what passes its edge, and
      the first and last pictures' rings and arcs pass theirs by that much. */
-  .bots { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; padding: 4px 0; margin: -4px 0; overflow-y: auto; scrollbar-width: none; }
-  /* More pictures than the rail holds: the one that passes an edge fades into the rail's ground instead of being cut
-     across (frame.css `.scroll-edges`, outranked here by the rail's name in front). The fade stays inside the card's
-     edge, the frame around it is another ground, and a picture brought into view by the keyboard stops clear of it.
-     The two edges are flex children of the list: each takes back the gap it would add, and an empty list has none,
-     they would be all it holds and make it scroll. */
-  .app-rail .bots.scroll-edges { --scroll-edge: 16px; --scroll-edge-top: 4px; --scroll-edge-bottom: 4px; --scroll-edge-ground: var(--rail-ground); scroll-padding-block: var(--scroll-edge); }
-  .app-rail .bots.scroll-edges::before, .app-rail .bots.scroll-edges::after { margin-inline: calc(var(--frame-gap) + 1px); }
-  .app-rail .bots.scroll-edges::before { margin-bottom: calc(-1 * var(--scroll-edge) - 8px); }
-  .app-rail .bots.scroll-edges::after { margin-top: calc(-1 * var(--scroll-edge) - 8px); }
+  .bots { display: flex; flex: 0 1 auto; flex-direction: column; align-items: center; width: 100%; min-height: 0; padding: 4px 0; margin: -4px 0; overflow-y: auto; scrollbar-width: none; }
+  .bots > .slot + .slot { margin-top: 8px; }
+  /* Match the thread list's deep fade. Paint over the pictures inside the card so their fixed name cards can still escape. */
+  .bots.scroll-edges {
+    --scroll-edge: var(--row);
+    --scroll-edge-top: 4px;
+    --scroll-edge-bottom: 4px;
+    --scroll-edge-stops: var(--rail-ground), color-mix(in srgb, var(--rail-ground) 92%, transparent) 14%, color-mix(in srgb, var(--rail-ground) 66%, transparent) 40%, color-mix(in srgb, var(--rail-ground) 28%, transparent) 70%, transparent;
+    scroll-padding-block: var(--scroll-edge);
+  }
+  .app-rail .bots.scroll-edges::before, .app-rail .bots.scroll-edges::after { margin-inline: calc(var(--frame-gap) + 1px); z-index: 2; }
+  /* Ramp up over the avatar clearance, so a few pixels of overflow still fade the whole edge. */
+  .app-rail .bots.scroll-edges::before { animation-range: 0px var(--scroll-edge-top); }
+  .app-rail .bots.scroll-edges::after { animation-range: calc(100% - var(--scroll-edge-bottom)) 100%; }
   /* A picture held to move: it dims where it will land; the name cards stay away while it moves. */
   .slot.dragging > .bot { opacity: 0.55; }
   .bots.reordering { cursor: grabbing; }

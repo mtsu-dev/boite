@@ -167,7 +167,8 @@ test('selected attachments upload before Send, expired ids retry original bytes 
   expect(sends[0]!.attachmentIds![0]).toBeTruthy();
   expect(sends[1]!.attachments).toEqual([image]);
   expect(sends[1]!.clientRequestId).toBe(sends[0]!.clientRequestId);
-  expect(store.openThread!.messages.find(m => m.role === 'user')?.parts).toContainEqual(expect.objectContaining({ type: 'image', data: image.data }));
+  const thread = await client.call('threads.get', { threadId: store.openThread!.id });
+  expect(thread.messages.find(m => m.role === 'user')?.parts).toContainEqual(expect.objectContaining({ type: 'image', data: image.data }));
 });
 
 test('a rejected attachment upload is not retried while typing; reselect can retry and Send keeps inline bytes', async ({ ready }) => {
@@ -204,7 +205,8 @@ test('a rejected attachment upload is not retried while typing; reselect can ret
   const sent = callsOf(spy, 'turns.start')[0]![1] as RpcParams<'turns.start'>;
   expect(sent.attachments).toEqual([image]);
   expect(sent).not.toHaveProperty('attachmentIds');
-  expect(store.openThread!.messages.find(message => message.role === 'user')?.parts)
+  const thread = await client.call('threads.get', { threadId: store.openThread!.id });
+  expect(thread.messages.find(message => message.role === 'user')?.parts)
     .toContainEqual(expect.objectContaining({ type: 'image', data: image.data }));
 });
 

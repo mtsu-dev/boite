@@ -166,8 +166,10 @@ export interface GatewayQuotaEntry {
   /** 1 for one account, N for an average over N accounts. */
   accounts: number;
   status: 'ready' | 'cooldown' | 'error' | 'disabled';
-  /** Short and sanitized by the gateway, bounded again by the core. */
+  /** A quota read failure, or a legacy error whose source is ambiguous. */
   error: string | null;
+  statusReason?: string | null;
+  retryAt?: string | null;
   updatedAt: Timestamp | null;
   windows: QuotaWindow[];
   credits: GatewayQuotaCredit[];
@@ -229,6 +231,9 @@ export interface AccountQuotaGateway {
   plan: string | null;
   accounts: number;
   status: GatewayQuotaEntry['status'];
+  /** The account's routing status is independent of the quota reading. */
+  statusReason?: string | null;
+  retryAt?: string | null;
   credits: GatewayQuotaCredit[];
 }
 

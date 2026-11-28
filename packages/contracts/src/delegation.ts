@@ -1,7 +1,7 @@
 import type { ContextPreset, ContextRequest } from './context-mode';
 import type { AgentLetter } from './coordination';
 import type { AccountId, ProviderId, RequestId, ThreadId, Timestamp, TurnId } from './ids';
-import type { SpeedTier } from './providers';
+import type { ModelAlias, SpeedTier } from './providers';
 import type { ThreadSummary } from './threads';
 import type { Turn } from './turns';
 import type { Usage } from './usage';
@@ -54,6 +54,7 @@ export const DEFAULT_DELEGATION_CONFIG: DelegationConfig = {
 };
 /** One model a delegating agent may name, on the account Boite would use for it. */
 export interface DelegationModelChoice {
+  aliases?: ModelAlias[];
   providerId: ProviderId;
   providerName: string;
   accountId: AccountId;

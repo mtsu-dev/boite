@@ -148,10 +148,15 @@ or its siblings. The component is `AgentDock.svelte`.
 
 A parent's row in the sidebar, the Recent list and the phone's list carries a
 chip with the number of its subagents at work, in every state of the parent.
-While the parent only waits on them, the chip replaces the row's word. Other
-work says what it waits on instead of "Working": "CI running" or "Merge queue"
-for a watched pull request, "Command", "Workflow", "Agent" or "Background" for
-background work, "Monitoring" for a monitor (`ThreadState.svelte`).
+The owning core includes the latest reports from subagents on other machines
+in the parent's summary. The list adds those to the subagents it sees locally.
+Only an active turn (`working`) spins its ring; passive waits never spin and
+pulse their own glyph beside the elapsed clock instead (the bot chip while
+waiting on subagents, `GitMerge` for the merge queue, `GitPullRequest` for CI,
+`Radar` for a monitor, and `Terminal`, `Bot` or a dot for background work), with
+the full wait text in the tooltip (`ThreadState.svelte`). When no start time is
+known or a pull request watch is paused, the short work word stands in for the
+clock.
 When a child asks the user something or waits on a permission, the chip takes
 the waiting colour and the parent reads Needs you, unless the parent itself
 failed. A child's question is the question at the top of the parent's
@@ -579,18 +584,37 @@ files each child owns. `boite delegate spawn --worktree` (and `"worktree":
 true` on a [workflow](workflows.md) step) gives the child a git worktree of its
 own on a new `boite/sub-<id>` branch, in the configured worktree folder. Its
 branch and folder are chosen at spawn and shown in the spawn output; the
-worktree itself is made from the parent's current HEAD, or the entrusted project's
-HEAD for a mochi, just before the child's first turn. Uncommitted edits are not in it. A
-conversation outside a git repository is refused by name.
+worktree starts from a commit resolved before Git creates it. In the parent's
+checkout it uses the parent's current HEAD. In an entrusted project or on a
+different machine it uses the execution project's default branch. Only
+committed changes follow. A conversation outside a Git repository is refused
+by name.
+
+An independent conversation and a move to another repository use the target
+repository's default branch. Boite asks its configured remote for the current
+commit with a short timeout. Offline, Boite uses the corresponding local
+branch if available, then its cached remote-tracking ref. For a local
+repository, Boite uses `init.defaultBranch`, `main`, `master`, or the only
+remaining local branch. Set `init.defaultBranch` if the default is ambiguous.
+A fork in its own worktree starts from the source conversation's commit.
 
 The child is told to commit its work on that branch. When one of its turns ends
-(and it is not waiting on background work), Boite looks at the worktree: with
-no commit beyond its base and no uncommitted change, the worktree and its
-branch are removed and the result says so; otherwise both are kept and the
-result ends with `Worktree kept: <path> on branch <branch>, N commits beyond
-<base>`, uncommitted changes noted, and the `git merge <branch>` to run.
+(and it is not waiting on background work), Boite keeps any worktree with
+commits beyond its base or uncommitted files, including ignored files. Before
+cleanup, it waits for the agent to exit and checks again after moving the
+checkout to a private sibling directory. Boite sets aside the tracked files
+and removes the checkout only as an empty directory. It restores the checkout
+if a file arrives during cleanup, and can recover a recorded move on the next
+open after a crash. After retirement the staged files stay at the recovery
+path recorded in the log, where the owner can inspect and remove them. Git
+deletes the branch only if it still points to the reserved commit. The result
+ends with
+`Worktree kept: <path> on branch <branch>, N commits beyond <base>`,
+uncommitted changes noted, and the `git merge <branch>` to run.
 Boite does not merge for the parent. A removed worktree is made again, from
-the same source checkout's current HEAD, if the child gets another turn.
+its source's current commit, if the child gets another turn. If a kept
+worktree is removed outside Boite, the next turn can reattach its surviving
+branch. Restore the branch first if it is missing too.
 
 While a child works, the parent should do independent work or finish its turn.
 Waiting inside a tool keeps the parent busy and can delay delivery of results.

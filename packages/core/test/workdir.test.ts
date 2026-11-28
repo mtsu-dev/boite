@@ -5,16 +5,17 @@
  * temporary directory the harness removes.
  */
 
-import { closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import * as fs from 'node:fs';
 import * as fsPromises from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS } from '@boite/contracts';
+import { FILE_MAX_BYTES, FILE_ROUTE, FILE_TICKET_TTL_MS, RpcErrorCode } from '@boite/contracts';
 import { connect, type CoreClient } from '../src/client.ts';
-import { createExclusiveFile, languageOf, mediaOf, openHeldDirectory, writeLandsInside } from '../src/workdir.ts';
+import * as paths from '../src/paths.ts';
+import { assertDeviceFile, assertDeviceProjectFolder, createExclusiveFile, languageOf, mediaOf, openHeldDirectory, writeLandsInside } from '../src/workdir.ts';
 import { echoThread, startTestCore } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
@@ -47,6 +48,83 @@ function linked(target: string, at: string): boolean {
     throw error;
   }
 }
+
+describe('device session files', () => {
+  function sharedSession() {
+    const root = mkdtempSync(join(tmpdir(), 'boite-device-session-'));
+    const home = join(root, 'home');
+    const xdg = join(root, 'xdg');
+    const shared = join(xdg, 'shared');
+    const dedicated = join(home, '.config', 'dedicated');
+    const providers = join(harness.dataDir, 'providers');
+    for (const path of [shared, dedicated, providers]) mkdirSync(path, { recursive: true });
+    writeFileSync(join(providers, 'device-session.json'), JSON.stringify({
+      id: 'device-session', schemaVersion: 1, name: 'Device Session', shortName: 'Session', protocol: 'acp',
+      roots: ['{isolationDir}', dedicated],
+      profiles: { [paths.currentOs()]: {
+        detect: {}, executable: [{ kind: 'file', value: process.execPath }],
+        isolation: { XDG_CONFIG_HOME: '{isolationDir}' }, env: { XDG_CONFIG_HOME: xdg },
+        session: ['shared/session.fixture'],
+      } },
+      auth: { kind: 'oauth-cli', sqlite: { file: 'shared/db.fixture', tables: ['sessions'] } },
+      models: [], capabilities: { approvals: true, hooks: false, checkpoint: false, images: false, planMode: false, resume: true },
+    }));
+    const mock = spyOn(paths, 'homePath').mockReturnValue(home);
+    return { root, xdg, shared, dedicated, close() { mock.mockRestore(); rmSync(root, { recursive: true }); } };
+  }
+
+  test('refuses session leaves and linked targets and their SQLite sidecars', () => {
+    const fixture = sharedSession();
+    const { root, shared } = fixture;
+    try {
+      expect(harness.core.providers.load().rejected).toEqual([]);
+      const targets = join(root, 'project');
+      mkdirSync(targets);
+      let linkedDb = false;
+      for (const file of ['session.fixture', 'db.fixture', 'db.fixture-wal', 'db.fixture-shm', 'db.fixture-journal']) {
+        const target = join(targets, file);
+        writeFileSync(target, 'synthetic fixture');
+        const path = join(shared, file);
+        // The WAL uses the target DB name, the SHM and journal have their own aliases.
+        if (file === 'db.fixture-wal') {
+          writeFileSync(path, 'synthetic fixture');
+          if (!linkedDb) continue;
+        } else if (!linked(target, path)) {
+          writeFileSync(path, 'synthetic fixture');
+          continue;
+        }
+        if (file === 'db.fixture') linkedDb = true;
+        expect(() => assertDeviceFile(harness.core, threadId, targets, file)).toThrow('credential files');
+      }
+      const alias = join(root, 'xdg-alias');
+      symlinkSync(fixture.xdg, alias, 'junction');
+      for (const file of ['session.fixture', 'db.fixture', 'db.fixture-wal', 'db.fixture-shm', 'db.fixture-journal']) {
+        expect(() => assertDeviceFile(harness.core, threadId, root, join('xdg', 'shared', file))).toThrow('credential files');
+        expect(() => assertDeviceFile(harness.core, threadId, root, join('xdg-alias', 'shared', file))).toThrow('credential files');
+      }
+    } finally { fixture.close(); }
+  });
+
+  test('allows a project next to a session file and still refuses declared roots', () => {
+    const fixture = sharedSession();
+    try {
+      expect(harness.core.providers.load().rejected).toEqual([]);
+      const project = join(fixture.shared, 'ordinary-project');
+      mkdirSync(project);
+      writeFileSync(join(fixture.shared, 'session.fixture'), 'synthetic fixture');
+      writeFileSync(join(project, 'notes.txt'), 'readable');
+      expect(() => assertDeviceProjectFolder(harness.core, project)).not.toThrow();
+      expect(() => assertDeviceFile(harness.core, threadId, project, 'notes.txt')).not.toThrow();
+      const relocated = join(fixture.xdg, 'dedicated');
+      mkdirSync(relocated);
+      const alias = join(dirname(fixture.xdg), 'dedicated-alias');
+      symlinkSync(relocated, alias, 'junction');
+      for (const folder of [fixture.dedicated, relocated, alias]) {
+        expect(() => assertDeviceProjectFolder(harness.core, folder)).toThrow('folder that holds keys or tokens');
+      }
+    } finally { fixture.close(); }
+  });
+});
 
 /** A picture is bytes with a NUL early on: what it holds is not this test's business. */
 function picture(): Uint8Array<ArrayBuffer> {
@@ -96,6 +174,23 @@ describe('files.list', () => {
       'files.list path does not exist: nowhere',
       "files.read path leaves the thread's working directory: ../outside.txt",
     ]);
+  });
+
+  test.skipIf(process.platform !== 'linux' || process.getuid?.() === 0)('losing directory read permission returns a refusal over RPC', async () => {
+    const dir = join(harness.dataDir, 'closed-dir');
+    mkdirSync(dir);
+    writeFileSync(join(dir, 'old.txt'), 'test');
+    const params = { threadId, path: 'closed-dir' };
+    expect(await client.call('files.list', params)).toMatchObject([{ name: 'old.txt' }]);
+    chmodSync(dir, 0o100);
+    try {
+      expect((await rejection(client.call('files.list', params))).reason).toMatchObject({
+        rpc: { code: RpcErrorCode.Refused, data: { path: 'closed-dir' } },
+      });
+    } finally {
+      chmodSync(dir, 0o700);
+    }
+    expect(await client.call('files.list', params)).toMatchObject([{ name: 'old.txt' }]);
   });
 });
 

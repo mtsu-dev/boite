@@ -14,11 +14,13 @@
   import { fill, strings } from '../../lib/strings';
   import { toolLine } from '../../lib/tool-groups';
   import { focusComposer } from '../../lib/focus';
+  import { mochiLayout } from '../../lib/mochi-layout.svelte';
   import Elapsed from '../Elapsed.svelte';
   import Spinner from '../Spinner.svelte';
   import ProviderLogo from '../ProviderLogo.svelte';
   import AgentBrainEditor from './AgentBrainEditor.svelte';
   import AgentRoutines from './AgentRoutines.svelte';
+  import AgentTriggers from './AgentTriggers.svelte';
   import BotWorkList from './BotWorkList.svelte';
   import SurfaceHead from '../SurfaceHead.svelte';
   import './agents.css';
@@ -26,9 +28,9 @@
   /**
    * The open bot's info panel, one calm column that inspects: who it is
    * (picture, name, what it is for, its model, machine and age), its routines
-   * and its memory. On a desktop's Bots page the column chooses its threads and
-   * the conversation reads what it does now, so neither is repeated here;
-   * elsewhere, and on a phone, Now and its threads follow here.
+   * and its memory. On a desktop's Bots page with Mochi layout on, the column
+   * chooses its threads and the conversation reads what it does now, so neither
+   * is repeated here; without that column, its threads follow in the desk.
    */
   let { store }: { store: Store } = $props();
   const view = AgentsView.of(untrack(() => store));
@@ -56,13 +58,23 @@
   const model = $derived(agent ? (agent.selection.model
     ? store.modelsOf(agent.selection.providerId, agent.selection.accountId).find(entry => entry.id === agent.selection.model)?.name ?? agent.selection.model
     : store.providers.find(entry => entry.id === agent.selection.providerId)?.name ?? agent.selection.providerId) : '');
-  /** The work list goes where no column holds it: a phone, another page, or the Bots page with its column folded away. */
-  const listsWork = $derived(phone.current || store.page !== 'agents' || store.sidebarCollapsed);
+  /** The work list goes where no column holds it: a phone, another page, the folded sidebar, or desktop without Mochi layout. */
+  const listsWork = $derived(phone.current || store.page !== 'agents' || store.sidebarCollapsed || !mochiLayout.on);
   /** Now is drawn while the bot has something in hand (a turn, a queue, a question, a failure, a pause) and no conversation beside the desk says it. */
-  const busy = $derived(listsWork && standing !== 'idle' && standing !== 'archived');
+  const noConversationBeside = $derived(phone.current || store.page !== 'agents' || store.sidebarCollapsed);
+  const busy = $derived(noConversationBeside && standing !== 'idle' && standing !== 'archived');
 
   // The snapshot carries the open agent's desk only; the Agents page asks for it too, this asks wherever the desk is drawn.
-  $effect(() => { const id = agent?.id; if (id) untrack(() => view.showDesk(id)); });
+  let activeAgentId = '';
+  $effect(() => {
+    const id = agent?.id;
+    if (!id) return;
+    untrack(() => {
+      if (activeAgentId && activeAgentId !== id) view.error = '';
+      activeAgentId = id;
+      view.showDesk(id);
+    });
+  });
 
   /** Its brain files, kept beside the snapshot and read again when the agent changes. */
   let brain = $state<AgentBrain | null>(null);
@@ -138,10 +150,13 @@
           </section>
         {/if}
 
-        {#if view.error}<div class="desk-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error} /></div>{/if}
+        {#if view.error}<div class="desk-error"><Notice icon={CircleAlert} tone="danger" role="alert" detail={view.error} ondismiss={() => { view.error = ''; }} /></div>{/if}
 
         <section class="desk-card desk-schedule" data-testid="desk-schedule">
-          <AgentRoutines {view} agentId={agent.id} compact />
+          {#key agent.id}
+            <AgentRoutines {view} agentId={agent.id} compact />
+            <AgentTriggers {view} agentId={agent.id} compact />
+          {/key}
         </section>
       </div>
 

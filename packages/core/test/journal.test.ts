@@ -104,9 +104,19 @@ describe('journal', () => {
     expect(journal.turnRequest('thr_test', 'uncertain_request')?.fingerprint).toBe('steer:pending:uncertain');
   });
 
+  test('the last stated turn skips cache pings and the current turn, with rowid breaking timestamp ties', () => {
+    const put = journal.db.query("INSERT INTO turns (id, thread_id, status, queued_at, started_at, execution) VALUES (?, 'thr_test', 'done', 0, ?, ?)");
+    put.run('first', 1, null);
+    put.run('second', 1, null);
+    put.run('ping', 2, '{"operation":"keepalive"}');
+    put.run('never-started', null, null);
+    put.run('current', 3, null);
+    expect(journal.statedTurn('thr_test', 'current')?.id).toBe('second');
+  });
+
   test.each([0, 25])('index failure rolls back schema %i and a later open retries the entire migration', (version) => {
     const target = join(dir, 'index-failure.db');
-    const indexes = ['thread_deletions_by_date', 'processes_by_started', 'turns_by_status', 'messages_by_turn', 'turns_by_finished', 'turns_by_thread_queue'];
+    const indexes = ['thread_deletions_by_date', 'processes_by_started', 'turns_by_status', 'messages_by_turn', 'turns_by_finished', 'turns_by_thread_queue', 'turns_stated_by_thread'];
     if (version === 25) {
       const previous = new Journal(target);
       try {
@@ -157,13 +167,17 @@ describe('journal', () => {
     journal.putMessage({ ...sampleMessage('kept-message'), threadId: 'old', state: 'complete' });
     if (version >= 4) journal.db.exec("INSERT INTO sessions VALUES ('paired', 'hash', 'phone', '1', 1, 2, 'owner')");
     // Restore the old NOT NULL ownership constraint without losing newer columns or indexes.
+    journal.db.exec(`
+      DROP TRIGGER message_search_insert; DROP TRIGGER message_search_update; DROP TRIGGER message_search_delete;
+      DROP TABLE IF EXISTS messages_fts_infix; DROP TABLE messages_fts; DROP TABLE message_search_keys;
+    `);
     const definition = journal.db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'threads'").get() as { sql: string };
     const indexes = journal.db.query("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'threads' AND sql IS NOT NULL").all() as { sql: string }[];
     journal.db.exec(definition.sql.replace(/CREATE TABLE (?:IF NOT EXISTS )?["`[]?threads["`\]]?/i, 'CREATE TABLE threads_legacy')
       .replace(/project_id TEXT/i, 'project_id TEXT NOT NULL'));
     journal.db.exec('INSERT INTO threads_legacy SELECT * FROM threads; DROP TABLE threads; ALTER TABLE threads_legacy RENAME TO threads');
     for (const index of indexes) journal.db.exec(index.sql);
-    journal.db.exec('DROP INDEX threads_done_expiry');
+    journal.db.exec('DROP INDEX threads_done_expiry; DROP INDEX threads_cwd_branch; DROP INDEX turns_stated_by_thread');
     const addedColumns = [[2, 'threads', 'effort'], [3, 'threads', 'pinned'], [5, 'threads', 'branch'], [6, 'threads', 'title_source'], [7, 'threads', 'context'], [9, 'threads', 'session_generation'], [9, 'threads', 'selection_version'], [9, 'turns', 'execution'], [10, 'threads', 'speed'], [15, 'threads', 'agent_session_id'], [29, 'threads', 'done_at']] as const;
     for (const [since, table, column] of addedColumns) {
       if (version < since) journal.db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
@@ -318,6 +332,29 @@ describe('journal', () => {
     expect(journal.db.query('PRAGMA user_version').get()).toEqual({ user_version: SCHEMA_VERSION });
   });
 
+  test('a schema 52 journal preserves conversations and persists interruption acknowledgements after upgrade', () => {
+    const project = { id: 'prj_migrated', name: 'Existing project', path: dir, createdAt: 1 };
+    const thread = { id: 'thr_test', projectId: project.id, title: 'Existing conversation', titleSource: 'user', providerId: 'echo', accountId: 'acc', model: null, effort: null, cwd: dir, branch: null, permissionMode: 'default', status: 'idle', unread: true, archived: false, pinned: false, sessionId: null, load: null, context: null, createdAt: 1, updatedAt: 2 } as const;
+    const message: Message = { ...sampleMessage('kept'), state: 'complete', parts: [{ type: 'text', text: 'Existing message' }] };
+    journal.putProject(project);
+    journal.putThread(thread);
+    journal.putMessage(message);
+    journal.db.exec('ALTER TABLE threads DROP COLUMN interruption_read_at; PRAGMA user_version = 52');
+
+    journal.close(); journal = new Journal(file);
+    expect(journal.schema).toEqual({ from: 52, to: SCHEMA_VERSION });
+    expect(SCHEMA_VERSION).toBeGreaterThan(52);
+    expect(journal.getThread(thread.id)).toMatchObject(thread);
+    expect(journal.getThread(thread.id)?.interruptionReadAt).toBeUndefined();
+    expect(journal.getMessage(message.id)).toEqual(message);
+    journal.putThread({ ...thread, interruptionReadAt: 3 });
+
+    journal.close(); journal = new Journal(file);
+    expect(journal.schema).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+    expect(journal.getThread(thread.id)?.interruptionReadAt).toBe(3);
+    expect(journal.getMessage(message.id)).toEqual(message);
+  });
+
   test('the schema version is stamped and WAL is on', () => {
     const version = journal.db.query('PRAGMA user_version').get() as { user_version: number };
     expect(version.user_version).toBe(SCHEMA_VERSION);
@@ -459,7 +496,7 @@ describe('journal', () => {
     journal.putThread({ ...thread });
     journal.setSetting('todos:prj_gone', [{ id: 'a' }]);
     journal.db.query('INSERT INTO workflow_templates VALUES (?, ?, ?, ?, ?, ?)').run('tpl_gone', 'prj_gone', 'gone', 1, 1, '{}');
-    journal.markProjectRemoved('prj_gone', 5);
+    journal.removeProject('prj_gone', 5);
     const [removed] = journal.listRemovedProjects();
     journal.putProject({ ...removed!, name: 'updated while removed' });
     expect(journal.getProject('prj_gone')).toBeNull();
@@ -469,7 +506,7 @@ describe('journal', () => {
     expect(journal.listThreads().map((entry) => entry.id)).not.toContain('thr_gone');
     expect(journal.getSetting('todos:prj_gone')).toEqual([{ id: 'a' }]);
     expect(journal.db.query("SELECT COUNT(*) AS n FROM threads WHERE id = 'thr_gone'").get()).toEqual({ n: 1 });
-    journal.restoreRemovedProject('prj_gone', 'back');
+    journal.restoreProject('prj_gone', 'back');
     expect(journal.getProject('prj_gone')?.name).toBe('back');
     expect(journal.getThread('thr_gone')?.archived).toBe(true);
     expect(journal.db.query('SELECT id FROM workflow_templates ORDER BY id').all()).toEqual([{ id: 'tpl_gone' }]);

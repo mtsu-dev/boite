@@ -9,6 +9,27 @@ import { PLUGIN_PERMISSIONS, pluginClosedReason, pluginPermissionFor, type Plugi
  * changes both at once.
  */
 
+/** Dedicated stores can sit inside an otherwise legitimate project root. */
+export const DEVICE_HOME_CREDENTIAL_STORES: readonly string[] = [
+  '.codex', '.claude', '.gemini', '.grok', '.hermes', '.pi', '.vibe', '.password-store', '.mozilla',
+  '.config/gh', '.config/rclone', '.config/google-chrome', '.config/chromium',
+  '.config/muse', '.local/share/muse', '.local/state/muse',
+  '.config/opencode', '.local/share/opencode',
+  '.config/opencode-v2', '.local/share/opencode-v2', '.local/state/opencode-v2', '.cache/opencode-v2',
+  '.local/share/keyrings', 'AppData/Local/hermes',
+  'AppData/Roaming/GitHub CLI', 'AppData/Roaming/Mozilla/Firefox',
+  'AppData/Local/Google/Chrome/User Data', 'AppData/Local/Chromium/User Data',
+  'Library/Application Support/Google/Chrome', 'Library/Application Support/Chromium',
+  'Library/Application Support/Firefox',
+];
+
+/** Folders that hold keys or tokens wherever they sit in a tree. */
+export const DEVICE_SECRET_DIRS: ReadonlySet<string> = new Set(['.git', '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker']);
+
+/** Files that hold credentials; templates such as `.env.example` stay readable. */
+export const DEVICE_SECRET_FILE =
+  /^(\.env(\.(?!example$|sample$|template$)[^.]+)*|\.envrc|\.dev\.vars|\.netrc|_netrc|\.npmrc|\.pypirc|\.pgpass|\.htpasswd|\.git-credentials|\.credentials\.json|credentials(\.json)?|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.+\.(tfvars|tfstate|tfstate\.backup)|.+\.(pem|key|p12|pfx|jks|keystore|kdbx))$/i;
+
 /**
  * What a paired device reaches. Read this as the phone's screen: the sidebar,
  * a thread, the composer, the cards an agent raises, and the settings it only
@@ -24,7 +45,8 @@ import { PLUGIN_PERMISSIONS, pluginClosedReason, pluginPermissionFor, type Plugi
 export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>([
   // Paired apps share the owner's composer and its validated, content-addressed attachments.
   'composer.list', 'composer.put', 'composer.asset.put', 'composer.asset.get',
-  // A paired phone lists the owner's agents with their state, desk and routines; talking to one is
+  'composer.listPage', 'composer.get', // Bounded and individual reads of the same composer records.
+  // A paired phone lists the owner's agents with their state, desk, routines and triggers; talking to one is
   // `turns.start` on its thread, which the device already reaches.
   'agents.snapshot',
   // The agent's own thread, created again if it was lost: a thread the phone then opens like any other.
@@ -78,6 +100,7 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'push.kinds',
   // The sidebar and the composer's `@`.
   'projects.list',
+  'projects.git', // Refresh the selected registered project's two Git fields, both available in projects.list.
   // The logo the list announces: a bounded image already stored in the journal, no path and no disk read.
   'projects.icon',
   'projects.files',
@@ -126,7 +149,9 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   // Only this phone connection's bounded attachment bytes, with the same validation as Send.
   'attachments.upload', 'attachments.release',
   'threads.get',
+  'threads.search', // Read-only search of the owner's conversations for the desktop and phone palette.
   'threads.capabilities', // Read-only controls for the conversation already visible; never prepares or probes a runtime.
+  'threads.previewAccountSwitch', // A phone confirms model picks for its conversations, including account switches.
   'threads.stats', // Two counts over the conversation the phone already reads in full through threads.get pages.
   // A phone can manage continued prompts in the same thread it can already send to.
   'threads.activity.set',
@@ -190,6 +215,8 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'turns.stop',
   // A paired phone can resume or discard the same retained prompt as the owner.
   'turns.recover',
+  // The owner can choose a model and resume interrupted work from a paired phone.
+  'turns.resume',
   // Cancelling a planned retry spends nothing and does less than turns.stop, which a phone already has.
   'turns.cancelRetry',
   // The point of carrying the phone: answering the agent from anywhere.
@@ -221,9 +248,9 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   // Machine-wide totals: model names, sizes and loads, no paths beyond drive letters or mount points.
   'resources.machine',
   'scheduler.get',
-  'usage.get',
-  // Sums of the same finished turns per day, provider and model. The thread
-  // titles it names are the ones `threads.list` already shows the device.
+  'usage.get', // Machine totals and counts for threads visible to the device.
+  // Sums by day, provider and model, with names limited to the projects and
+  // threads the device can still open.
   'usage.history',
   // One thread's turns with their usage and model: what `usage.history` already
   // sums for the device, turn by turn, with no message text.
@@ -248,6 +275,7 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
 /** Push events must not bypass the read permissions enforced on RPC calls. */
 export const DEVICE_EVENTS: ReadonlySet<RpcEventName> = new Set<RpcEventName>([
   'composer.updated', // Same metadata composer.list exposes, without attachment bytes or subscription routing.
+  'composer.revision', // Point-read hint for a shared composer record.
   'sharedProjects.changed', // Direct delivery only to the connection's exact subscribed association and source.
   'threads.pullRequestsChanged', // Links already readable on the subscribed conversation.
   'browser.remoteChanged', // The subscribed conversation's agent tabs, as browser.remoteStatus says.
@@ -266,6 +294,7 @@ export const DEVICE_EVENTS: ReadonlySet<RpcEventName> = new Set<RpcEventName>([
   'thread.suggestion',
   // The load `thread.updated` already carries to the same sockets, without the rest of the row.
   'thread.load',
+  'thread.progress', // The active turn's progress already visible in thread.updated.
   'turn.started', 'turn.finished',
   'turn.switched', // The divider of a turn the device already reads, with what its new session was handed.
   'turn.toolCompleted',
@@ -385,7 +414,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['contacts.bot.askOwner', 'a card showing the owner what the mochi will do with a request of a contact not trusted; only their Accept runs it'],
   ['contacts.bot.refuse', 'refusing a contact\'s request with a reason its asking agent reads'],
   ['contacts.bot.cut', 'ending relations or closing projects a contact reaches here; the contact and its link stay the owner\'s'],
-  ['contacts.bot.flag', 'delivering or refusing a contact\'s letter held by a flag'],
+  ['contacts.bot.flag', 'refusing a flagged letter or delivering one that does not require the owner'],
   // Resident methods name the persistent agent's own thread like
   // every agent method; agents/projects.ts holds each call to the projects the
   // owner entrusted to that agent's profile. Any other thread is refused.
@@ -446,6 +475,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['agents.picture.put', 'storing an image file for a mochi to wear, bounded to 512 KB of PNG, JPEG, WebP or GIF whose bytes match their type; it changes no mochi, and unworn pictures are swept (agents/pictures.ts)'],
   ['agents.avatar.set', 'changing the face of a mochi of this machine, its own or another\'s, without a card: the owner asked that agents may dress mochis themselves (2026-11-01); only the avatar changes, to a picture this machine holds or a robot, never a name, instructions or access'],
   ['artifacts.publish', 'explicitly sharing a bounded snapshot from its own working directory in its own conversation'],
+  ['artifacts.prove', 'publishing recorded verification output and an optional checkout snapshot in its own conversation'],
   ['artifacts.read', 'reading back only a published snapshot belonging to its own conversation'],
   ['artifacts.view', 'showing one HTML page of its own working directory in its own conversation, embedded whole, on an opaque origin that loads and calls nothing'],
   ['artifacts.viewCheck', 'checking its own local HTML with the view sandbox in an isolated browser, returning captures without publishing or opening a panel'],
@@ -465,6 +495,10 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   // Diagnostics reach an agent anonymized, and only while the owner leaves agentLogAccess on (checked in diagnostics.ts).
   ['diagnostics.logs', 'anonymized app records so it can tell whether Boite itself failed; paths, names and addresses are placeholders'],
   ['diagnostics.summary', 'the anonymized environment and grouped recent problems'],
+  // The owner asked that agents reach the archive to audit past failures; it is read only, and a sandboxed agent cannot open the data directory.
+  ['transcripts.list', 'list the compacted conversations of the archive'],
+  ['transcripts.failures', 'read the failures the archive\'s index lists'],
+  ['transcripts.read', 'read the records of a compacted conversation, a bounded page at a time'],
   ['diagnostics.export', 'the anonymized export a developer reads, the same file the owner would send'],
   ['diagnostics.issue', 'a GitHub issue draft about Boite and its prefilled link; only the owner publishes it, so an agent never posts publicly under their login'],
 ]);
@@ -537,6 +571,9 @@ export interface AccessRefusal {
  */
 export function accessRefusal(method: RpcMethodName, caller: Caller, params?: unknown): AccessRefusal | null {
   if (caller.principal === 'owner') return null;
+  if (method === 'browser.command' && (params as { action?: { kind?: unknown } } | null | undefined)?.action?.kind === 'profile-switch') {
+    return { message: 'changing an open browser tab’s profile is for the owner only', data: { method, principal: caller.principal } };
+  }
   if (caller.principal === 'plugin') {
     if (pluginSelfCall(method, caller, params)) return null;
     if (PLUGIN_SELF_METHODS.has(method)) {

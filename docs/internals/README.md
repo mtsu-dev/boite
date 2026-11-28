@@ -9,6 +9,7 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 - [Install and update the desktop app](updates.md): downloads, stable and nightly channels, and restarting.
 - [The tour](onboarding.md): first launch, language, appearance and workspace choices.
 - [Accounts](accounts.md): agent sign-ins and isolated accounts on the machine running them.
+- [MCP servers](mcp.md): registry, credentials, proxy transports and provider wiring.
 - [Phone access](phone.md): pairing, mobile navigation, permissions and offline behavior.
 - [Native Android app](android-native.md): the Tauri client in `apps/mobile`, built for Play and phones without Google services.
 - [Headless server](server.md): run a core with Docker or without the desktop app.
@@ -42,6 +43,7 @@ working on the code. To learn how to use Boite, read the [user guide](../README.
 - [Pointer interactions](interactions.md): edge scrollbars and loading a thread on press.
 - [Titles](titles.md): automatic and manual conversation titles.
 - [Session import](imports.md): import of a Claude Code conversation.
+- [Conversation storage](transcripts.md): modes, the compact archive format, its index and how agents read it.
 - [Agent updates](agent-updates.md): CLI update notices, automatic updates and remote machines.
 - [Diagnostics](diagnostics.md): logs, anonymized exports and problem reports.
 

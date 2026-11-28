@@ -65,7 +65,7 @@ describe.skipIf(!native)('installed protected provider execution, deterministic 
       spawnChild: (cmd, args, opts) => core.procs.spawnChild(core.procs.protection.control(thread.id), cmd, args, {...opts,
         env: {PATH: process.env.PATH, SystemRoot: process.env['SystemRoot'], HOME: accountDir, LANG: 'C.UTF-8', ...accountEnv}}),
     };
-    driver = protocol === 'claude' ? createClaudeDriver({loadQuery: async () => (await import('@anthropic-ai/claude-agent-sdk')).query}) : createCodexDriver();
+    driver = protocol === 'claude' ? createClaudeDriver({loadQuery: async () => (await import('@anthropic-ai/claude-agent-sdk/core')).query}) : createCodexDriver();
     const result = await driver.startTurn(ctx).done;
     expect(result, logs.join('\n')).toMatchObject({status: 'done'});
     expect(readFileSync(join(root, 'answer.js'), 'utf8')).toContain('return 42');

@@ -352,6 +352,7 @@ async function run(ctx: TurnContext, state: RunState): Promise<TurnResult> {
       documents,
     });
     await sleep(TOOL_DELAY_MS, state);
+    if (state.stopped) return;
     ctx.emit.part(messageId, index, {
       type: 'tool',
       toolId,
@@ -409,6 +410,7 @@ async function run(ctx: TurnContext, state: RunState): Promise<TurnResult> {
           status: 'running',
         });
         await sleep(segment.ms, state);
+        if (state.stopped) break;
         ctx.emit.part(messageId, index, {
           type: 'tool',
           toolId,
@@ -419,7 +421,7 @@ async function run(ctx: TurnContext, state: RunState): Promise<TurnResult> {
         });
         contextTokens += TOOL_CONTEXT_TOKENS;
         // The step's tool result is in; the next model request would go out now.
-        if (ctx.step && !state.stopped) {
+        if (ctx.step) {
           ctx.context({ tokens: contextTokens, window: CONTEXT_WINDOW });
           const decision = await Promise.race([ctx.step({ checkpoint: { sessionId, entry: toolId }, tokens: contextTokens, window: CONTEXT_WINDOW }), untilStopped(state)]);
           // The compacted session goes on from here: the summary, then the tail as its first message.
@@ -443,11 +445,13 @@ async function run(ctx: TurnContext, state: RunState): Promise<TurnResult> {
         let beat = Date.now() + COMMAND_BEAT_MS;
         while (!state.stopped && Date.now() < end) {
           await sleep(COMMAND_LINE_MS, state);
+          if (state.stopped) break;
           output += commandLine(line++);
           if (Date.now() < beat) continue;
           beat += COMMAND_BEAT_MS;
           draw(output.slice(-COMMAND_TAIL_CHARS), 'running');
         }
+        if (state.stopped) break;
         draw(output, 'done');
         contextTokens += TOOL_CONTEXT_TOKENS;
         break;
@@ -467,13 +471,14 @@ async function run(ctx: TurnContext, state: RunState): Promise<TurnResult> {
           status: 'running',
         });
         for (const piece of splitInto(TOOL_STREAM_INPUT, TOOL_STREAM_PIECES)) {
-          if (state.stopped) break;
           await sleep(TOOL_STREAM_DELAY_MS, state);
+          if (state.stopped) break;
           ctx.emit.delta(messageId, index, piece);
         }
         // The whole json is on screen for one cadence before the parsed input
         // takes its place, the way a block stop precedes the assistant frame.
         await sleep(TOOL_STREAM_DELAY_MS, state);
+        if (state.stopped) break;
         const parsed: unknown = JSON.parse(TOOL_STREAM_INPUT);
         ctx.emit.part(messageId, index, {
           type: 'tool',
@@ -485,6 +490,7 @@ async function run(ctx: TurnContext, state: RunState): Promise<TurnResult> {
           status: 'running',
         });
         await sleep(TOOL_DELAY_MS, state);
+        if (state.stopped) break;
         ctx.emit.part(messageId, index, {
           type: 'tool',
           toolId,

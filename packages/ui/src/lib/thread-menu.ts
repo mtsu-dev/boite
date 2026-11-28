@@ -1,4 +1,4 @@
-import { Archive, ArrowRightLeft, CircleCheck, Copy, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, X } from '@lucide/svelte';
+import { Archive, ArrowRightLeft, CircleCheck, Copy, Download, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Sparkles, Trash2, X } from '@lucide/svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { separator, type MenuItem } from './menu';
@@ -9,11 +9,13 @@ import { canMove, moveItems, pickMoveItem } from './thread-move.svelte';
 import { entrustItems, pickEntrustItem } from './thread-entrust';
 import { workspace } from './workspace.svelte';
 import { strings } from './strings';
+import { openThreadExport } from './thread-export-request.svelte';
 
 interface ThreadMenuOptions {
   /** Rows can open their thread; the header is already there. */
   open?: boolean;
   showDone?: boolean;
+  exportConversation?: boolean;
   /** Omitted where pull requests have no manual refresh action. */
   prLoading?: boolean;
   /** The view's own tools (find), first on the menu's first level. */
@@ -24,6 +26,10 @@ interface ThreadMenuOptions {
   place?: MenuItem[];
   /** A phone's menu: the path and the pull request stay on the desktop. */
   phone?: boolean;
+}
+
+export function threadExportItem(): MenuItem {
+  return { id: 'export-thread', label: strings.threadExport.menu, glyph: Download };
 }
 
 /**
@@ -76,10 +82,9 @@ function doneItem(store: Store, thread: ThreadSummary): MenuItem {
 /**
  * One menu for a thread wherever it opens (a row, its header, the phone's
  * long press, the header's menu): a short first level of what is done most
- * (the view's own Find, Rename and its made-again title, Pin, Mark done,
+ * (the view's own Find, Rename and its made-again title, Pin, Copy thread ID, Mark done,
  * Archive), one named group for where it goes (`threadToolItems`), then Delete
- * apart. A row adds Open first. Eight rows at most. The panels have one door
- * of their own, beside the title.
+ * apart. A row adds Open first. The panels have one door of their own, beside the title.
  */
 export function threadMenuItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
   // An incognito conversation lives on its own screen only: nothing pins, files
@@ -90,14 +95,17 @@ export function threadMenuItems(store: Store, thread: ThreadSummary, options: Th
   const loose = group.length ? [] : manageParts(store, thread, options).rows;
   const retitling = store.retitling.includes(thread.id);
   const opening: MenuItem[] = options.open === undefined ? [] : [{ id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open }, separator('sep-open')];
+  const canExport = Boolean(options.exportConversation && !thread.councilId);
   const items: MenuItem[] = [
     ...opening,
     ...own,
-    ...(own.length ? [separator('sep-thread-tools')] : []),
+    ...(canExport ? [threadExportItem()] : []),
+    ...(own.length || canExport ? [separator('sep-thread-tools')] : []),
     { id: 'rename', label: strings.common.rename, glyph: PencilLine },
     // The title made again sits with the one typed: both name the thread.
     { id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling },
     ...(kept ? [{ id: 'pin', label: thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin, glyph: thread.pinned ? PinOff : Pin }] : []),
+    { id: 'copy-thread-id', label: strings.sidebar.copyThreadId, glyph: Copy },
     ...(kept ? [
       separator('sep-archive'),
       // A ringed check: the bare one is every menu's selection mark, and Done is an action, not a chosen row.
@@ -134,6 +142,8 @@ export function pickThreadAction(store: Store, thread: ThreadSummary, action: st
     case 'archive': void archiveThread(store, thread.id); return true;
     case 'rename': view.rename(); return true;
     case 'retitle': void store.retitle(thread.id); return true;
+    case 'copy-thread-id': void store.copy(thread.id); return true;
+    case 'export-thread': if (!thread.councilId) openThreadExport(store, thread); return true;
     case 'copy': void store.copy(thread.cwd); return true;
     case 'pr': view.refreshPr?.(); return true;
     case 'delete': void deleteThread(store, thread); return true;

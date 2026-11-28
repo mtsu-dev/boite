@@ -1,15 +1,17 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { Archive, ArrowDown, ArrowUp, CornerDownRight, Lock, Pause, Reply } from '@lucide/svelte';
-  import { TEAM_OWNER, type AgentProfile, type Message, type TeamParty, type TeamPostRef, type Thread } from '@boite/contracts';
+  import { TEAM_OWNER, messageSearchTerms, type AgentProfile, type Message, type TeamParty, type TeamPostRef, type Thread } from '@boite/contracts';
   import { agentDirectory, followAgentDirectories } from '../../lib/agent-directory.svelte';
   import { experimentOn } from '../../lib/experiments.svelte';
   import { avatarLit } from '../../lib/avatar-lit';
+  import { clearMessageSearch, paintMessageSearch } from '../../lib/find';
   import { dayClock, fullTime } from '../../lib/format';
   import { fill, strings } from '../../lib/strings';
   import type { Store } from '../../lib/store.svelte';
   import { botIdOf, followTeams, listNames, teamsOf } from '../../lib/teams.svelte';
   import { pings } from '../../lib/team-pings';
+  import { watchWheel } from '../../lib/timeline-follow';
   import AgentAvatar from '../agents/AgentAvatar.svelte';
   import DayDivider from '../DayDivider.svelte';
   import Prose from '../Prose.svelte';
@@ -84,14 +86,37 @@
   function answer(post: Post) {
     reply = { id: post.ref.id, author: post.ref.author, excerpt: excerpt(post.text) };
   }
+  function elementOf(id: string): HTMLElement | undefined {
+    return scroller?.querySelector<HTMLElement>(`[data-post-id="${CSS.escape(id)}"]`) ?? undefined;
+  }
   function jump(id: string) {
-    scroller?.querySelector(`[data-post-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' });
+    clearMessageSearch();
+    elementOf(id)?.scrollIntoView({ block: 'center' });
   }
 
   // The newest post stays in view while the reader is at the bottom; reading higher up, nothing moves.
   let scroller = $state<HTMLElement>();
   let column = $state<HTMLElement>();
   let pinned = true;
+  $effect(() => {
+    const target = store.messageSearchJump;
+    if (!scroller || target?.threadId !== thread.id) return;
+    const post = posts.find(post => post.message.id === target.messageId);
+    if (!post) return;
+    pinned = false;
+    void tick().then(() => {
+      if (store.messageSearchJump !== target || target.threadId !== thread.id) return;
+      const node = elementOf(post.ref.id);
+      if (!node?.isConnected) return;
+      node.scrollIntoView({ block: 'center' });
+      paintMessageSearch(node, messageSearchTerms(target.query), '.said .body');
+      store.messageSearchJump = null;
+    });
+  });
+  $effect(() => {
+    void thread.id;
+    return clearMessageSearch;
+  });
   function measure() {
     if (scroller) pinned = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 64;
   }
@@ -126,7 +151,9 @@
 </script>
 
 <section class="team-chat" data-testid="team-chat" data-team-id={team?.id}>
-  <div class="scroller" bind:this={scroller} onscroll={measure} data-testid="team-posts">
+  <!-- svelte-ignore a11y_no_static_element_interactions (Reader input clears the search highlight without changing native interaction.) -->
+  <div class="scroller" bind:this={scroller} onscroll={measure} use:watchWheel={clearMessageSearch}
+    onpointerdown={clearMessageSearch} ontouchstart={clearMessageSearch} onkeydown={clearMessageSearch} data-testid="team-posts">
     <div class="column" bind:this={column}>
       {#if team}
         <header class="about" data-testid="team-members">
@@ -206,7 +233,9 @@
   {#if closed}
     <p class="closed" data-testid="team-closed">{#if team?.archived}<Archive size={14} />{/if}<span>{closed}</span></p>
   {:else if team}
-    <TeamComposer {store} {team} draftKey={`${store.core?.coreId ?? ''}:${team.id}`} bind:reply onsent={sent} />
+    {#key team.id}
+      <TeamComposer {store} {team} draftKey={`${store.core?.coreId ?? ''}:${team.id}`} bind:reply onsent={sent} />
+    {/key}
   {/if}
 </section>
 

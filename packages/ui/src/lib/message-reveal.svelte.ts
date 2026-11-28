@@ -14,45 +14,65 @@ export class MessageReveal {
   #messages: () => Message[];
   #phone: () => boolean;
   #lastPrompt = $derived.by(() => this.#messages().findLast((message) => message.role === 'user')?.id ?? null);
-  /** The turn of the last answer drawn, read from the messages: a queued or unanswered turn after it has none. */
-  #lastAnswer = $derived.by(() => this.#messages().findLast((message) => message.role === 'assistant')?.turnId ?? null);
+  #lastAnswer: () => string | null;
+  #focused: () => string | null;
 
-  constructor(messages: () => Message[], phone: () => boolean) {
+  constructor(
+    messages: () => Message[],
+    phone: () => boolean,
+    lastAnswer: () => string | null = () => messages().findLast((message) => message.role === 'assistant')?.turnId ?? null,
+    focused: () => string | null = () => null,
+  ) {
     this.#messages = messages;
     this.#phone = phone;
+    this.#lastAnswer = lastAnswer;
+    this.#focused = focused;
     $effect(() => {
       if (this.revealed === null) return;
-      const away = (event: PointerEvent) => { if (!(event.target instanceof Element) || !event.target.closest(`[data-reveal="${this.revealed}"]`)) this.revealed = null; };
+      const away = (event: PointerEvent) => { if (!(event.target instanceof Element) || !this.#withinRevealed(event.target)) this.revealed = null; };
       window.addEventListener('pointerdown', away, true);
       return () => window.removeEventListener('pointerdown', away, true);
     });
   }
 
+  #withinRevealed(target: Element): boolean {
+    return this.revealed !== null && target.closest(`[data-reveal="${this.revealed}"]`) !== null;
+  }
+
   key(message: Message): string { return message.role === 'user' ? `prompt:${message.id}` : `turn:${message.turnId}`; }
 
   #latest(message: Message): boolean {
-    return message.role === 'user' ? message.id === this.#lastPrompt : message.turnId === this.#lastAnswer;
+    return message.role === 'user' ? message.id === this.#lastPrompt : message.turnId === this.#lastAnswer();
+  }
+
+  #shown(message: Message, key: string): boolean {
+    return this.revealed === key || (message.role !== 'user' && this.#focused() === message.turnId);
   }
 
   /** A row's marks: its key, and whether its buttons show. */
   attrs(message: Message): Record<string, string | undefined> {
     const key = this.key(message);
-    return { 'data-reveal': key, 'data-latest': this.#latest(message) ? '' : undefined, 'data-revealed': this.revealed === key ? '' : undefined };
+    return { 'data-reveal': key, 'data-latest': this.#latest(message) ? '' : undefined, 'data-revealed': this.#shown(message, key) ? '' : undefined };
   }
 
-  /** Whether the message's buttons show: always on a desktop, on a phone under the latest ones and the one tapped. */
+  /** Whether the message's buttons show: always on a desktop, on a phone under the latest ones, the one tapped, or the one holding focus. */
   shows(message: Message): boolean {
-    return !this.#phone() || this.#latest(message) || this.revealed === this.key(message);
+    return !this.#phone() || this.#latest(message) || this.#shown(message, this.key(message));
+  }
+
+  /** Whether a turn's summary line shows on a phone, independent of whether its closing row is a steering prompt. */
+  showsTurn(turnId: string): boolean {
+    return !this.#phone() || turnId === this.#lastAnswer() || this.revealed === `turn:${turnId}` || this.#focused() === turnId;
   }
 
   /** A tap in the timeline: on a message it shows or hides that message's row. A selection is being read, not tapped. */
   tap = (event: MouseEvent): void => {
     if (!this.#phone() || !(event.target instanceof Element)) return;
-    const key = event.target.closest<HTMLElement>('[data-reveal]')?.dataset.reveal ?? null;
     if (event.target.closest(CONTROL)) {
-      if (key !== this.revealed) this.revealed = null;
+      if (this.revealed !== null && !this.#withinRevealed(event.target)) this.revealed = null;
       return;
     }
+    const key = event.target.closest<HTMLElement>('[data-reveal]')?.dataset.reveal ?? null;
     if (window.getSelection()?.isCollapsed === false) return;
     this.revealed = key !== null && key !== this.revealed ? key : null;
   };

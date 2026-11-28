@@ -5,7 +5,7 @@ import type { Core } from '../core.ts';
 import { checkContext } from '../context-mode.ts';
 import { invalidParams, refused, requiredText as text } from '../errors.ts';
 import { newId } from '../ids.ts';
-import { checkSavedSelection, checkSpeed } from '../threads/selection.ts';
+import { checkSavedSelection, checkSpeed, selectionFor } from '../threads/selection.ts';
 import { childProject } from './projects.ts';
 import type { ChildRoute } from './routes.ts';
 import type { ChildWorktrees } from './worktrees.ts';
@@ -31,8 +31,10 @@ export function checkConfig(core: Core, value: DelegationConfig, previous?: Dele
       const account = core.accounts.require(text(p.accountId, 'profile.accountId', 128));
       if (account.providerId !== provider.id) throw refused('profile.accountId must belong to profile.providerId');
       const model = text(p.model, 'profile.model', 256);
-      checkSavedSelection(provider, account.id, { model, effort: p.effort }, previous?.profiles.find(profile => profile.id === id));
-      return { id, name: text(p.name, 'profile.name', 80), providerId: provider.id, accountId: account.id, model, effort: p.effort };
+      const prior = previous?.profiles.find(profile => profile.id === id);
+      checkSavedSelection(provider, account.id, { model, effort: p.effort }, prior);
+      const selected = selectionFor(provider, account.id, model, p.effort);
+      return { id, name: text(p.name, 'profile.name', 80), providerId: provider.id, accountId: account.id, model: selected?.model.id ?? model, effort: selected?.effort ?? p.effort };
     }),
   };
   if (new Set(config.profiles.map(p => p.id)).size !== config.profiles.length) throw invalidParams('profile.id: expected unique ids');
@@ -70,6 +72,8 @@ export function createChild(core: Core, worktrees: ChildWorktrees, { parent, pro
   if (asked != null && route.model === null) throw invalidParams(SPEED_NEEDS_MODEL);
   const provider = core.providers.require(route.providerId);
   const speed = checkSpeed(provider, route.accountId, route.model, asked ?? null);
+  const selected = selectionFor(provider, route.accountId, route.model, route.effort);
+  if (selected) Object.assign(route, { model: selected.model.id, effort: selected.effort });
   const contextMode = fixed ? fixed.contextMode && { ...fixed.contextMode, tools: fixed.contextMode.tools === null ? null : [...fixed.contextMode.tools] } : checkContext(provider, context);
   // Fixed memory passes keep the bot's personal workspace, even with one entrusted project.
   const workspace = fixed ? parent : childProject(core, parent, project);

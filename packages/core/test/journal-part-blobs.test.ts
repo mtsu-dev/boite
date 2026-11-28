@@ -119,7 +119,7 @@ test('values are stored compressed or as text, and every read path gives them ba
   journal.putMessage({ id: 'msg_a', threadId: 'thr_a', turnId: 'trn_a', role: 'assistant', parts, state: 'complete', createdAt: 1 });
   expect(codecs()).toEqual([
     { messageId: 'msg_a', partIndex: 0, field: 'output', codec: 1, type: 'blob', preview: 1, chars: screenshot(0).length },
-    { messageId: 'msg_a', partIndex: 1, field: 'data', codec: 1, type: 'blob', preview: 0, chars: screenshot(9).length },
+    { messageId: 'msg_a', partIndex: 1, field: 'data', codec: 1, type: 'blob', preview: 1, chars: screenshot(9).length },
     { messageId: 'msg_a', partIndex: 2, field: 'output', codec: 1, type: 'blob', preview: 1, chars: screenshot(1).length },
   ]);
   const bytes = (journal.db.query('SELECT SUM(length(data)) AS n FROM part_blobs').get() as { n: number }).n;

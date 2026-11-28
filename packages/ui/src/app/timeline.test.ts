@@ -204,7 +204,12 @@ test('a tool card shows the diff, the markdown and the image it produced', async
   await waitFor(() => !query<HTMLButtonElement>('[data-testid=composer-send]').disabled);
   query<HTMLButtonElement>('[data-testid=composer-send]').click();
 
-  // Changes and produced documents keep their previews behind a disclosure.
+  // The edit and the read fold into one run; the screenshot a tool made stands alone.
+  await waitFor(() => document.querySelector('[data-testid=tool-group]')?.getAttribute('data-count') === '2' && !!document.querySelector('[data-testid=tool-document-chip]'));
+  expect(document.querySelectorAll('[data-testid=tool-document-chip]')).toHaveLength(1);
+  query<HTMLButtonElement>('[data-testid=tool-group-toggle]').click();
+  flushSync();
+  // Changes and documents keep their previews behind a disclosure.
   await waitFor(() => document.querySelectorAll('[data-testid=tool-document-chip]').length === 2);
   expect(
     Array.from(document.querySelectorAll('[data-testid=tool-document-chip]')).map((el) => el.textContent)
@@ -248,17 +253,19 @@ test('a tool card shows the diff, the markdown and the image it produced', async
   expect(image.alt).toBe('one pixel');
 });
 
-test('a finished thread ends on its closing line under the last message, inside the timeline', async ({ app: _app }) => {
+test('a finished thread ends on one footer under the last message: how long it worked, at rest', async ({ app: _app }) => {
   await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
   query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
   await waitFor(() => store.openThread?.id === 't-trace');
   await sendPrompt('one more look');
   await waitFor(() => store.openThread?.turns.at(-1)?.status === 'done');
-  await waitFor(() => document.querySelector('[data-testid=thread-closing]') !== null);
-  const closing = query('[data-testid=thread-closing]');
-  expect(closing.textContent).toMatch(/^Done · Worked for /);
-  // It scrolls with the conversation, never stands above the composer.
-  expect(closing.closest('[data-testid=timeline]')).not.toBeNull();
+  await waitFor(() => document.querySelector('[data-testid=turn-summary].resting') !== null);
+  const footer = query('[data-testid=turn-summary].resting');
+  expect(footer.querySelector('[data-testid=turn-elapsed]')?.textContent).toMatch(/^Worked for /);
+  expect(document.querySelectorAll('[data-testid=turn-summary].resting')).toHaveLength(1);
+  // It closes the last answer, inside the timeline, and nothing under it says the time again.
   const last = Array.from(document.querySelectorAll('[data-testid=timeline] article')).at(-1)!;
-  expect(last.compareDocumentPosition(closing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(last.contains(footer)).toBe(true);
+  expect(last.textContent!.match(/Worked for/g)).toHaveLength(1);
+  expect(last.nextElementSibling?.textContent ?? '').not.toMatch(/Worked for/);
 });

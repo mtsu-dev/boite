@@ -12,7 +12,7 @@ const EXPORT_LIMIT = 20_000;
 const REPORTS_PER_MINUTE = 300;
 const PREFILL_BODY_CHARS = 6_000;
 
-type DiagnosticMethods = 'core.logs' | 'diagnostics.logs' | 'diagnostics.summary' | 'diagnostics.export' | 'diagnostics.issue' | 'diagnostics.report';
+type DiagnosticMethods = 'core.logs' | 'diagnostics.logs' | 'diagnostics.summary' | 'diagnostics.export' | 'diagnostics.exportFile' | 'diagnostics.issue' | 'diagnostics.report';
 
 function invalid(error: unknown): RpcFailure {
   return new RpcFailure({ code: RpcErrorCode.InvalidParams, message: (error as Error).message });
@@ -151,6 +151,13 @@ export function logMethods(ctx: FakeContext): Pick<FakeMethods, DiagnosticMethod
       const limit = params.limit === undefined ? EXPORT_LIMIT : params.limit;
       if (!Number.isInteger(limit) || limit < 1 || limit > EXPORT_LIMIT) throw invalid(new Error(`diagnostics.export limit: expected an integer from 1 to ${EXPORT_LIMIT}`));
       return exportBundle(since, limit, familyOf(params.focusThreadId));
+    },
+    'diagnostics.exportFile': async params => {
+      try { validateDiagnosticsParams(params, 'diagnostics.exportFile'); } catch (error) { throw invalid(error); }
+      gate();
+      // The in-memory core has no HTTP file route. Use the text fallback.
+      const { name, bytes, text } = exportBundle(Date.now() - DAY_MS, EXPORT_LIMIT);
+      return { name, bytes, text };
     },
     'diagnostics.issue': async params => {
       try { validateDiagnosticsParams(params, 'diagnostics.issue'); } catch (error) { throw invalid(error); }

@@ -46,35 +46,37 @@ Testing. The browser draws on the machine's graphics card when it can, as
 Chrome with a window does.
 
 To use a specific browser, set `BOITE_BROWSER` to its executable in the
-environment Boite starts with.
+environment Boite starts with. On Windows it applies to the profiles whose
+Engine is Chrome.
 
 ## Watch the agent's pages
 
-1. Open the panel's Browser surface. When the agent opens a tab in the
-   conversation on screen, the panel opens on it by itself, except on a phone.
-2. On most clients a card says "This agent controls a browser on" and the
-   machine's name. Press Show. Nothing is captured or sent before that.
-3. Press Hide in the tab strip to cover the page again.
+For the conversation you're viewing, **Boite browser in the background**
+appears above the conversation list while the agent has tabs open. Select it
+to see the active tab. The agent can also show a tab when it has something
+to share or needs you to act on the page.
 
-The desktop app on the agent's own machine shows the page at once, with no
-card. On a phone, the header's Browser button opens it, and Chat or Back
-returns to the conversation without closing any tab.
+You can also open the panel's Browser surface and press Show. Press Hide to
+cover a remote page again. On the agent's own desktop app, the page appears
+as soon as you open the Browser surface. On a phone, Back returns to the
+conversation and leaves the tabs open.
 
 ## Take over the page
 
 - On a computer, click the page, then type. Drag to select, double-click a
   word, scroll with the wheel. Copy, cut and paste use your own clipboard.
-- On a touch screen, tap to click and drag to scroll. Type in the field under
-  the page. Double-tap a word, then press Copy to copy it.
+- On a touch screen, tap to click and drag to scroll. Use the keyboard button
+  to show or hide the typing controls. Double-tap a word, then press Copy.
 - A list opens on your screen, and your pick reaches the page.
 - Press **+** to open a tab of your own, then enter an address. The agent sees
   it and can use it. A tab's close button closes it, the agent's tabs
   included.
-- Display sets the page size: Phone, Tablet or your own width and height. The
-  agent sees the same size. Fit this screen goes back to your view's size.
+- The preview fits your screen. Use Display to change the shared page size
+  to Phone, Tablet or your own dimensions. The agent sees that page size too.
 
 Some sites still show a captcha. Solve it in the panel: clicks and drags reach
-the page as you make them.
+the page as you make them. The panel reports when the page is still loading,
+the server returns an HTTP error or a script fails to load.
 
 ## Sign-ins and profiles
 
@@ -82,6 +84,11 @@ The agent's sign-ins live on the machine that runs the agent, not on the
 device you watch from. Each browser profile keeps its own cookies and
 sign-ins after a restart. A private tab keeps nothing once the last private
 tab closes.
+
+The cookies pill in the tab bar names the active profile. From an owner
+client, choose another profile in that pill to reload the address in the
+same tab with that profile's cookies. Paired devices can see the profile
+used by the tab.
 
 To sign the agent in to a site:
 
@@ -94,9 +101,12 @@ card's Open button opens the page in the conversation's browser.
 Settings, Browser, Browser profiles lists the profiles:
 
 - Add profile creates one. Open new tabs here picks the profile new tabs use.
-- User-Agent, on a profile you created, appends a marker to the browser's
-  identity or replaces it. It applies the next time that profile's browser
-  starts. Default and Private keep the browser's own identity.
+- Engine, on every profile, Default included, picks the browser the agents
+  use in it: App window or Chrome. See [On Windows](#on-windows).
+- User-Agent, on a profile you created that runs in Chrome, appends a marker
+  to the browser's identity or replaces it. It applies the next time that
+  profile's browser starts. Default and Private keep the browser's own
+  identity. App window keeps a saved User-Agent but does not apply it.
 - Copy sign-ins to agents, in the Windows desktop app, sends a profile's
   cookies to the agent browser of a machine you pick. It is a copy at that
   moment: a later sign-in needs a new copy, and a site may still ask again.
@@ -107,8 +117,21 @@ Settings, Browser, Browser profiles lists the profiles:
 
 The desktop app hosts the agent's tabs in its own browser, with the same
 profiles as your own Browser tabs. A site you signed in to there is signed in
-for the agent too. Agent tabs are muted. The macOS and Linux apps do not host
-tabs: the agent uses its own browser on the machine.
+for the agent too. Agent tabs are muted.
+
+A profile's Engine decides where its agent tabs run:
+
+- App window, the default, runs them in the desktop app's own browser. The
+  panel shows them smoothly.
+- Chrome runs them in the browser described in
+  [Which browser it uses](#which-browser-it-uses). More sites that check for
+  bots let it through, and the panel shows it as a series of pictures.
+
+Sign-ins follow the profile from one engine to the other. Only you choose the
+engine, in Settings: an agent can neither change it nor get around it.
+
+The macOS and Linux apps, and a machine without the desktop app, do not host
+tabs: the agent always uses Chrome there.
 
 ## Limits
 

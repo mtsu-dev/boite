@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appMark } from '../lib/app-update.svelte';
-  import { teamsParts } from '../lib/teams-entry';
+  import { teamChat as lazyTeamChat, councilSalon as lazyCouncilSalon } from '../lib/chat-views';
   import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { pinnedQuotas, PINNED_QUOTA_WIDTH } from '../lib/pinned-quotas.svelte';
@@ -28,8 +28,7 @@
   import WorktreeGoneNotice from './WorktreeGoneNotice.svelte';
   import ContactHoldNotice from './ContactHoldNotice.svelte';
   import { firstRunScreen, needsAnAI } from '../lib/first-run';
-  import { closingLine } from '../lib/closing-line';
-  import { loadCouncilSalon } from '../lib/council-entry';
+  import { restingTurn } from '../lib/resting-turn';
   import { backdropEntry } from '../lib/backdrop-entry.svelte';
 
   /**
@@ -79,9 +78,9 @@
     return at < 0 ? held : held.slice(0, at);
   });
   let messages = $derived(sending ? [...kept, sending] : kept);
-  /** A finished thread's quiet last word: done, how long it worked, what its last turn changed. */
-  let closing = $derived(thread && !thread.archived && !locked && !sending && store.rewinding[thread.id] === undefined && thread.status !== 'running' && thread.status !== 'waiting' && store.loadingThreadId !== thread.id
-    ? closingLine(thread.turns, kept, thread.cwd) : null);
+  /** The turn a finished thread ends on: its summary line is the thread's one footer, read at rest. */
+  let resting = $derived(thread && !thread.archived && !locked && !sending && store.rewinding[thread.id] === undefined && thread.status !== 'running' && thread.status !== 'waiting' && store.loadingThreadId !== thread.id
+    ? restingTurn(thread.turns) : null);
   // The timeline still needs agent messages after reload, even with settings hidden.
   let threadId = $derived(thread?.id);
   let agentSession = $derived(!!thread?.agentSessionId);
@@ -90,18 +89,6 @@
   $effect(() => {
     const id = threadId;
     if (id && !agentSession && !teamChat) untrack(() => void store.loadCoordination(id, false));
-  });
-  // The team chat loads with the first one opened, out of the app's first chunk; a failed load tries again with the next team opened.
-  let TeamChat = $state.raw<typeof import('./teams/TeamChat.svelte').default>();
-  let loadingTeamChat: Promise<void> | undefined;
-  $effect(() => {
-    if (thread?.teamId && !TeamChat) loadingTeamChat ??= teamsParts.TeamChat().then(module => { TeamChat = module.default; }).catch(() => { loadingTeamChat = undefined; });
-  });
-  // A salon opened as a thread (a link, the palette) draws as it does in the panel, loaded the same way.
-  let CouncilSalon = $state.raw<typeof import('./council/CouncilSalon.svelte').default>();
-  let loadingSalon: Promise<void> | undefined;
-  $effect(() => {
-    if (thread?.councilId && !CouncilSalon) loadingSalon ??= loadCouncilSalon().then(module => { CouncilSalon = module.default; }).catch(() => { loadingSalon = undefined; });
   });
   let project = $derived(store.openProject);
   let draftChoice = $derived(store.defaultChoice());
@@ -135,12 +122,12 @@
     <p class="muted">{strings.thread.noneBody}</p>
   </div>
 {:else if thread?.teamId}
-  {#if TeamChat}{#key thread.id}<TeamChat {store} {thread} />{/key}{/if}
+  <Deferred part={lazyTeamChat}>{#snippet children(TeamChat)}{#key thread.id}<TeamChat {store} {thread} />{/key}{/snippet}</Deferred>
 {:else if !thread && !sending && needsAnAI(store)}
   <!-- Nothing to start a thread on yet: one action first, the folder and the composer after it. -->
   <Deferred part={firstRunScreen}>{#snippet children(FirstRun)}<FirstRun {store} />{/snippet}</Deferred>
 {:else if thread?.councilId}
-  {#if CouncilSalon}{#key thread.id}<div class="salon-page"><CouncilSalon {store} councilId={thread.councilId} threadId={thread.id} /></div>{/key}{/if}
+  <div class="salon-page"><Deferred part={lazyCouncilSalon}>{#snippet children(CouncilSalon)}{#key thread.id}<CouncilSalon {store} councilId={thread.councilId!} threadId={thread.id} />{/key}{/snippet}</Deferred></div>
 {:else}
   <!-- The draft's roomier composer belongs to the middle of the column: once
      the prompt is on its way the composer is at the bottom, at its thread size,
@@ -160,7 +147,7 @@
         {#if store.loadingThreadId === thread.id && messages.length === 0}
           <ThreadLoading progress={store.loadingBytes?.threadId === thread.id ? store.loadingBytes : null} />
         {:else}
-          <MessageList {store} threadId={thread.id} {messages} {closing} />
+          <MessageList {store} threadId={thread.id} {messages} {resting} />
         {/if}
       {/key}
     {:else if sending}
@@ -206,6 +193,9 @@
     {#if pinnedHere && pinnedQuotas.crowded.get(store) && (thread || sending)}<Deferred part={parts.PinnedQuota} quiet>{#snippet children(PinnedQuota)}<PinnedQuota {store} inline area={discussion} />{/snippet}</Deferred>{/if}
 
     {#if thread}<ThreadRecovery {store} /><ThreadRetry {store} />{/if}
+    {#if thread?.contactToolsHeld && !thread.contactHold && !thread.archived && !locked}
+      <ContactHoldNotice {store} threadId={thread.id} contacts={null} />
+    {/if}
     <!-- What stops the core here stands in the box's own slot, under its strip; a done thread says it all in one notice. -->
     {#snippet stopNotice()}
       {#if store.openProject?.missing === true && !thread?.agentSessionId}<FolderGoneNotice {store} project={store.openProject} />{/if}
@@ -231,7 +221,7 @@
             {strings.drafts.incognitoOn}
           </p>
         {:else if store.draftInDrafts && store.addsProjects}
-          <button type="button" class="ghost small open-folder" data-testid="draft-open-folder" onclick={() => (store.projectPickerOpen = true)}>
+          <button type="button" class="ghost small open-folder" data-testid="draft-open-folder" data-preload-view="project" onclick={() => (store.projectPickerOpen = true)}>
             <FolderOpen size={14} strokeWidth={1.75} />
             <span class="ui-label">{strings.drafts.openFolder}</span>
           </button>

@@ -108,7 +108,8 @@ test('an unclosed CLI trace stays in history with unknown status after core rest
   try {
     expect(restarted.procs.liveOf(threadId)).toEqual([]);
     expect(restarted.delegation.get(threadId).nativeAgents).toEqual([expect.objectContaining({ source: 'process', status: 'unknown' })]);
-    expect(restarted.journal.listProcesses(threadId, 10).find(record => record.pid === child.pid)?.exitedAt).toBeNull();
+    // Startup closes the rows the previous core left open, with no exit code to claim.
+    expect(restarted.journal.listProcesses(threadId, 10).find(record => record.pid === child.pid)).toMatchObject({ exitedAt: expect.any(Number), exitCode: null });
   } finally { await restarted.close(); }
 });
 
@@ -345,7 +346,7 @@ test('the parent learns dynamic workflows and coordination within a compact prom
   await owner.call('turns.start', { threadId, prompt: 'Continue' });
   const resumed = runs.get(threadId)!.ctx;
   expect(resumed.prompt).not.toContain('boite where');
-  expect(resumed.continuation!().prompt).toContain('boite where');
+  expect((await resumed.continuation!()).prompt).toContain('boite where');
 });
 
 test('agent tokens can only delegate inside their own owner-enabled family, never change policy or nest', async () => {
@@ -1104,7 +1105,7 @@ test('an agent picks any installed model and reasoning level for a child, never 
   const { h, owner, threadId } = await setup();
   await twinProvider(h, owner, [
     { id: 'echo', name: 'Twin echo' },
-    { id: 'deep-thinker', name: 'Deep thinker', effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'max', label: 'Max' }], default: 'low' } },
+    { id: 'deep-thinker', name: 'Deep thinker', aliases: [{ id: 'deep-thinker-max', effort: 'max' }], effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'max', label: 'Max' }], default: 'low' } },
   ]);
   h.core.journal.putThread({ ...h.core.threads.require(threadId), speed: 'fast' });
   const agent = await connect(h.url, h.core.agents.tokenFor(threadId));
@@ -1113,8 +1114,9 @@ test('an agent picks any installed model and reasoning level for a child, never 
     expect(models.anyModel).toBe(true);
     expect(models.choices.map(c => `${c.providerId}/${c.model}`)).toEqual(expect.arrayContaining(['echo/echo', 'twin/echo', 'twin/deep-thinker']));
     expect(models.choices.find(c => c.providerId === 'echo')?.current).toBe(true);
+    expect(models.choices.find(c => c.model === 'deep-thinker')?.aliases).toEqual([{ id: 'deep-thinker-max', effort: 'max' }]);
 
-    const deep = await agent.call('delegation.spawn', { threadId, model: 'deep', effort: 'max', task: 'Think hard', requestId: 'deep' });
+    const deep = await agent.call('delegation.spawn', { threadId, model: 'deep-thinker-max', task: 'Think hard', requestId: 'deep' });
     expect([deep.thread.providerId, deep.thread.model, deep.thread.effort, deep.thread.speed ?? null]).toEqual(['twin', 'deep-thinker', 'max', null]);
     expect(deep.thread.accountId).toBe(h.core.accounts.list().find(a => a.providerId === 'twin')!.id);
     // A bare id two harnesses share resolves to the parent's own; a full id names the other one.
@@ -1126,6 +1128,7 @@ test('an agent picks any installed model and reasoning level for a child, never 
 
     await owner.call('delegation.configure', { threadId, config: { ...h.core.delegation.config(threadId), anyModel: false } });
     expect(await thrown(agent.call('delegation.spawn', { threadId, model: 'twin/deep-thinker', task: 'Held', requestId: 'held' }))).toThrow('limited subagents');
+    expect(await thrown(agent.call('delegation.spawn', { threadId, model: 'deep-thinker-max', task: 'Held alias', requestId: 'held-alias' }))).toThrow('limited subagents');
     expect((await agent.call('delegation.spawn', { threadId, model: 'echo/echo', effort: 'low', task: 'Own model', requestId: 'own' })).thread.effort).toBe('low');
     expect((await agent.call('delegation.models', { threadId })).anyModel).toBe(false);
   } finally { agent.close(); }

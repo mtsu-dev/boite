@@ -71,6 +71,15 @@ const CONTEXT_FLAGS = { '--context': 'preset', '--keep': 'keep', '--drop': 'drop
 
 const BOOLEAN_OPTIONS = ['json', 'multiple', 'worktree', 'wait', 'archived', 'skip', 'refresh'] as const;
 const NUMBER_OPTIONS = ['timeout', 'last', 'before', 'offset'] as const;
+const TEXT_OPTIONS = {
+  '--request-id': 'requestId', '--title': 'title', '--open': 'open', '--name': 'name',
+  '--project': 'project', '--why': 'why', '--domain': 'domain',
+  '--instructions-file': 'instructionsFile', '--picture': 'picture', '--core': 'core',
+  '--machine': 'machine', '--entry': 'entry', '--thread': 'thread', '--data-dir': 'dataDir',
+  '--model': 'model', '--effort': 'effort', '--speed': 'speed', '--profile': 'profile',
+  // The older spellings still address a mochi.
+  '--mochi': 'bot', '--bot': 'bot', '--agent': 'bot',
+} as const;
 
 /** What every command reads wherever it stands, until a command's own text begins. */
 const GLOBAL_FLAGS = ['--json', '--thread', '--data-dir', '--core', '--channel'];
@@ -89,6 +98,8 @@ const OWNED: { owns: (positional: string[]) => boolean; help: boolean; text?: (p
   { owns: ([command, action]) => command === 'browser' && action !== undefined, help: true, text: positional => browserText(positional.slice(1)) },
   // Their own filters (logs-cli.ts); a value comes next and is passed the same way.
   { owns: ([command]) => command === 'logs' || command === 'issue', help: true },
+  // transcripts-cli.ts: its own --query, --limit and --session.
+  { owns: ([command]) => command === 'transcripts', help: true },
   // window-cli.ts: its --title names a window, not a thread.
   { owns: ([command, action]) => command === 'window' && action !== undefined, help: true },
   // desktop-cli.ts: `run` and agent-desktop's verbs own every word after them; status, start, stop, env and help take no text, so a global after them stays the CLI's.
@@ -179,23 +190,10 @@ export function parse(argv: string[]): Parsed {
     const numeric = NUMBER_OPTIONS.find(key => arg === `--${key}`);
     if (boolean !== undefined) parsed[boolean] = true;
     else if (numeric !== undefined) parsed[numeric] = number(arg, next());
-    else if (arg === '--request-id') parsed.requestId = next();
-    else if (arg === '--title') parsed.title = next();
-    else if (arg === '--open') parsed.open = next();
-    else if (arg === '--name') parsed.name = next();
+    else if (Object.hasOwn(TEXT_OPTIONS, arg)) parsed[TEXT_OPTIONS[arg as keyof typeof TEXT_OPTIONS]] = next();
     else if (arg === '--text' && parsed.positional[0] === 'answer') parsed.answerText = next();
-    else if (arg === '--project') parsed.project = next();
-    else if (arg === '--why') parsed.why = next();
-    // `--bot` and `--agent` are the old spellings, still read.
-    else if (arg === '--mochi' || arg === '--bot' || arg === '--agent') parsed.bot = next();
-    else if (arg === '--domain') parsed.domain = next();
-    else if (arg === '--instructions-file') parsed.instructionsFile = next();
-    else if (arg === '--picture') parsed.picture = next();
-    else if (arg === '--core') parsed.core = next();
-    else if (arg === '--machine') parsed.machine = next();
     // The first word is still as typed here: `mochi`, or the older `bot` and `agent`.
     else if (arg === '--key' && MOCHI_WORDS.has(parsed.positional[0] ?? '')) parsed.key = next();
-    else if (arg === '--entry') parsed.entry = next();
     // `agents` is the older name of `threads`, normalised after parsing.
     else if (arg === '--tool' && (parsed.positional[0] === 'threads' || parsed.positional[0] === 'agents')) parsed.tool = next();
     else if (arg === '--limit') {
@@ -209,8 +207,6 @@ export function parse(argv: string[]): Parsed {
       if (value !== 'debug' && value !== 'info' && value !== 'warn' && value !== 'error') throw usage('--level expects debug, info, warn or error');
       parsed.level = value;
     }
-    else if (arg === '--thread') parsed.thread = next();
-    else if (arg === '--data-dir') parsed.dataDir = next();
     else if (arg === '--channel') {
       const channel = next();
       if (channel !== 'stable' && channel !== 'dev') throw usage(`unknown channel ${channel}`);
@@ -219,10 +215,6 @@ export function parse(argv: string[]): Parsed {
     else if (arg === '--output' && parsed.positional[0] === 'device' && parsed.positional[1] === 'screenshot') parsed.positional.push(arg, next());
     else if (arg === '--platform' && parsed.positional[0] === 'device' && parsed.positional[1] === 'open') parsed.positional.push(arg, next());
     else if (arg === '--shutdown' && parsed.positional[0] === 'device' && parsed.positional[1] === 'close') parsed.positional.push(arg);
-    else if (arg === '--model') parsed.model = next();
-    else if (arg === '--effort') parsed.effort = next();
-    else if (arg === '--speed') parsed.speed = next();
-    else if (arg === '--profile') parsed.profile = next();
     else if (arg === '--details' && ((parsed.positional[0] === 'workflow' && parsed.positional[1] === 'show')
       || (parsed.positional[0] === 'delegate' && ['list', 'status'].includes(parsed.positional[1] ?? '')))) parsed.positional.push(arg);
     else if (Object.hasOwn(CONTEXT_FLAGS, arg)) parsed.context = { ...parsed.context, [CONTEXT_FLAGS[arg as keyof typeof CONTEXT_FLAGS]]: next() };

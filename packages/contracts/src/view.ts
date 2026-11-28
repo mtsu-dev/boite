@@ -222,18 +222,19 @@ const REDUCED_CSS = '*,*::before,*::after{animation-duration:.001ms!important;an
 const DARK = '--color-background:#101013;--color-surface:#151518;--color-surface-2:#1b1b1f;--color-surface-3:#232327;--color-border:rgba(255,255,255,.07);--color-edge:rgba(255,255,255,.14);--color-hover:rgba(255,255,255,.05);--color-active:rgba(255,255,255,.09);--color-foreground:#ececf1;--color-muted-foreground:#a2a2ad;--color-subtle:#8c8c96;--color-accent:oklch(68% .19 260);--color-accent-soft:oklch(68% .19 260/.18);--color-accent-ink:#101013;--color-success:#4ade80;--color-live:#eab308;--color-danger:#f0716f;--series-1:#d95926;--series-2:#3987e5;--series-3:#199e70;--series-4:#9085e9;--series-5:#c98500;--series-6:#d55181;--series-7:#008300;--series-8:#e66767;--control-glaze:linear-gradient(145deg,rgb(255 255 255/.055),rgb(255 255 255/.012) 48%,transparent);--color-control-surface:#1b1b1f;--color-control-hover:#232327;--shadow-e1:0 1px 2px rgb(0 0 0/.35),inset 0 1px 0 rgb(255 255 255/.05);--shadow-e2:0 8px 24px rgb(0 0 0/.45),0 0 0 1px rgb(255 255 255/.05);';
 const LIGHT = '--color-background:#f3f3f6;--color-surface:#fafafb;--color-surface-2:#fff;--color-surface-3:#ebebef;--color-border:rgba(0,0,0,.08);--color-edge:rgba(0,0,0,.16);--color-hover:rgba(0,0,0,.045);--color-active:rgba(0,0,0,.08);--color-foreground:#1c1c21;--color-muted-foreground:#50505a;--color-subtle:#67676f;--color-accent-ink:#fff;--color-success:#16a34a;--color-live:#ca8a04;--color-danger:#dc2626;--series-1:#eb6834;--series-2:#2a78d6;--series-3:#18a070;--series-4:#4a3aa7;--series-5:#bf8200;--series-6:#e26092;--series-7:#008300;--series-8:#e34948;--control-glaze:none;--color-control-surface:#fff;--color-control-hover:#ebebef;--shadow-e1:0 1px 2px rgb(0 0 0/.08),inset 0 1px 0 rgb(255 255 255/.6);--shadow-e2:0 8px 24px rgb(0 0 0/.12),0 0 0 1px rgb(0 0 0/.06);';
 const SHAPE = "--radius-sm:6px;--radius-md:8px;--radius-lg:12px;--font-sans:ui-sans-serif,system-ui,'Segoe UI',sans-serif;--font-mono:ui-monospace,'Cascadia Mono',Consolas,monospace;--text-xs:12px;--text-sm:13px;--text-base:14px;--text-md:16px;--text-lg:20px;--text-reading:15px;--leading-reading:1.6;--control:30px;--control-sm:26px;--input:34px;--color-reasoning-on:#fff;--dur-1:90ms;--dur-2:150ms;--dur-3:220ms;--ease-out-quint:cubic-bezier(.22,1,.36,1);";
-const DEFAULT_THEME = `:root{color-scheme:dark;${DARK}${SHAPE}}@media (prefers-color-scheme:light){:root{color-scheme:light;${LIGHT}}}`;
+const DEFAULT_THEME = `:root{--boite-view-scheme:dark;${DARK}${SHAPE}}@media (prefers-color-scheme:light){:root{--boite-view-scheme:light;${LIGHT}}}`;
 
 /*
  * Runs in the head before the page's own styles and scripts. It writes the
- * theme into its own <style>, so a later rule of the page still wins; drops
- * the fragment, so a page's own hash never sees it; reports the content
- * height the way the core measures it; and hands a clicked link to the client
- * instead of letting it replace the page inside the conversation.
+ * theme into its own <style>. The root color scheme must match the iframe's
+ * scheme, or the browser can paint an opaque canvas over the chat background.
+ * The bootstrap also drops the theme fragment, reports the measured height
+ * and hands clicked links to the client.
  */
 const BOOTSTRAP = `(function(){var s=document.getElementById("boite-view-theme"),r=document.documentElement,q=${JSON.stringify(REDUCED_CSS)},last=0;` +
+  'r.style.setProperty("color-scheme","var(--boite-view-scheme)","important");' +
   'function post(t,d){if(window.parent===window)return;d.boiteView=1;d.type=t;window.parent.postMessage(d,"*");}' +
-  'function apply(t){if(!s||!t||typeof t!=="object"||!t.vars||typeof t.vars!=="object")return;var c=":root{color-scheme:"+(t.scheme==="light"?"light":"dark")+";",k;for(k in t.vars){if(/^--[a-z0-9-]+$/.test(k))c+=k+":"+String(t.vars[k]).replace(/[;{}<>]/g,"")+";";}s.textContent=c+"}"+(t.reduced?q:"");if(t.reduced)r.setAttribute("data-reduced-motion","");else r.removeAttribute("data-reduced-motion");}' +
+  'function apply(t){if(!s||!t||typeof t!=="object"||!t.vars||typeof t.vars!=="object")return;var c=":root{--boite-view-scheme:"+(t.scheme==="light"?"light":"dark")+";",k;for(k in t.vars){if(/^--[a-z0-9-]+$/.test(k))c+=k+":"+String(t.vars[k]).replace(/[;{}<>]/g,"")+";";}s.textContent=c+"}"+(t.reduced?q:"");if(t.reduced)r.setAttribute("data-reduced-motion","");else r.removeAttribute("data-reduced-motion");}' +
   `try{var m=/[#&]${THEME_KEY}=([^&]*)/.exec(location.hash);if(m){apply(JSON.parse(decodeURIComponent(m[1])));history.replaceState(history.state,"",location.pathname+location.search);}}catch(e){}` +
   'function size(){var h=Math.ceil(r.scrollHeight>r.clientHeight?r.scrollHeight:r.getBoundingClientRect().height);if(h>0&&h!==last){last=h;post("size",{height:h});}}' +
   'window.addEventListener("message",function(e){var d=e.data;if(!d||d.boiteView!==1||e.source!==window.parent)return;if(d.type==="theme")apply(d.theme);if(d.type==="font"&&window.FontFace&&d.data){try{var f=new FontFace(String(d.family),d.data,d.descriptors||{});document.fonts.add(f);f.load().then(size,size);}catch(x){}}});' +
@@ -301,6 +302,12 @@ boite view check <file.html> [--script checks.js] [--scheme dark|light]
                                          check and save captures without publishing
 boite view example                        a complete page in the app's look, to start from
 
+A numbered list, a choice, a few bars or figures need no page: write a
+\`\`\`steps, \`\`\`options, \`\`\`bars or \`\`\`stats fence in the answer, one
+\`title | detail\` line per item (\`label | value | note\` for bars and stats),
+a leading \`* \` to highlight one. Bars need numbers in units that compare
+(\`800 ms\` and \`4.2 s\`); a block that does not fit stays code.
+
 Write one HTML file per visual, for instance .boite/views/orbit.html, run
 \`boite view\` on it, then place it in your answer with a line of its own that
 names the file as an image:
@@ -328,7 +335,8 @@ The page
   or plain HTML, or point at a library already on disk.
 - It sits on the conversation's own background, as wide as the answer: about
   ${VIEW_WIDTH}px on a desktop, ${VIEW_NARROW_WIDTH}px on a phone. Leave html and body without a
-  background. No outer card, border, page title or horizontal padding on the
+  background. Leave color-scheme to Boite so the view follows the app's theme.
+  No outer card, border, page title or horizontal padding on the
   outermost element: the page is part of your answer.
 - Let the content set the height: no 100vh, no height:100% on html or body.
   Give a chart or an animation stage a fixed pixel height or an aspect-ratio.

@@ -16,16 +16,17 @@ import type {
 import { isNativeAgentPart } from './journal/native-agent-parts.ts';
 import { TRAIL_ONLY, UNWRITTEN, pruneOldEvents, pruneTrail, rewindTrailCursor, trailOf } from './journal/trail.ts';
 import { analyze, staleStatistics } from './journal/statistics.ts';
-import { hydrate, hydratePart } from './journal/part-blobs.ts';
+import { hydrate, hydratePart, type HydrateOptions } from './journal/part-blobs.ts';
 import { migrate } from './journal/schema.ts';
 import { openAsyncQuestions, projectQuestion } from './journal/questions.ts';
 import { PROCESS_COLUMNS, PROCESS_FROM, ProcessRows } from './journal/processes.ts';
+import { archivedThreadCounts, getProject, listProjects, projectIconImage, projectIcons, putProjectIcon, type ProjectIconImage } from './journal/project-rows.ts';
 import { cachePages, runWrite } from './journal/statements.ts';
 import { WAL_LIMIT_BYTES, WalCheckpoints, type WalCheckpointOptions } from './journal/wal-checkpoints.ts';
-import { toAccount, toMessage, toProcess, toProject, toThread, toTurn, parseJson } from './journal/rows.ts';
-import { restoreDeletedRows, threadsWhere, VISIBLE_THREADS, writeThread } from './journal/thread-rows.ts';
+import { toAccount, toMessage, toProcess, toThread, toTurn, parseJson } from './journal/rows.ts';
+import { REMOVED_PROJECTS, restoreDeletedRows, threadsWhere, VISIBLE_THREAD_ROWS, VISIBLE_THREADS, writeThread } from './journal/thread-rows.ts';
 import { oneTurn, pageTurns, sumSessionUsage, writeTurn, type SessionUsage } from './journal/turn-rows.ts';
-import type { AccountRow, MessageRow, ProcessRow, ProjectIconRow, ProjectRow, ThreadRow, TurnRow } from './journal/rows.ts';
+import type { AccountRow, MessageRow, ProcessRow, ProjectIconRow, ThreadRow, TurnRow } from './journal/rows.ts';
 import type { DetectedIcon as StoredProjectIcon } from './project-icons.ts';
 import { copyStoredParts, foldStreamingParts, StreamBuffer } from './journal/stream-buffer.ts';
 import { requestSince } from './journal/request-since.ts';
@@ -109,7 +110,7 @@ export class Journal {
       // An incognito conversation never outlives the core that held it.
       this.purgeIncognitoThreads();
       // Started after the writes above: SQLite checkpoints those itself, as before.
-      this.checkpoints = WalCheckpoints.start(this.db, file, this.onError, options.checkpoints);
+      this.checkpoints = WalCheckpoints.start(this.db, file, this.onError, options.checkpoints, () => this.db.exec('PRAGMA shrink_memory'));
     } catch (error) {
       this.checkpoints?.close();
       this.db.close(false);
@@ -198,69 +199,25 @@ export class Journal {
       .run(project.id, project.name, project.path, project.createdAt, project.archived === true ? 1 : 0, project.worktreeDefault === true ? 1 : 0);
   }
 
-  /** Archived project threads, including work delegated by a bot, and how many are done. */
   archivedThreadCounts(): Map<string, { archived: number; done: number }> {
-    const rows = this.db
-      .query(`SELECT project_id, COUNT(*) AS count, COUNT(done_at) AS done FROM threads WHERE archived = 1
-        AND (parent_thread_id IS NULL OR EXISTS (SELECT 1 FROM threads parent WHERE parent.id = threads.parent_thread_id AND parent.agent_session_id IS NOT NULL))
-        AND project_id IS NOT NULL AND id NOT IN (SELECT thread_id FROM thread_deletions) GROUP BY project_id`).all() as { project_id: string; count: number; done: number }[];
-    return new Map(rows.map((row) => [row.project_id, { archived: row.count, done: row.done }]));
+    return archivedThreadCounts(this.db);
   }
 
-  /** What every project's icon reads as, bytes left out: one small query per list. */
-  projectIcons(): Map<string, ProjectIconRow> {
-    const rows = this.db.query('SELECT project_id, kind, tech, version FROM project_icons').all() as (ProjectIconRow & { project_id: string })[];
-    return new Map(rows.map(({ project_id, ...row }) => [project_id, row]));
-  }
-
-  /** The stored image of a project, or null when its icon is not one. */
-  projectIconImage(projectId: string): { mime: string; data: Uint8Array; version: string } | null {
-    const row = this.db
-      .query("SELECT mime, data, version FROM project_icons WHERE project_id = ? AND kind = 'image'")
-      .get(projectId) as { mime: string | null; data: Uint8Array | null; version: string | null } | null;
-    if (row === null || row.mime === null || row.data === null || row.version === null) return null;
-    return { mime: row.mime, data: row.data, version: row.version };
-  }
-
+  projectIcons(): Map<string, ProjectIconRow> { return projectIcons(this.db); }
+  projectIconImage(projectId: string): ProjectIconImage | null { return projectIconImage(this.db, projectId); }
   putProjectIcon(projectId: string, icon: StoredProjectIcon, checkedAt: number): void {
-    this.db
-      .query('INSERT OR REPLACE INTO project_icons (project_id, kind, tech, mime, data, version, source, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(
-        projectId,
-        icon.kind,
-        icon.kind === 'tech' ? icon.id : null,
-        icon.kind === 'image' ? icon.mime : null,
-        icon.kind === 'image' ? icon.bytes : null,
-        icon.kind === 'image' ? icon.version : null,
-        icon.kind === 'image' ? icon.source : null,
-        checkedAt,
-      );
+    putProjectIcon(this.db, projectId, icon, checkedAt);
   }
 
-  /** A listed project; a removed one reads as gone. */
-  getProject(projectId: string): Project | null {
-    const row = this.db.query('SELECT * FROM projects WHERE id = ? AND removed_at IS NULL').get(projectId) as ProjectRow | null;
-    return row === null ? null : toProject(row);
-  }
+  getProject(projectId: string): Project | null { return getProject(this.db, projectId); }
+  listProjects(): Project[] { return listProjects(this.db, false); }
+  listRemovedProjects(): Project[] { return listProjects(this.db, true); }
 
-  listProjects(): Project[] {
-    const rows = this.db.query('SELECT * FROM projects WHERE removed_at IS NULL ORDER BY rowid').all() as ProjectRow[];
-    return rows.map(toProject);
-  }
-
-  /** The projects `projects.remove` took out of the lists, newest first. */
-  listRemovedProjects(): Project[] {
-    const rows = this.db.query('SELECT * FROM projects WHERE removed_at IS NOT NULL ORDER BY removed_at DESC').all() as ProjectRow[];
-    return rows.map(toProject);
-  }
-
-  /** Hides a project and, with it, its threads (`VISIBLE_THREADS`); nothing is deleted. */
-  markProjectRemoved(projectId: string, at: number): void {
+  removeProject(projectId: string, at: number): void {
     this.db.query('UPDATE projects SET removed_at = ? WHERE id = ?').run(at, projectId);
   }
 
-  /** Lists a removed project again, unarchived, under `name`, with its saved threads. */
-  restoreRemovedProject(projectId: string, name: string): void {
+  restoreProject(projectId: string, name: string): void {
     this.db.query('UPDATE projects SET removed_at = NULL, archived = 0, name = ? WHERE id = ?').run(name, projectId);
   }
 
@@ -280,9 +237,32 @@ export class Journal {
     return row === null ? null : toThread(row);
   }
 
+  /** A removed project's conversations still own their checkpoints. */
+  retainsThread(threadId: string): boolean {
+    return this.db.query('SELECT 1 FROM threads WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = ?1)').get(threadId) !== null;
+  }
+
   listThreads(projectId?: string, { includeArchived = true } = {}): ThreadSummary[] {
     const visible = includeArchived ? '' : 'AND archived = 0';
     return projectId === undefined ? threadsWhere(this.db, visible) : threadsWhere(this.db, `${visible} AND project_id = ?`, projectId);
+  }
+
+  /** The root and its direct children, using the thread and parent indexes. */
+  listThreadFamily(threadId: string): ThreadSummary[] {
+    return threadsWhere(this.db, 'AND (id = ? OR parent_thread_id = ?)', threadId, threadId);
+  }
+
+  listChildren(threadId: string, projectId: string | null): ThreadSummary[] {
+    return projectId === null ? threadsWhere(this.db, 'AND parent_thread_id = ?', threadId)
+      : threadsWhere(this.db, 'AND parent_thread_id = ? AND project_id = ?', threadId, projectId);
+  }
+
+  listThreadsOnBranch(cwd: string, branch: string): ThreadSummary[] {
+    return threadsWhere(this.db, 'AND cwd = ? AND branch = ?', cwd, branch);
+  }
+
+  hasThreadsWithStatus(statuses: readonly ThreadSummary['status'][]): boolean {
+    return this.db.query(`SELECT 1 ${VISIBLE_THREAD_ROWS} AND status IN (SELECT value FROM json_each(?)) LIMIT 1`).get(JSON.stringify(statuses)) !== null;
   }
 
   /** Startup reads: only the threads each recovery acts on, not every thread's JSON. */
@@ -319,7 +299,7 @@ export class Journal {
   listDeletedThreads(): DeletedThreadSummary[] {
     const rows = this.db.query(`SELECT t.*, d.deleted_at, (SELECT MAX(created_at) FROM messages WHERE thread_id = t.id AND role = 'user') AS last_user_message_at
       FROM threads t JOIN thread_deletions d ON t.id = d.thread_id
-      WHERE d.root_id = t.id AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.id = t.project_id AND p.removed_at IS NOT NULL)
+      WHERE d.root_id = t.id AND (t.project_id IS NULL OR t.project_id NOT IN (${REMOVED_PROJECTS}))
       ORDER BY d.deleted_at DESC, d.rowid DESC`).all() as (ThreadRow & { deleted_at: number })[];
     return rows.map(row => ({ ...toThread(row), deletedAt: row.deleted_at }));
   }
@@ -357,12 +337,28 @@ export class Journal {
     return rows.length;
   }
 
+  /**
+   * Purges one deleted family whatever its age, keeping its usage: the archive
+   * holds its conversations by then (`transcripts/engine.ts`). Nothing goes
+   * unless `rootId` is still deleted since `deletedAt`: a family restored, or
+   * restored and deleted again, stays. `beforeDelete` reads their rows last.
+   */
+  purgeDeletedFamily(rootId: string, deletedAt: number, beforeDelete?: (threadIds: string[]) => void): string[] {
+    if (this.closed) return [];
+    const rows = this.db.query(`SELECT thread_id FROM thread_deletions WHERE root_id = ?1
+      AND EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = ?1 AND root_id = ?1 AND deleted_at = ?2)`).all(rootId, deletedAt) as { thread_id: string }[];
+    const ids = rows.map(row => row.thread_id);
+    if (ids.length > 0) beforeDelete?.(ids);
+    this.deleteThreads(ids, { keepUsage: true });
+    return ids;
+  }
+
   /** Erase conversation history and its dependent records in one transaction, before client notifications. */
   deleteThreads(threadIds: string[], options: { keepUsage?: boolean } = {}): void {
     if (threadIds.length === 0) return;
     // Foreign keys are off: clear dependent records, including unsent composer input.
     this.db.transaction(() => {
-      // A project removal or trash purge keeps what the usage page counts of the turns; an incognito erase does not.
+      // Trash purge keeps what the usage page counts of the turns; an incognito erase does not.
       if (options.keepUsage === true) keepRemovedTurnUsage(this.db, threadIds);
       // Their turns leave the usage page's slots; the copies just kept count again under no project.
       eraseThreadUsage(this.db, threadIds);
@@ -380,7 +376,7 @@ export class Journal {
         this.db.query('DELETE FROM workflow_requests WHERE run_id IN (SELECT id FROM workflow_runs WHERE root_id = ?)').run(id);
         this.db.query('DELETE FROM workflow_runs WHERE root_id = ?').run(id);
         deleteComposerInput(this.db, id, this.collectComposerAssets);
-        for (const prefix of ['merged-pr-archive:', 'linked-pull-requests:', 'pr-watches:', 'activity:', 'activity-input:', 'activity-choice:', 'move-note:', 'compaction-tail:', 'history-start:', 'agents:handoff:', 'agents:new-session:', 'session-totals:', 'brain-sent:', 'coordination-sent:', 'account-sessions:', 'memory-notices:', 'coordination:', 'coordination-autopause:', 'delegation:', 'delegation-turns:', 'delegation-episode:', 'delegation-worktree:', 'spawn-origin:', 'spawns:', 'worktree-removed:', 'remote-parent:', 'created-by:']) this.deleteSetting(`${prefix}${id}`);
+        for (const prefix of ['merged-pr-archive:', 'linked-pull-requests:', 'pr-watches:', 'activity:', 'activity-input:', 'activity-choice:', 'move-note:', 'compaction-tail:', 'history-start:', 'agents:handoff:', 'agents:new-session:', 'session-totals:', 'brain-sent:', 'coordination-sent:', 'account-sessions:', 'memory-notices:', 'coordination:', 'coordination-autopause:', 'delegation:', 'delegation-turns:', 'delegation-episode:', 'delegation-worktree:', 'spawn-origin:', 'spawns:', 'worktree-removed:', 'remote-parent:', 'created-by:', 'deferred-answers:']) this.deleteSetting(`${prefix}${id}`);
         this.db.query('DELETE FROM threads WHERE id = ?').run(id);
         this.db.query('DELETE FROM thread_deletions WHERE thread_id = ?').run(id);
       }
@@ -551,12 +547,13 @@ export class Journal {
       .run(copy.id, copy.threadId, sourceId);
   }
 
-  getMessage(messageId: string): Message | null {
+  getMessage(messageId: string, threadId?: string): Message | null {
     this.flushDeltas();
     const open = this.stream.openCopy(messageId);
-    if (open !== undefined) return open;
+    if (open !== undefined) return threadId === undefined || open.threadId === threadId ? open : null;
     const row = this.db.query('SELECT * FROM messages WHERE id = ?').get(messageId) as MessageRow | null;
-    return row === null ? null : hydrate(this.db, toMessage(row));
+    if (row === null || (threadId !== undefined && row.thread_id !== threadId)) return null;
+    return hydrate(this.db, toMessage(row));
   }
 
   /** Held parts for a selected live message, without reading or writing its stored JSON. */
@@ -643,7 +640,7 @@ export class Journal {
    * are an index search, descending, with no sort step and no scan of the rest of
    * the thread.
    */
-  listMessagePage(threadId: string, options: { beforeRowid?: number; limit: number; project?: Projection; toolPreviews?: boolean; maxBytes?: number }): MessagePage {
+  listMessagePage(threadId: string, options: HydrateOptions & { beforeRowid?: number; limit: number; project?: Projection; maxBytes?: number }): MessagePage {
     // Subscribers have already received buffered deltas. A reload must not replace
     // those messages with an older projection while the next delta is streaming.
     this.flushDeltas();
@@ -660,7 +657,7 @@ export class Journal {
       for (const row of rows) {
         if (messages.length >= limit || (messages.length && bytes >= budget)) { older = true; break; }
         // One complete attachment-sized message can exceed the page budget.
-        const message = this.currentMessage(row as MessageRow, options.toolPreviews);
+        const message = this.currentMessage(row as MessageRow, options);
         const { sent: projected, size } = sent(message, options.project);
         const next = bytes + size + (messages.length ? 1 : 0);
         if (messages.length && next > budget) { older = true; break; }
@@ -680,7 +677,7 @@ export class Journal {
    * newest one returned while the thread holds newer ones, and is null once
    * the page reaches the last message.
    */
-  listMessagesForward(threadId: string, fromRowid: number, limit: number, project?: Projection, toolPreviews = false, maxBytes = MESSAGE_PAGE_MAX_BYTES): { messages: Message[]; sent: Message[]; after: string | null } {
+  listMessagesForward(threadId: string, fromRowid: number, limit: number, project?: Projection, hydration: HydrateOptions | boolean = false, maxBytes = MESSAGE_PAGE_MAX_BYTES): { messages: Message[]; sent: Message[]; after: string | null } {
     this.flushDeltas();
     const cap = Math.max(1, Math.trunc(limit));
     const statement = this.db.prepare('SELECT * FROM messages WHERE thread_id = ? AND rowid >= ? ORDER BY rowid ASC LIMIT ?');
@@ -689,7 +686,7 @@ export class Journal {
     try {
       for (const row of statement.iterate(threadId, fromRowid, cap + 1)) {
         if (messages.length >= cap || (messages.length && bytes >= maxBytes)) { newer = true; break; }
-        const message = this.currentMessage(row as MessageRow, toolPreviews);
+        const message = this.currentMessage(row as MessageRow, hydration);
         const { sent: projected, size } = sent(message, project);
         const next = bytes + size + (messages.length ? 1 : 0);
         if (messages.length && next > maxBytes) { newer = true; break; }
@@ -726,7 +723,7 @@ export class Journal {
   }
 
   /** The complete reconnect tail, or null when its count or the serialized bytes `project` sends exceed a page. */
-  listMessagesFrom(threadId: string, fromRowid: number, limit: number, project?: Projection, toolPreviews = false): { messages: Message[]; sent: Message[] } | null {
+  listMessagesFrom(threadId: string, fromRowid: number, limit: number, project?: Projection, hydration: HydrateOptions | boolean = false): { messages: Message[]; sent: Message[] } | null {
     this.flushDeltas();
     const statement = this.db.prepare('SELECT * FROM messages WHERE thread_id = ? AND rowid >= ? ORDER BY rowid ASC LIMIT ?');
     const messages: Message[] = [], out: Message[] = [];
@@ -734,7 +731,7 @@ export class Journal {
     try {
       for (const row of statement.iterate(threadId, fromRowid, limit + 1)) {
         if (messages.length >= limit) return null;
-        const message = this.currentMessage(row as MessageRow, toolPreviews);
+        const message = this.currentMessage(row as MessageRow, hydration);
         const { sent: projected, size } = sent(message, project);
         bytes += size + (messages.length ? 1 : 0);
         if (bytes > MESSAGE_PAGE_MAX_BYTES) return null;
@@ -782,8 +779,8 @@ export class Journal {
   }
 
   /** Only selected rows need current parts; reads leave the persistence timer alone. */
-  private currentMessage(row: MessageRow, toolPreviews = false): Message {
-    return this.stream.openCopy(row.id) ?? hydrate(this.db, toMessage(row), toolPreviews);
+  private currentMessage(row: MessageRow, hydration: HydrateOptions | boolean = false): Message {
+    return hydrate(this.db, this.stream.openCopy(row.id) ?? toMessage(row), hydration);
   }
 
   /** One part of a message, reading only that part's large values. */
@@ -808,6 +805,10 @@ export class Journal {
 
   /** The exit of a process whose start wrote its row: the exit columns only. */
   finishProcess(record: ProcessRecord): void { this.processes.finish(record); }
+
+  /** At startup, before any spawn or adoption: closes, with no exit code, the rows a previous core
+   * left open; a process the keeper still holds is written live again when adopted. Returns the count. */
+  closeLiveProcesses(at: number): number { return this.processes.closeLive(at); }
 
   /** Keeps a thread's newest rows, its live rows and the rows its agent cards read. */
   pruneProcesses(threadId: string, keep?: number): number { return this.processes.prune(threadId, keep); }
@@ -890,5 +891,8 @@ export class Journal {
       .query('INSERT INTO events (thread_id, ts, type, version, payload) VALUES (?, ?, ?, ?, ?)')
       .run(event.threadId, event.ts ?? Date.now(), event.type, event.version, JSON.stringify(payload ?? null));
     projectQuestion(this.db, event.type, event.threadId, event.payload);
+    if (event.threadId && (event.type === 'thread.rewound' || (event.type === 'thread.archived' && (event.payload as ThreadSummary).archived))) {
+      this.deleteSetting(`deferred-answers:${event.threadId}`);
+    }
   }
 }

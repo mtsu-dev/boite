@@ -70,11 +70,11 @@ fn fake_command(directory: &Path, version: &str, mode: &str) -> CoreCommand {
 fn state(directory: &Path, shell_version: &str, core: CoreCommand, resident: bool, timeout: Duration) -> CoreState {
     CoreState::new(Launch {
         directory: directory.to_path_buf(),
-        command: Ok(core),
+        channel: Channel::Stable,
+        binary: OnceLock::from(LaunchBinary { command: Ok(core), bundle_hash: None }),
         resources: None,
         resident,
         version: shell_version.to_string(),
-        bundle_hash: None,
         timeout,
     })
 }
@@ -143,7 +143,6 @@ fn force_restart_replaces_only_the_owned_core_that_is_still_unresponsive() {
     assert!(matches!(repeated, Err(error) if error.contains("already changed")));
 }
 
-#[cfg(unix)]
 #[test]
 fn an_update_can_repair_a_failed_start_only_when_it_owns_the_idle_core_lock() {
     let _process_guard = crate::process_test_guard();
@@ -153,26 +152,32 @@ fn an_update_can_repair_a_failed_start_only_when_it_owns_the_idle_core_lock() {
     use crate::update_stop::InstallState;
     let control = Mutex::new(InstallState::Waiting);
     let path = directory.join("core.lock");
-    let other = std::fs::File::create(&path).unwrap();
+    let other = std::fs::OpenOptions::new().read(true).write(true).create_new(true).open(&path).unwrap();
     other.lock().unwrap();
-    let blocked = state.wait_for_install(&control, false, || Ok(true), || panic!("another process holds the core lock"));
+    let blocked = state.wait_for_install(&control, false, true, || Ok(true), || panic!("another process holds the core lock"));
     assert!(blocked.is_err());
     assert!(spawned_pid(&state).is_none(), "admission must not try to start the broken sidecar");
     drop(other);
     // Called off once the lock is held: let go at once, with its record.
     let cancelled = Mutex::new(InstallState::Cancelled);
-    assert!(!state.wait_for_install(&cancelled, false, || Ok(true), || panic!("a cancelled install committed")).unwrap());
+    assert!(!state.wait_for_install(&cancelled, false, true, || Ok(true), || panic!("a cancelled install committed")).unwrap());
+    #[cfg(unix)]
     assert!(!path.exists(), "a cancelled install left its record");
-    assert!(state.wait_for_install(&control, false, || Ok(true), || {}).unwrap());
-    let retry = std::fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
+    assert!(state.wait_for_install(&control, false, true, || Ok(true), || {}).unwrap());
+    let retry = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path).unwrap();
     assert!(matches!(retry.try_lock(), Err(std::fs::TryLockError::WouldBlock)), "startup stays blocked until the installer can take over");
     // A core older than the OS lock reads the record only.
+    #[cfg(unix)]
     assert_eq!(crate::update_stop::legacy_core::start(&directory), format!("busy {}", std::process::id()));
     state.release_hold();
+    #[cfg(windows)]
     retry.try_lock().unwrap();
     drop(retry);
-    assert!(!path.exists(), "a failed install left its record");
-    assert_eq!(crate::update_stop::legacy_core::start(&directory), "started");
+    #[cfg(unix)]
+    {
+        assert!(!path.exists(), "a failed install left its record");
+        assert_eq!(crate::update_stop::legacy_core::start(&directory), "started");
+    }
     std::fs::remove_dir_all(directory).unwrap();
 }
 
@@ -230,7 +235,7 @@ fn a_same_version_core_without_the_installed_bundle_is_replaced() {
     let directory = scratch("stale-bundle");
     let (mut old, old_pid) = running_core(&directory, "2.0.0");
     let mut state = state(&directory, "2.0.0", fake_command(&directory, "2.0.0", "serve"), false, Duration::from_secs(30));
-    state.launch.bundle_hash = Some("installed".to_string());
+    state.launch.binary.get_mut().unwrap().bundle_hash = Some("installed".to_string());
     let outcome = resolve_core(&state);
     let deadline = Instant::now() + Duration::from_secs(5);
     let old_status = loop {
@@ -298,17 +303,15 @@ fn a_core_stopped_for_an_install_stays_stopped_until_the_hold_is_released() {
     let first = current_endpoint(&state, false).expect("the first core answers");
     let first_pid = spawned_pid(&state).unwrap();
     let control = Mutex::new(crate::update_stop::InstallState::Waiting);
-    assert!(state.wait_for_install(&control, false, || Ok(true), || {}).expect("the idle core stops on request"));
+    assert!(state.wait_for_install(&control, false, true, || Ok(true), || {}).expect("the idle core stops on request"));
     assert!(!platform::process::alive(first_pid), "the core outlived the stop");
     // The window asks again once it lost the core: nothing may start.
     assert!(matches!(current_endpoint(&state, false), Err(EndpointError::Message(error)) if error == HELD));
     assert!(spawned_pid(&state).is_none_or(|pid| pid == first_pid), "a core was started during the install");
-    #[cfg(unix)]
     let competing_lock = || {
         let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(directory.join("core.lock")).unwrap();
         lock.try_lock().is_ok()
     };
-    #[cfg(unix)]
     assert!(!competing_lock(), "the install must exclude a new core after the original core exits");
     #[cfg(target_os = "linux")]
     {

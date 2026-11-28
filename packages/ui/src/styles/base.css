@@ -61,7 +61,7 @@ time { font-variant-numeric: tabular-nums; }
 ::highlight(boite-find) {
   background: color-mix(in oklch, var(--color-live) 35%, transparent);
 }
-::highlight(boite-find-current) {
+::highlight(boite-find-current), ::highlight(boite-message-search) {
   background: var(--color-live);
   color: var(--color-accent-ink);
 }
@@ -85,6 +85,17 @@ textarea {
 :focus-visible {
   outline: var(--focus-ring);
   outline-offset: 2px;
+}
+
+/* The field used for a clipboard copy. 16px keeps Safari from zooming on focus. */
+.clipboard-copy-field {
+  position: fixed;
+  top: 0;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  font-size: 16px;
+  opacity: 0;
 }
 
 :where([role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], [role=tab], [role=treeitem], summary, [data-mobile-sheet] button, button.row, a.row):focus-visible {

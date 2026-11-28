@@ -81,11 +81,15 @@ fn adopt(state: &CoreState, core: &CoreFile) -> Resolved {
 
 fn replace_stale(state: &CoreState, core: &CoreFile, version: &str) -> Result<(), String> {
     let launch = &state.launch;
+    #[cfg(target_os = "linux")]
+    let deployment = core.pid.and_then(|pid| super::appimage::running_deployment(&launch.directory, pid));
     shell_log::info("core", "shell.core.stale", format!("the running core is version {version} and this shell {}: stopping it", launch.version),
         json!({ "pid": core.pid, "coreVersion": version, "shellVersion": launch.version }));
-    resident::stop_identified_core(core, &launch.directory.join("core.json"), resident::GRACE).map_err(|error| {
+    let _stopped = resident::stop_identified_core(core, &launch.directory.join("core.json"), resident::GRACE).map_err(|error| {
         format!("the core of version {version} an earlier install left running could not be stopped: {error}")
     })?;
+    #[cfg(target_os = "linux")]
+    if let (Some(_), Some(deployment)) = (_stopped, deployment) { let _ = std::fs::remove_dir_all(deployment); }
     Ok(())
 }
 
@@ -101,6 +105,7 @@ pub(super) fn resolve_core(state: &CoreState) -> Result<Resolved, String> {
         return Err(HELD.to_string());
     }
     let launch = &state.launch;
+    let binary = launch.binary();
     let file = launch.directory.join("core.json");
 
     // The run `core.json` described before this start: the wait below must
@@ -108,7 +113,7 @@ pub(super) fn resolve_core(state: &CoreState) -> Result<Resolved, String> {
     let mut before = None;
     match read_core_file(&file) {
         Ok(Some(existing)) => {
-            match probe(&existing, &launch.version, launch.bundle_hash.as_deref()) {
+            match probe(&existing, &launch.version, binary.bundle_hash.as_deref()) {
                 Probe::Current => return Ok(adopt(state, &existing)),
                 Probe::Stale(version) => replace_stale(state, &existing, &version)?,
                 Probe::Absent => {}
@@ -177,7 +182,7 @@ pub(super) fn resolve_core(state: &CoreState) -> Result<Resolved, String> {
                     && foreign.as_ref().is_none_or(|(_, start, _)| same_core(*pid, start));
                 if let Some(pid) = found.pid.filter(matches_expected) {
                     if foreign.is_some() {
-                        match probe(&found, &launch.version, launch.bundle_hash.as_deref()) {
+                        match probe(&found, &launch.version, binary.bundle_hash.as_deref()) {
                             Probe::Current => return Ok(adopt(state, &found)),
                             Probe::Stale(version) => {
                                 replace_stale(state, &found, &version)?;

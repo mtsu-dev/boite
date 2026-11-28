@@ -1,19 +1,17 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { renderBlock } from '../lib/markdown';
   import { workspace } from '../lib/workspace.svelte';
   import { ParagraphScan, answerText } from '../lib/message-display';
   import { strings } from '../lib/strings';
   import { featureOn } from '../lib/features.svelte';
   import type { Store } from '../lib/store.svelte';
-  import ChatFile from './ChatFile.svelte';
-  import { executableLink, localFileDirectory, openChatFile } from '../lib/local-files';
+  import { fileChecks, linkMenu as fileMenu, openLink, type LinkContext } from '../lib/file-open.svelte';
   import { glides } from '../lib/motion';
   import TypingIndicator from './TypingIndicator.svelte';
   import { selectionClicks } from '../lib/selection-clicks';
   import { longPress } from '../lib/long-press';
   import { contextMenu } from '../lib/context-menu.svelte';
-  import { fullPath } from '../lib/chat-links';
   import { writeClipboardLater } from '../lib/live-input';
   import type { Message } from '@boite/contracts';
   import { answerPieces, viewAt, viewPart, type AnswerPiece } from '../lib/inline-view';
@@ -35,7 +33,6 @@
     /** Set on one slice of a long answer: goes to the heading `id` when another slice draws it. */
     anchor?: (id: string) => void;
   } = $props();
-  let selected = $state<{ path: string; line?: number } | null>(null);
   const directLinks = $derived(featureOn('open-chat-links'));
   const rich = $derived(featureOn('chat-artifacts') || directLinks);
   let opening = false;
@@ -57,24 +54,23 @@
     event.preventDefault();
     openFile(anchor.dataset.filePath, anchor.dataset.fileLine);
   }
+  /** What a file link's click and menu need: the Store and thread it belongs to, and the viewer. */
+  function linkContext(): LinkContext | null {
+    if (!store || !threadId) return null;
+    return { store, threadId, directLinks, show: showMedia };
+  }
   function openFile(written: string, line: string | undefined): void {
-    if (opening) return;
+    const context = linkContext();
+    if (opening || !context) return;
     opening = true;
-    void located(written).then(path => {
-      const directory = localFileDirectory(store, threadId);
-      const preview = (): void => { selected = { path, ...(line ? { line: Number(line) } : {}) }; };
-      // A program is previewed first: only the preview's Open launches it, never the link itself.
-      // The shell opens only a folder or a document inside the thread's folder; what it refuses is previewed here.
-      if (directory && directLinks && !executableLink(path)) return openChatFile(directory, path).catch(preview);
-      preview();
-    }).catch(reason => {
-      store?.reportError(reason, 'minor');
-    }).finally(() => { opening = false; });
+    void openLink(context, written, line ? Number(line) : undefined)
+      .catch(reason => store?.reportError(reason, 'minor'))
+      .finally(() => { opening = false; });
   }
   /**
    * A file or thread link's own menu, in place of the webview's: its "Copy
-   * link" gave the `#file` placeholder, never the path (#779). The path goes
-   * on the clipboard whole, joined to the thread's folder.
+   * link" gave the `#file` placeholder, never the path (#779). A long press
+   * opens it on a phone (`longPress`).
    */
   const MENU_LINK = 'a[data-file-path], a[data-thread-address]';
   const hasMenu = (target: Element) => target.closest(MENU_LINK) !== null;
@@ -86,29 +82,15 @@
       contextMenu.open(event, [{ id: 'copy', label: strings.chat.copyThreadAddress }], () => void copyText(thread));
       return;
     }
-    const written = anchor.dataset.filePath!;
+    const context = linkContext();
+    if (!context) return;
     const line = anchor.dataset.fileLine;
-    contextMenu.open(event, [{ id: 'open', label: strings.chat.openLink }, { id: 'copy', label: strings.chat.copyPath }], id => {
-      if (id === 'open') openFile(written, line);
-      else void copyText(located(written).then(path => fullPath(path, store?.threads.find(item => item.id === threadId)?.cwd)));
-    });
+    const menu = fileMenu(context, anchor.dataset.filePath!, line ? Number(line) : undefined, text => void copyText(text), reason => store?.reportError(reason, 'minor'));
+    contextMenu.open(event, menu.items, menu.pick);
   }
   /** The path is looked up after the pick: the write starts within the gesture, which Safari's clipboard requires. */
   async function copyText(text: string | Promise<string>): Promise<void> {
     try { await writeClipboardLater(Promise.resolve(text)); } catch (reason) { store?.reportError(reason, 'minor'); }
-  }
-  /**
-   * The path a file link names in its thread. An agent often writes a file by
-   * its name alone (`core.md` for `.local/core.md`): a relative path that is not
-   * there as written becomes the file the core finds by that tail. Several at
-   * the same depth are reported rather than guessed.
-   */
-  async function located(path: string): Promise<string> {
-    if (!store?.owner || !threadId || /^(?:[a-z]:)?[\\/]/i.test(path)) return path;
-    const found = await store.locateFile(threadId, path);
-    if (!found.ok || found.value.length === 0) return path;
-    if (found.value.length > 1) throw new Error(strings.artifacts.ambiguous(path, found.value.join(', ')));
-    return found.value[0]!;
   }
   // The scan resumes where the last delta stopped instead of reading the answer again.
   const scan = new ParagraphScan();
@@ -143,7 +125,7 @@
   const drafting = $derived.by(() => {
     void blocks;
     if (!live) return { text: '', drawing: false };
-    const draft = scan.drafting(answer);
+    const draft = scan.drafting(answer, rich);
     // A partial page link waits until its view can replace it.
     return views?.length && !draft.drawing && /^ {0,3}!\[[^\n]*$/.test(draft.text) ? { text: '', drawing: false } : draft;
   });
@@ -158,26 +140,35 @@
   let host = $state<HTMLDivElement>();
 
   /**
-   * A drawn diagram opens in the timeline's viewer, or in one of its own where
-   * there is none (a file preview, a plan). Its picture is an object URL the
-   * viewer gives back once closed.
+   * A diagram or file opens in the timeline's viewer, or in one of its own
+   * (a file preview, a plan). Diagrams have an object URL to give back, while
+   * media links load their URL when the viewer opens.
    */
   const viewers = viewerHost();
+  /** Who the chips of this answer ask whether their file is there (`fileChecks`). */
+  const chipOwner = () => ({ store, threadId });
   let viewing = $state<Gallery | null>(null);
-  function enlarge(item: MediaItem): void {
-    if (viewers) { viewers.open({ items: [item], index: 0 }); viewers.release(item.src); return; }
-    if (viewing) URL.revokeObjectURL(viewing.items[0]!.src);
-    viewing = { items: [item], index: 0 };
+  function showMedia(item: MediaItem): void {
+    const gallery = { items: [item], index: 0 };
+    if (viewers) {
+      viewers.open(gallery);
+      if (item.src) viewers.release(item.src);
+      return;
+    }
+    closeViewer();
+    viewing = gallery;
   }
   /** A ```view block opens as a page the conversation's machine serves. */
   const drawing = $derived.by((): RichMarkdownOptions => {
     const owner = store;
-    return { onenlarge: enlarge, viewBlock: owner ? html => owner.viewBlock(html) : undefined };
+    return { onenlarge: showMedia, viewBlock: owner ? html => owner.viewBlock(html) : undefined };
   });
   function closeViewer(): void {
-    if (viewing) URL.revokeObjectURL(viewing.items[0]!.src);
+    const src = viewing?.items[0]?.src;
+    if (src) URL.revokeObjectURL(src);
     viewing = null;
   }
+  onDestroy(closeViewer);
 
   // Attach copy buttons once the final paragraph has reached the DOM.
   $effect(() => {
@@ -195,8 +186,8 @@
   });
 
   function hangCopy(pre: HTMLPreElement): void {
-    // A diagram's or a view's code has its own buttons.
-    if (pre.parentElement?.matches('.code-block, .md-mermaid, .md-view')) return;
+    // A diagram's, a view's or a native block's code has its own buttons.
+    if (pre.parentElement?.matches('.code-block, .md-mermaid, .md-view, .md-native')) return;
     const wrap = document.createElement('div');
     wrap.className = 'code-block';
     pre.replaceWith(wrap);
@@ -234,7 +225,7 @@
 {#if groups && store && threadId}
   {@const end = groups.at(-1)}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="flow" data-testid="text-part" bind:this={host} use:selectionClicks use:longPress={hasMenu} use:richMarkdown={drawing} onclick={follow} oncontextmenu={linkMenu}>
+  <div class="flow" data-testid="text-part" bind:this={host} use:selectionClicks use:longPress={hasMenu} use:richMarkdown={drawing} use:fileChecks={chipOwner} onclick={follow} oncontextmenu={linkMenu}>
     {#each groups as group (group.key)}
       {#if group.kind === 'view'}
         <InlineView part={viewPart(group.message)!} {store} {threadId} messageId={group.message.id} partIndex={0} />
@@ -253,17 +244,12 @@
   </div>
 {:else}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="prose" class:live class:answer-bubble={bubble && (blocks.length > 0 || hasPending)} class:joined-above={joined?.above} class:joined-below={joined?.below} data-testid="text-part" bind:this={host} use:selectionClicks use:longPress={hasMenu} use:richMarkdown={drawing} onclick={follow} oncontextmenu={linkMenu}>
+  <div class="prose" class:live class:answer-bubble={bubble && (blocks.length > 0 || hasPending)} class:joined-above={joined?.above} class:joined-below={joined?.below} data-testid="text-part" bind:this={host} use:selectionClicks use:longPress={hasMenu} use:richMarkdown={drawing} use:fileChecks={chipOwner} onclick={follow} oncontextmenu={linkMenu}>
     {#each blocks as block, index (index)}
       <!-- Completed Markdown blocks stay mounted while the pending paragraph changes. -->
       <div class="paragraph" data-testid="paragraph">{@html renderBlock(block, rich)}</div>
     {/each}{@render writing()}
   </div>
-{/if}
-{#if selected && rich}
-  {#key `${threadId}:${selected.path}:${selected.line}`}
-    <ChatFile {store} {threadId} path={selected.path} line={selected.line} onclose={() => selected = null} />
-  {/key}
 {/if}
 {#if viewing}{@const view = viewing}<Deferred part={parts.ImageViewer} floating>{#snippet children(ImageViewer)}<ImageViewer items={view.items} index={view.index} onclose={closeViewer} />{/snippet}</Deferred>{/if}
 
@@ -286,6 +272,8 @@
   }
 
   .flow > .prose { max-width: min(100%, var(--prose)); }
+  /* A drawn block lays out to the width it is given, so its run takes the measure, not its text's width. */
+  .flow > .prose:has(:global(.md-native)) { align-self: stretch; }
 
   /* `pretty` keeps a paragraph from ending on one stranded word. */
   .prose :global(p) {
@@ -399,9 +387,90 @@
   }
 
   .prose :global(a:hover) { text-decoration-color: currentColor; }
-  /* A path in a code chip opens the file, yet the chip stays neutral like every
-     other one: its underline says it is a link, not the accent. */
+  /* A thread named in a code chip stays neutral like every other one: its underline says it is a link. */
   .prose :global(code a) { color: inherit; }
+
+  /* A file link is a chip: the file's kind, its name, the whole path on hover
+     (lib/file-links.ts). It reads as a thing to open, not as underlined text,
+     and stays neutral like a code span. The icons are Lucide's, drawn as masks
+     in the text's colour. */
+  .prose :global(a.file-chip) {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    max-width: 100%;
+    padding: 0 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-code-background);
+    color: var(--color-foreground);
+    font-family: var(--font-mono);
+    font-size: 0.875em;
+    font-weight: 400;
+    text-decoration: none;
+    white-space: nowrap;
+    vertical-align: baseline;
+    transition: background-color var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint);
+  }
+
+  /* A chip that carries the agent's own words reads in the answer's type. */
+  .prose :global(a.file-chip:not([data-source])) {
+    font-family: inherit;
+    font-size: 0.95em;
+    white-space: normal;
+  }
+
+  .prose :global(a.file-chip::before) {
+    content: '';
+    flex: none;
+    align-self: center;
+    width: 1.05em;
+    height: 1.05em;
+    background: currentColor;
+    opacity: 0.7;
+    -webkit-mask: var(--chip-icon) center / contain no-repeat;
+    mask: var(--chip-icon) center / contain no-repeat;
+  }
+
+  .prose :global(a.file-chip:hover) {
+    background: var(--color-hover);
+    border-color: var(--color-edge);
+  }
+
+  .prose :global(.file-chip-name) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* The folder shows only when two files of one name share the answer. */
+  .prose :global(.file-chip-dir) { display: none; color: var(--color-muted-foreground); }
+  .prose :global(a.file-chip.collide .file-chip-dir) { display: inline; }
+
+  /* A file found nowhere: still a chip, still clickable to say where it was looked for. */
+  /* Not found: an outline only, its name struck through in the faint ink, still readable. */
+  .prose :global(a.file-chip[data-missing]) {
+    color: var(--color-subtle);
+    border-style: dashed;
+    background: transparent;
+  }
+  .prose :global(a.file-chip[data-missing] .file-chip-name),
+  .prose :global(a.file-chip[data-missing]:not([data-source])) {
+    text-decoration: line-through;
+    text-decoration-color: var(--color-faint);
+  }
+  .prose :global(a.file-chip[data-missing]::before) { background: var(--color-faint); opacity: 1; }
+
+  .prose :global(a.file-chip) { --chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3C/svg%3E"); }
+  .prose :global(a.file-chip[data-kind='code']) { --chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='m10 13-2 2 2 2'/%3E%3Cpath d='m14 17 2-2-2-2'/%3E%3C/svg%3E"); }
+  .prose :global(a.file-chip[data-kind='doc']) { --chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8'/%3E%3Cpath d='M16 13H8'/%3E%3Cpath d='M16 17H8'/%3E%3C/svg%3E"); }
+  .prose :global(a.file-chip[data-kind='image']) { --chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E"); }
+  .prose :global(a.file-chip[data-kind='video']) { --chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2'/%3E%3Cpath d='M7 3v18'/%3E%3Cpath d='M3 7.5h4'/%3E%3Cpath d='M3 12h18'/%3E%3Cpath d='M3 16.5h4'/%3E%3Cpath d='M17 3v18'/%3E%3Cpath d='M17 7.5h4'/%3E%3Cpath d='M17 16.5h4'/%3E%3C/svg%3E"); }
+  .prose :global(a.file-chip[data-kind='audio']) { --chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E"); }
+  .prose :global(a.file-chip[data-kind='archive']) { --chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='20' height='5' x='2' y='3' rx='1'/%3E%3Cpath d='M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8'/%3E%3Cpath d='M10 12h4'/%3E%3C/svg%3E"); }
+  .prose :global(a.file-chip[data-kind='program']) { --chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 11 2-2-2-2'/%3E%3Cpath d='M11 13h4'/%3E%3Crect width='18' height='18' x='3' y='3' rx='2'/%3E%3C/svg%3E"); }
+  .prose :global(a.file-chip[data-kind='folder']) { --chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'/%3E%3C/svg%3E"); }
+
   /* A long press opens the link's own menu, not the phone's preview of `#file`. */
   .prose :global(a[data-file-path]), .prose :global(a[data-thread-address]) { -webkit-touch-callout: none; }
 

@@ -1,6 +1,6 @@
 import {
   WINDOW_CAPTURE_EXCLUDED, WINDOW_CLIP_LIMITS, WINDOW_CONSENT_ANSWERS, WINDOW_CONSENT_TIMEOUT_MS, WINDOW_SHOT_MAX, WINDOW_THUMBNAIL_MAX,
-  windowCropError, windowIdError, windowTargetError,
+  decodedBytes, windowCropError, windowIdError, windowTargetError,
   type AllowedWindowApp, type DesktopWindow, type Message, type MessagePart, type Thread, type WindowCaptureKind, type WindowConsentAnswer, type WindowTarget, type WindowWatch
 } from '@boite/contracts';
 import { fakeWindowPicture } from './window-screen';
@@ -168,12 +168,26 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     if (answer === 'refuse') throw refusal(`the owner refused to let this conversation capture ${window.process}`, { process: window.process });
     if (answer === 'expired') throw refusal(`nobody answered the request to capture ${window.process} within 10 minutes`, { process: window.process });
   };
-  const capture = (thread: Thread, window: FakeWindow, kind: WindowCaptureKind, extra: { path?: string; frames?: number }) => {
-    const thumb = fit(window.width, window.height, WINDOW_THUMBNAIL_MAX);
-    post(thread, {
-      type: 'window_capture', kind, windowId: window.id, process: window.process, width: window.width, height: window.height, at: Date.now(),
-      thumbnail: { data: fakeWindowPicture(thumb.width, thumb.height, Math.floor(Date.now() / 1000), window.hue), ...thumb }, ...extra
-    });
+  const capture = (thread: Thread, window: FakeWindow, kind: WindowCaptureKind, extra: { path?: string; frames?: number }, size: { width: number; height: number } = window) => {
+    const thumb = fit(size.width, size.height, WINDOW_THUMBNAIL_MAX);
+    const at = Date.now();
+    const tick = Math.floor(at / 1000);
+    const part: Extract<MessagePart, { type: 'window_capture' }> = {
+      type: 'window_capture', kind, windowId: window.id, process: window.process, width: size.width, height: size.height, at,
+      thumbnail: { data: fakeWindowPicture(thumb.width, thumb.height, tick, window.hue), ...thumb }, ...extra
+    };
+    const parent = thread.parentThreadId ? ctx.threads.get(thread.parentThreadId) : undefined;
+    if (extra.path && !thread.incognito && !parent?.incognito) {
+      const mimeType = 'image/png';
+      const data = fakeWindowPicture(size.width, size.height, tick, window.hue, mimeType);
+      if (data) {
+        const id = `window-${++ctx.seq}`, name = fileName(extra.path), bytes = decodedBytes(data);
+        ctx.artifacts.set(id, { name, mimeType, bytes, url: `data:${mimeType};base64,${data}` });
+        post(thread, { type: 'artifact', id, name, mimeType, bytes, windowCapture: true });
+        part.artifactId = id;
+      }
+    }
+    post(thread, part);
   };
   const shotSize = (window: FakeWindow, max: number | undefined) => {
     if (max !== undefined && !(Number.isInteger(max) && max >= 0 && max <= 7680)) throw refusal('max must be 0 (full size) or a longest side in pixels up to 7680');
@@ -220,7 +234,7 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
         size = fit(Math.max(1, Math.round(crop.width * scale.x)), Math.max(1, Math.round(crop.height * scale.y)), max ?? WINDOW_SHOT_MAX);
       }
       const written = output(path, window, '');
-      capture(thread, window, 'screenshot', { path: written });
+      capture(thread, window, 'screenshot', { path: written }, size);
       return { windowId: window.id, process: window.process, path: written, ...size, source: { width: window.width, height: window.height } };
     },
     'windows.clip': async ({ threadId, target, seconds, fps = 2, output: path, max }) => {
@@ -232,7 +246,7 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       await consent(thread, window, 'clip');
       const frames = Math.max(1, Math.round(seconds * fps));
       const written = output(path, window, '-clip');
-      capture(thread, window, 'clip', { path: written, frames });
+      capture(thread, window, 'clip', { path: written, frames }, size);
       return { windowId: window.id, process: window.process, path: written, ...size, source: { width: window.width, height: window.height }, frames, seconds, fps };
     },
     'windows.watch': async ({ threadId, target }) => {

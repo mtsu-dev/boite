@@ -4,8 +4,8 @@ import { chmod, mkdir, open, readdir, unlink, writeFile } from 'node:fs/promises
 import { arch, cpus, freemem, homedir, hostname, platform, release, totalmem, userInfo, version as osVersion } from 'node:os';
 import { join } from 'node:path';
 import {
-  AGENT_SUBMIT_REFUSED, createLogAnonymizer, deviceBound, formatLogDuration, formatLogLine, formatLogTime, ISSUE_REPOSITORY, logMatches, summarizeDiagnosticRecords, validateDiagnosticsLogsQuery, validateDiagnosticsParams,
-  type CoreLogRecord, type DiagnosticEnvironment, type DiagnosticProblem, type DiagnosticReportRecord, type DiagnosticsExport, type DiagnosticsExportParams,
+  AGENT_SUBMIT_REFUSED, createLogAnonymizer, deviceBound, FILE_ROUTE, formatLogDuration, formatLogLine, formatLogTime, ISSUE_REPOSITORY, logMatches, summarizeDiagnosticRecords, validateDiagnosticsLogsQuery, validateDiagnosticsParams,
+  type CoreLogRecord, type DiagnosticEnvironment, type DiagnosticProblem, type DiagnosticReportRecord, type DiagnosticsExport, type DiagnosticsExportParams, type DiagnosticsFileExport,
   type DiagnosticsIssue, type DiagnosticsIssueParams, type DiagnosticSummary, type DiagnosticThread, type LogAnonymizer, type LogData, type ThreadSummary,
 } from '@boite/contracts';
 import type { Core } from './core.ts';
@@ -16,6 +16,7 @@ import type { Connection } from './router.ts';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EXPORT_LIMIT = 20_000;
 const EXPORTS_KEPT = 10;
+const EXPORT_MIME = 'text/plain; charset=utf-8';
 const TAIL_BYTES = 64 * 1024;
 const ISSUE_BODY_CHARS = 60_000;
 const PREFILL_BODY_CHARS = 6_000;
@@ -231,6 +232,16 @@ export class Diagnostics {
     const directory = join(this.#core.logs.directory, 'exports');
     const names = (await readdir(directory)).filter(name => /^boite-diagnostics-.*\.txt$/.test(name)).sort();
     for (const name of names.slice(0, Math.max(0, names.length - EXPORTS_KEPT))) await unlink(join(directory, name)).catch(() => undefined);
+  }
+
+  async exportFile(params: Record<string, never>, connection: Connection): Promise<DiagnosticsFileExport> {
+    if (connection.identity.principal !== 'owner') throw refused('diagnostics.exportFile: the owner saves the report');
+    try { validateDiagnosticsParams(params, 'diagnostics.exportFile'); } catch (error) { throw invalidParams((error as Error).message); }
+    const { name, bytes, path, text } = await this.export({}, connection);
+    const ticket = path === null
+      ? this.#core.fileTickets.mintSnapshot({ data: Buffer.from(text, 'utf8'), mime: EXPORT_MIME, name })
+      : this.#core.fileTickets.mint(path, EXPORT_MIME, Date.now(), name);
+    return { name, bytes, url: `${FILE_ROUTE}/${ticket}` };
   }
 
   /** The ends of the raw files no record covers: the resident core's console and the shell's failures. */

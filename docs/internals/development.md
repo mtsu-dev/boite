@@ -182,8 +182,11 @@ by the canonical Git common directory. Linked checkouts share that queue; other
 repositories and running jobs remain independent. Queued preparation rechecks
 cancellation before spawning, and queue time counts against an explicit timeout.
 
-With `worktree: {}`, `threads.create` runs `git worktree add -b` before writing
-the thread, with `-c checkout.workers=0` (one checkout worker per core) unless
+With `worktree: {}`, `threads.create` records the reservation and reserves the
+branch ref at the project's default branch commit before running `git worktree
+add` and writing the thread. Boite checks the remote's default branch with a
+short timeout and falls back to the corresponding local branch when offline.
+Checkout runs with `-c checkout.workers=0` (one checkout worker per core) unless
 the repository's or the user's git config sets `checkout.workers`; the core
 reads that once per repository. The temporary branch is `boite/wt-<id>`, unless explicitly named;
 the directory is `<project>/.boite/worktrees/wt-<id>` by default. A missing Git
@@ -266,8 +269,33 @@ minutes per pass. A worktree qualifies when all of these hold:
 - No live, non-archived thread linked an open pull request whose head is the
   worktree's branch. A delegated worker often runs from another folder and
   makes its worktree with `git worktree add`; its `boite pr link` keeps it.
-- `git status` lists nothing, untracked files included. Ignored files such as
-  dependencies and build output leave with the folder.
+- `git status` lists nothing, including ignored and untracked files. During
+  removal Boite records the move, checks the checkout in a private sibling
+  directory and sets aside its tracked files. The directory must be empty
+  when removed, so a process with an open directory handle can still leave a
+  file that stops cleanup. Boite restores that checkout, or recovers the
+  recorded move on the next open after a crash. Once Git has removed its
+  registration, Boite moves each candidate to a private directory and
+  compares it byte for byte with the content Git checks out from the recorded
+  commit with Git's built-in conversions, including line endings. Paths with
+  a filter attribute keep their captured bytes because external filters can
+  produce different output at the original checkout path. Regular files also
+  stay when the original Git config or attribute sources cannot be established
+  in the comparison, such as with checkout-specific config, conditional
+  includes or a custom attributes file. Boite discards a regular file only
+  while the filesystem excludes writers and the comparison succeeds. A file
+  that stays open for writing can still receive edits after cleanup returns.
+  Files with differences, open writers or unverifiable contents remain in
+  the sibling directory's `saved` folder. If the original name is already
+  occupied, the captured file remains under a `.boite-compacting-*` directory
+  in `saved`, with its original relative path. On macOS, regular files stay there
+  because Boite has no file lease to check for open writers. An empty recovery
+  is removed. Each retained recovery has a `recovery.json` manifest with the
+  original checkout path and commit. Its `saved` folder has no Git pointer.
+  The owner can list the durable inventory with `boite projects recoveries`.
+  Listing publishes saved files from interrupted removals whose Git
+  registrations are already gone, without compacting those files. It also
+  removes inventory entries whose recovery paths are gone.
 - HEAD is on another local branch or remote-tracking ref, or a merged, non-fork
   GitHub pull request has that exact commit as its head. The proof is the one
   [merged pull requests](#merged-pull-requests) use, so a squash
@@ -276,13 +304,15 @@ minutes per pass. A worktree qualifies when all of these hold:
 
 `WorktreeSweep.removeSettled` reads the worktree again and applies the refusals
 of `worktrees.remove` without force, except that a proved merged head passes.
-It runs `git worktree remove` without `--force`, so git itself refuses a change
-that appeared meanwhile. The branch then goes with `git branch -d`, or after a
-merge proof with `git update-ref -d refs/heads/<branch> <sha>`, which deletes it
+After emptying the staged checkout with `rmdir`, it runs `git worktree remove`
+without `--force` to clear Git's registration. With a merge proof, it runs
+`git update-ref -d refs/heads/<branch> <sha>`, which deletes the branch
 only while it still points at the merged commit and no other worktree has it
-checked out. Remote branches are left to the forge's own "delete head branch"
-setting. A worktree kept for a reason is looked at again an hour later, or as
-soon as its HEAD moves.
+checked out. When cleanup relies on another local or remote-tracking ref,
+one Git transaction verifies that ref and deletes the branch. If a fetch
+or prune changes the containing ref first, the branch stays. Remote branches
+are left to the forge's own "delete head branch" setting. A worktree kept for
+a reason is looked at again an hour later, or as soon as its HEAD moves.
 
 Each thread that stood there gets `worktreeRemoved` on its summary: the path,
 branch, whether the branch went, the reason (`pr-merged` or `clean`) and the
@@ -385,24 +415,28 @@ includes running, queued and background work. Pins and unsent
 drafts stay visible while Working is folded and appear once when expanded;
 questions and failures stay in the main list. Done and Archived read only that project's
 archived summaries when expanded, with the same reading and restore actions as
-Recent. Set aside, below the open projects, holds the projects with nothing open
-but conversations archived by hand: archiving is how work is put away to pick up
-later, so those projects keep a card whose body is that list, drawn at once and
-read like open rows, with no Archived pill while the card is unfolded. Working
-and Set aside start open; their headers fold them for the session.
-Two closed folds below, on desktop and phone, hold the projects with no card
+Recent. Inactive (section `paused`), below the open projects, holds the projects whose every
+conversation rests: none at work, none with news, a question, a failure, a pin
+or unsent text, and no new draft, so folding it hides nothing that waits on the
+user. A project leaves it as soon as a conversation starts or needs the user.
+Two folds below, on desktop and phone, hold the projects with no thread to show
 (`ProjectShelf.svelte`, its rows in `ProjectShelfRows.svelte`, loaded at the
-first opening or once the list has drawn): Idle projects, with nothing to do,
-at most a done history, then Archived projects, a step quieter. Choosing an idle row starts a draft
+first opening or once the list has drawn): No threads, without a single
+conversation (archived and done history aside), then Archived projects, a step
+quieter. Their rows are the cards' headers, in one list by name whatever the
+machine, its icon on the header once several are listed. Choosing an idle row starts a draft
 there; choosing an archived row restores the project, then starts a draft. Under
 the pointer a row archives (idle) or restores and removes (archived) without
 opening anything; its full menu opens with a right click or a long press, and an
 idle row takes a dragged thread. An idle project
-with done conversations shows that count on its row, which unfolds
+with done or archived conversations shows each count on its row, which unfolds
 that history under it. Creating or restoring a conversation or starting a draft
 returns its project to the open cards. In the custom order a project moves among
 the cards of its own section.
-Group idle projects, in settings and the Display options panel, can be disabled
+Every fold starts from one table, `PROJECT_FOLDS_OPEN`: Working and Inactive open,
+No threads and Archived projects closed. A header folds its section for the
+session; the next launch starts from the table again.
+Group inactive projects, in settings and the Display options panel, can be disabled
 to keep every project but the Working ones as open cards, in their normal order. Both grouping preferences persist on
 the device. Expansion follows the owning project between desktop and phone for
 the current session. Phone search exposes matching
@@ -537,7 +571,9 @@ The question and the hint make Done the default (`DONE_RULE`): only something
 new for the user or a part of the task beyond these PRs keeps a thread open.
 The guide of a top-level conversation (not a subagent's or a mochi's, which
 `agent.done` refuses) also tells its agent to run `boite thread done` in the
-turn its last PR merged, which saves the question's turn.
+turn its last PR merged, which saves the question's turn, unless its reply
+waits on the user (a build to try, a question, a choice or an offer): run in
+the same turn, Done would hide a reply the user has not read yet.
 
 `agent.done` (`threads/agent-done.ts`) puts only the caller's own top-level
 conversation in Done; mochis' threads and sub-threads are refused. While a turn
@@ -645,6 +681,7 @@ bun run dev:instance            # build what is stale, start, print the address
 bun run dev:instance status
 bun run dev:instance cli projects
 bun run dev:instance capture shot.png --width 1280 --height 800
+bun run dev:instance restart     # pass active work to the new core
 bun run dev:instance stop
 ```
 
@@ -678,6 +715,11 @@ It also prints how to open, drive and stop the instance:
   `boite`, `--channel dev` included, to that thread's own core, so
   `projects add` would land there. The subcommand passes none of them on and
   names the instance's data directory.
+- `restart` asks the live core holding the instance's data for
+  `POST /shutdown-for-update` with its expected PID. It waits for that process
+  to exit and starts this checkout again on the same data. If the recorded
+  core already exited, restart goes ahead without an acknowledgment. Pass
+  any `--env` options needed by the next instance.
 - `stop` asks the core to shut down over `POST /shutdown`, waits for the
   process captured at spawn and removes temporary data and the output
   file. The state keeps each
@@ -896,12 +938,12 @@ See [releasing](releasing.md) for bundle configurations and installed layouts.
 The Windows suite defaults to
 `apps/shell/src-tauri/target/release/boite-shell.exe`, or
 `BOITE_E2E_SHELL_EXE` when set (a `build:shell:dev` leaves
-`boite-dev-shell.exe` instead, which the default never names). It rejects a missing or stale shell, UI, core or
-worker before running interactions. With a shared Cargo target, preserve the
-shell executable, installer, adjacent core bundle/runtime, workers and CLI
-shims from the same build before another worktree replaces them. Test that copy
-through `BOITE_E2E_SHELL_EXE`. Filenames and timestamps alone do not identify the
-branch; inspect the running UI over CDP for installation claims.
+`boite-dev-shell.exe` instead, which the default never names). It checks the
+shell's embedded build marker against this checkout's shell and UI sources,
+target and channel. The Tauri build driver captures the executable beside this
+checkout's staged core and CLI, even when Cargo uses a shared target. An
+explicit `BOITE_E2E_SHELL_EXE` still needs a matching build marker. The suite
+also checks the core and workers before running interactions.
 
 A hidden shell whose page never reaches the debugging port fails with "the
 browser never exposed a page", followed by every distinct answer the port gave
@@ -1299,8 +1341,19 @@ service worker precaches default faces. `lib/fonts.ts` and the boot script apply
 both preferences before the first paint and preload the selected text face; the
 code face loads when mono text first draws. System choices use installed
 fonts. In the shell, `Ctrl+=`, `Ctrl+-` and `Ctrl+0` control WebView zoom from
-50% to 200%, restored before the window appears. The panel browser has separate
-zoom; plain browsers keep their native shortcut behavior.
+50% to 200%, restored before the window appears. The wheel is the bindable
+`zoom-wheel` command, off by default ([keybindings.md](keybindings.md)): with
+no chord no listener is installed. Bound, say to `mod+wheel`, it walks the same
+steps: the first delta of a turn steps at once, then one step per 100 px
+or 3 lines, so a pinch's small deltas cannot run away. A window listener takes
+the wheel before the terminal or a list scrolls, on the chord's exact
+modifiers, cancellable only while they are down so that plain scrolling never
+waits on the main thread; `App.svelte` reinstalls it whenever the chord
+changes. A pinch is a Ctrl wheel with no key down, so it zooms only on a Ctrl
+chord. A view marked `data-wheel-zoom` (the image viewer, a picture in the
+file panel) keeps every wheel whatever the chord, and the edge scrollbars
+leave alone a wheel the zoom takes. The panel browser has separate zoom; plain
+browsers keep their native shortcut behavior.
 
 ### File attachments
 

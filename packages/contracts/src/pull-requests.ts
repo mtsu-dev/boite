@@ -71,6 +71,8 @@ export interface PullRequestWatchSeen {
   head: string;
   base: string;
   checks: { total: number; running: number; failed: number };
+  /** First failing check on the current base tip, when GitHub reports one. */
+  baseFailure?: PullRequestBaseFailure;
   conflicting: boolean;
   /** Behind a base that requires branches up to date; absent from what a core older than it saw. */
   behind?: boolean;
@@ -80,6 +82,7 @@ export interface PullRequestWatchSeen {
    */
   queue?: { position: number } | null;
 }
+export interface PullRequestBaseFailure { sha: string; name: string; conclusion: string; url: string }
 export interface PullRequestComment { author: string; body: string; url: string; at: string; path?: string; line?: number; state?: string }
 export interface PullRequestCheck { name: string; state: string; url: string }
 export interface PullRequestReview {
@@ -140,7 +143,7 @@ export function settledLinks(links: readonly Pick<LinkedPullRequest, 'url' | 'nu
  * the default: an agent that keeps a thread open with nothing to say leaves the
  * user to close it by hand, and every later turn rereads the whole history.
  */
-const DONE_RULE = 'Run `boite thread done` now, unless the user still needs something new from this thread (a result they have not seen, a failure, a decision to make) or its task has a part left beyond these pull requests (another step they asked for, a parallel PR). Nothing else keeps it open: not a recap of what they already read, main\'s CI, cleanup or an optional idea. The thread goes to Done once this turn ends; the user can restore it.';
+const DONE_RULE = 'Run `boite thread done` now, unless the user still needs something new from this thread (a result they have not seen, a failure, a decision to make, a build or change to try, something asked or offered they have not answered) or its task has a part left beyond these pull requests (another step they asked for, a parallel PR). Nothing else keeps it open: not a recap of what they already read, main\'s CI, cleanup or an optional idea. The thread goes to Done once this turn ends; the user can restore it.';
 
 /** The prompt that asks, and the short line the timeline shows for it. */
 export function doneQuestion(settled: SettledPullRequests): { text: string; label: string } {

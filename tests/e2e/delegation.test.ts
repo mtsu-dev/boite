@@ -4,6 +4,7 @@ import { DEFAULT_DELEGATION_CONFIG } from '../../packages/contracts/src/index.ts
 import { connect, type CoreClient } from '../../packages/core/src/client.ts';
 import { BrowserPage } from './lib/cdp.ts';
 import { pairingUrlOf, startCore, type RunningCore } from './lib/core.ts';
+import { mobileAction, screensSettled } from './lib/mobile.ts';
 
 let core: RunningCore;
 let page: BrowserPage;
@@ -51,7 +52,10 @@ test('inspect and stop a real delegated thread from the panel, which launches no
   await page.waitFor('document.querySelector("[data-testid=delegation-activity]")?.getAttribute("aria-expanded") === "true"');
   expect(await page.evaluate('document.querySelectorAll("[data-testid=delegation-agent][data-state=working]").length')).toBe(1);
   await page.click('[data-testid="delegation-activity"]');
-  await openAgents();
+  await page.click('[data-testid="composer-foot-fold"]');
+  expect(await page.text('[data-testid="agent-dock-model"]')).toBe('Echo');
+  await page.click('[data-testid="composer-foot-fold"]');
+  await page.click('[data-testid="agent-dock-panel"]');
   await page.waitFor('!!document.querySelector("[data-testid=delegation-member]")');
   expect(await page.evaluate('document.querySelector("[data-testid=delegation-member-route]").title')).toContain('Echo · Echo');
   expect(await page.evaluate('!!document.querySelector("[data-testid=delegation-active] [data-testid=delegation-member]")')).toBe(true);
@@ -108,8 +112,7 @@ test('a newly started workflow appears above the composer without reopening the 
   await page.waitFor('document.querySelector("[data-testid=agent-dock]")?.dataset.runs === "1"');
   expect(await page.text('[data-testid="agent-dock-label"]')).toBe('Waiting on 1 workflow');
   expect(await page.text('[data-testid="agent-dock-names"]')).toContain('Check the workflow indicator');
-  // The line's two controls: its fold and a Stop that names what it stops.
-  expect(await page.evaluate('[...document.querySelectorAll("[data-testid=agent-dock] button")].map(button => button.dataset.testid)')).toEqual(['composer-foot-fold', 'agent-dock-stop']);
+  expect(await page.evaluate('[...document.querySelectorAll("[data-testid=agent-dock] button")].map(button => button.dataset.testid)')).toEqual(['composer-foot-fold', 'agent-dock-panel', 'agent-dock-stop']);
   expect(await page.text('[data-testid="agent-dock-stop"]')).toBe('Stop workflows');
   await page.waitFor('document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity || a.timeline !== document.timeline)');
   await page.screenshot(join(import.meta.dir, '.artifacts/workflow-dock-desktop.png'));
@@ -122,8 +125,58 @@ test('a newly started workflow appears above the composer without reopening the 
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.waitFor('document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity || a.timeline !== document.timeline)');
   await page.screenshot(join(import.meta.dir, '.artifacts/workflow-dock-phone.png'));
+  await page.click('[data-testid="agent-dock-panel"]');
+  await page.waitFor(`document.querySelector('[data-testid=delegation-run][data-run-id="${run.id}"]')`);
+  await page.click('[data-testid="panel-close"]');
+  await page.waitFor('!document.querySelector("[data-testid=right-panel]")');
   // Stop on the waiting line stops the run.
   await page.click('[data-testid="agent-dock-stop"]');
   await page.waitFor('!document.querySelector("[data-testid=agent-dock]")');
   expect(page.errors()).toEqual([]);
 }, 25_000);
+
+test('desktop and phone rows show when a conversation waits on a subagent on another machine', async () => {
+  const worker = await startCore({ env: { BOITE_MACHINE_NAME: 'Review station' } });
+  const remote = await connect(worker.url, worker.token);
+  try {
+    await owner.call('group.create', { name: 'Review group' });
+    const { self } = await remote.call('group.join', { invite: (await owner.call('group.invite', {})).invite });
+    await remote.call('settings.set', { groupThreads: true });
+    await remote.call('projects.add', { path: worker.dataDir, name: 'Index checks' });
+    const project = (await owner.call('projects.list', {})).find(entry => entry.name === 'Delegation checks')!;
+    const account = (await owner.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
+    const parent = await owner.call('threads.create', {
+      projectId: project.id, providerId: 'echo', accountId: account.id, model: 'echo', title: 'Review index formatting'
+    });
+    const desktopRow = `[data-testid="thread-row"][data-thread-id="${parent.id}"]`;
+    const phoneRow = `[data-testid="mobile-thread-${parent.id}"]`;
+    const chip = '[data-testid="thread-subagents"][data-count="1"].pulse';
+    const hasWait = (row: string) => `!!document.querySelector('${row} [data-state="delegating"] ${chip}')`;
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1310, height: 820, deviceScaleFactor: 1, mobile: false });
+    await page.waitFor(`document.querySelector('${desktopRow}')`);
+    await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    const child = await owner.call('delegation.spawn', {
+      threadId: parent.id, machine: self.slice(0, 8), project: 'Index checks', title: 'Check spacing',
+      task: 'Check spacing [sleep:60000]', requestId: 'remote-row'
+    });
+    await page.waitFor(hasWait(desktopRow));
+    await page.click(desktopRow);
+    await page.waitFor('document.querySelector("[data-testid=agent-dock]")?.dataset.count === "1"');
+    expect(await page.text('[data-testid="agent-dock-label"]')).toBe('Waiting on 1 subagent');
+    await page.waitFor(`document.querySelector('${desktopRow} [data-testid="thread-elapsed"]')`);
+    await page.settleAnimations();
+    await page.screenshot(join(import.meta.dir, '.artifacts', 'remote-subagent-wait-desktop.png'));
+
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await mobileAction(page, 'mobile-conversations');
+    await page.waitFor(hasWait(phoneRow));
+    await page.waitFor(screensSettled);
+    await page.screenshot(join(import.meta.dir, '.artifacts', 'remote-subagent-wait-phone.png'));
+    await owner.call('delegation.stop', { threadId: parent.id, agentId: child.thread.id });
+    await page.waitFor(`document.querySelector('${phoneRow}') && !(${hasWait(phoneRow)})`);
+    expect(page.errors()).toEqual([]);
+  } finally {
+    remote.close();
+    await worker.stop();
+  }
+}, 40_000);

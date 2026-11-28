@@ -21,9 +21,10 @@ appears in its answer with a download button.
 
 - Images, videos and sounds show in the conversation. A video never plays on
   its own and has seek and full screen controls.
-- An image opens in a viewer with zoom, fit and download.
-- An image over 5 MB shows its name and size first. Press Load image to see
-  it.
+- Images, including those over 5 MB, load a small preview as you scroll.
+  Click the preview to load the original in a viewer with zoom, fit and
+  download. Animated images play in the viewer. If a preview is unavailable,
+  open the image from its card.
 - A PDF has an inline preview while Chat files and previews is on (below).
   Other files are a download.
 - The file is a copy taken when the agent sent it. It stays downloadable after
@@ -33,19 +34,41 @@ appears in its answer with a download button.
 While a turn runs, each file shows where the agent sent it. Once the turn
 ends, the files move under the last thing the agent wrote.
 
+Ask the agent to show a check it ran. It can publish the recorded command,
+the line that shows its result, what still needs checking and a capture.
+That evidence appears under the answer when the turn ends.
+
+An image the agent only opens to look at, a screenshot it checks for
+instance, stays in the line that sums up its steps. Click that line to see the
+step and its image.
+
 ![An image and a video sent by the agent](images/chat-media-desktop.png)
 
 ## Links in answers
 
 Settings, General, Chat files and previews is on by default. Each device keeps
-its own choice. With it on, a file path in an answer becomes a link:
+its own choice. With it on, a file path in an answer becomes a chip: an icon
+for the kind of file, its name, and the whole path when you hover it. Two files
+of the same name in one answer show their folder too. A chip turns grey and
+dashed when the file is not there.
 
 - Markdown links, bare web addresses, absolute paths, `file:///` links and
-  paths written in inline code.
-- A click opens a preview of the file from the conversation's machine.
+  paths written in inline code become chips or links.
+- A click on a file of the conversation's folder opens it in the side panel,
+  at its line. A picture or a video opens in the viewer.
+- A path on your computer, such as a mapped drive `N:\dev\game.exe` named by
+  an agent on a Linux machine, opens on your computer in the desktop app.
+- A program (`.exe`, `.msi`, a script, a shortcut) never starts on a click:
+  Boite asks first, with Launch, Show in folder and Cancel.
+- A file that is not found shows a notice with where Boite looked and a Copy
+  path button.
+- Right-click a chip, or press and hold it on a phone, for Open, Show in
+  folder, Copy path and Copy relative path.
 - A relative path that is not found as written is looked up by its end, so
   `core.md` can open `.local/core.md`. When two files match, Boite names both
   instead of guessing.
+- Copying a selection keeps paths as the agent wrote them. A Markdown link
+  with its own label keeps that label. To get its path, use Copy path.
 - An image hosted on the web stays a link, so reading an answer contacts no
   site.
 
@@ -55,12 +78,9 @@ agent sent stay downloadable.
 ### Open links in their own apps
 
 Settings, General, Open chat links in their apps is off by default and exists
-only in the desktop app. On, a click on a document or folder inside the
-conversation's folder opens it in its default app. Programs, scripts, shortcuts
-and files outside that folder never open this way: they show in the preview.
-A program on this computer starts only from the preview's Open button.
-Only links from this computer open this way. On another machine or a phone, links keep the
-preview.
+only in the desktop app. On, a click on a document or folder of a conversation
+on this computer opens it in its default app instead of the side panel. A
+program still asks first.
 
 ## Pages drawn in an answer
 
@@ -86,6 +106,10 @@ Answers, plans and Markdown previews draw these blocks:
 | `$$...$$`, `\[...\]` or a `math` block | A formula on its own line |
 | `\(...\)` | A formula in the line |
 | A `view` fenced block | A small page, as above |
+| A `steps` fenced block | Numbered steps joined by a line |
+| An `options` fenced block | Choice cards that wrap across the column |
+| A `bars` fenced block | Horizontal bars measured against each other |
+| A `stats` fenced block | A grid of figures |
 | `$...$` | Text, so a price or `$PATH` stays as written |
 
 - A diagram has a bar with a copy button, a switch between Diagram and Code,
@@ -95,17 +119,26 @@ Answers, plans and Markdown previews draw these blocks:
 - Copying a selection that holds a diagram or a formula copies its source.
 - A diagram that cannot be read shows its code and the reason. A formula that
   cannot be read stays underlined, with the reason as a tooltip.
+- `steps`, `options`, `bars` and `stats` are built from one line per item in
+  answers, plans and Markdown previews (in reasoning they stay code):
+  `title | detail`, or `label | value | note` for bars and figures. A line that
+  starts with `* ` stands out in your accent color. Their bar switches between
+  Block and Code. Bars only draw when every value is a number in units that
+  compare, such as `800 ms` and `4.2 s` or `120 €` and `€80`; otherwise, like a
+  block with more than 30 items, it stays code.
 
 ## Limits
 
 - Links and images inside a diagram are never drawn.
 - Mermaid features the renderer does not support show as an error with the
   code.
-- Previews from a link stay inside the conversation's working directory.
-- On a paired phone a link to a local file does not open. Ask the agent to
-  attach the file instead.
-- A drive mapped on your computer does not give another machine access to a
-  path. To get a file from that machine, ask its agent to attach it.
+- The side panel shows only files inside the conversation's folder. A file
+  elsewhere on another machine shows a notice instead: ask its agent to attach
+  it.
+- A paired phone opens the conversation's files in the panel, but cannot open
+  a path of your computer or show a file in its folder.
+- A network share (`\\server\share`) never opens from a chip. A drive
+  mapped to a letter does.
 - An experimental kit of ready-made controls exists for agents that write
   pages. It is a prototype and is not loaded into pages by default.
 

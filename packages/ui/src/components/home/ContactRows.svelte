@@ -5,6 +5,7 @@
   import { fill, strings } from '../../lib/strings';
   import type { Store } from '../../lib/store.svelte';
   import { workspace } from '../../lib/workspace.svelte';
+  import { contactsShown } from '../../lib/contacts-rail.svelte';
 
   /**
    * One row per contact of every listed machine, a contact several machines
@@ -14,7 +15,8 @@
    */
   let { store }: { store: Store } = $props();
   const labels = $derived(strings.contacts);
-  const machines = $derived(workspace.machinesOr(store));
+  // A machine whose owner turned contacts off lists none: its rows would open a page it no longer shows.
+  const machines = $derived(workspace.machinesOr(store).filter(machine => contactsShown(machine.store)));
   const watched = watchContacts(() => machines);
   const rows = $derived(contactRows(watched()));
   const show = (owner: Store, coreId: string | null) => void openContact(owner, coreId);

@@ -1,4 +1,6 @@
 import type { ReadingPosition } from './store/reading-pages.svelte';
+import type { SlotTotals } from './message-window';
+import type { TimelineRow } from './timeline-rows';
 
 /**
  * The row at the top of the reader's view and how far its top is from the
@@ -26,24 +28,66 @@ export class ReadingAnchor {
   held = false;
   /** The rows on the page by id, kept by the list as it mounts them: an anchor is found without searching every node of the thread. */
   readonly nodes = new Map<string, HTMLElement>();
+  #frame = 0;
+  #dirty = false;
+
+  get pending(): boolean { return this.#frame !== 0; }
 
   constructor(saved: ReadingPosition | undefined) {
     this.current = saved?.anchor ? { id: saved.anchor.row ?? saved.anchor.id, offset: saved.anchor.offset, message: saved.anchor.id } : undefined;
     this.restoring = Boolean(saved?.anchor && !saved.pinned);
   }
 
+  /** Restore the saved heights and locate the reader within the current rows. */
+  restore(saved: ReadingPosition | undefined, slots: SlotTotals<TimelineRow>, rows: TimelineRow[], order: string, revision: string | undefined): number {
+    if (!saved) return 0;
+    if (saved.slots && (saved.rows?.deref() === rows || revision && saved.revision === revision)) {
+      slots.restore(saved.slots, rows, order);
+    }
+    const anchor = this.current;
+    if (saved.pinned || !anchor) return saved.top;
+    const at = rows.findIndex(row => row.id === anchor.id);
+    return at < 0 ? saved.top : Math.max(0, (slots.totals(rows, order)[at] ?? 0) - anchor.offset);
+  }
+
   /** Reads the anchor: the first row of `column`, whose children the rows are, that reaches the viewport. */
-  remember(viewport: HTMLElement | undefined, column: HTMLElement | undefined): void {
+  remember(viewport: HTMLElement | undefined, column: HTMLElement | undefined, estimate?: HTMLElement): void {
+    this.cancelPending();
     if (!viewport?.isConnected || !viewport.clientHeight || this.restoring || this.held || !column) return;
     const top = viewport.getBoundingClientRect().top;
-    for (let node = column.firstElementChild as HTMLElement | null; node; node = node.nextElementSibling as HTMLElement | null) {
-      const id = node.dataset['mid'];
-      if (!id) continue;
-      const box = node.getBoundingClientRect();
-      if (box.bottom <= top) continue;
-      this.current = { id, offset: box.top - top, message: node.dataset['message'] ?? id };
+    const start = estimate?.parentElement === column ? estimate : column.firstElementChild;
+    for (let node = start; node; node = node.nextElementSibling) {
+      const visible = visibleRow(node, top);
+      if (!visible) continue;
+      this.current = visible;
+      // The slot uses estimated heights. Check back in case it put the first
+      // visible row before the candidate. Spacers and gap rows cannot anchor.
+      for (let previous = node.previousElementSibling; previous; previous = previous.previousElementSibling) {
+        if (!(previous instanceof HTMLElement) || !previous.dataset['mid']) continue;
+        const earlier = visibleRow(previous, top);
+        if (!earlier) break;
+        this.current = earlier;
+      }
       return;
     }
+  }
+
+  /** Wait until scrolling pauses for an animation frame before reading layout. */
+  schedule(remember: () => void): void {
+    this.#dirty = true;
+    if (this.#frame) return;
+    const step = () => {
+      if (this.#dirty) { this.#dirty = false; this.#frame = requestAnimationFrame(step); return; }
+      this.#frame = 0;
+      remember();
+    };
+    this.#frame = requestAnimationFrame(step);
+  }
+
+  cancelPending(): void {
+    if (this.#frame) cancelAnimationFrame(this.#frame);
+    this.#frame = 0;
+    this.#dirty = false;
   }
 
   /** Keeps `anchor` until the reader moves it (`release`). */
@@ -73,4 +117,13 @@ export class ReadingAnchor {
     const message = anchor.message ?? anchor.id;
     return { id: message, offset: anchor.offset, ...(message !== anchor.id ? { row: anchor.id } : {}) };
   }
+}
+
+function visibleRow(node: Element, top: number): RowAnchor | undefined {
+  if (!(node instanceof HTMLElement)) return undefined;
+  const id = node.dataset['mid'];
+  if (!id) return undefined;
+  const box = node.getBoundingClientRect();
+  if (box.bottom > top) return { id, offset: box.top - top, message: node.dataset['message'] ?? id };
+  return undefined;
 }

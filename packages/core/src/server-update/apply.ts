@@ -135,8 +135,17 @@ const writeResult = (plan: ServerUpdatePlan, error: string | null) =>
 async function becomesHealthy(plan: ServerUpdatePlan, platform: ServerUpdatePlatform, options: ApplyOptions): Promise<boolean> {
   const health = options.health ?? (async (url) => {
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(2000) });
-      return response.ok ? await response.json() as { ok: boolean; version: string; pid: number } : null;
+      const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(2000) });
+      if (!response.ok) return null;
+      const answer = await response.json() as { ok: boolean; version?: string; pid?: number };
+      if (!answer.ok) return null;
+      if (answer.version !== undefined && answer.pid !== undefined) return { ok: true, version: answer.version, pid: answer.pid };
+      // An explicit LAN bind serves liveness only. The owner's state file
+      // identifies the listening process after its startup has completed.
+      const state = JSON.parse(readFileSync(join(plan.dataDir, 'core.json'), 'utf8')) as { version: string; pid: number; port: number; host: string };
+      const endpoint = new URL(url);
+      if (state.pid === plan.originalPid || state.port !== Number(endpoint.port || 80) || state.host !== endpoint.hostname) return null;
+      return { ok: true, version: state.version, pid: state.pid };
     } catch { return null; }
   });
   const deadline = Date.now() + (options.healthTimeoutMs ?? 30_000);

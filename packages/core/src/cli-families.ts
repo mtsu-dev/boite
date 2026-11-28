@@ -14,6 +14,7 @@ export { WINDOW_HELP, WINDOW_REQUEST_TIMEOUT_MS, windowCommand } from './window-
 export { SECRET_HELP, secretCommand } from './secret-cli.ts';
 export { teamCli } from './teams-entry.ts';
 export { LOGS_HELP, issueCommand, logsCommand } from './logs-cli.ts';
+export { TRANSCRIPTS_HELP, transcriptsCommand } from './transcripts-cli.ts';
 export { botCommand } from './agents/cli.ts';
 export { DELEGATE_ACTIONS, delegateCommand } from './delegate-cli.ts';
 export { AgentsUsage, WAIT_MAX_S, agentsCommand } from './agents-cli.ts';
@@ -25,5 +26,5 @@ export { VIEW_EXAMPLE } from './view-example.ts';
 export { agentSettingArg, clipped, pictureDataUrl, settingValue, settingsPlace } from './cli-settings.ts';
 export { pluginAction, pluginCommand } from './plugin-cli.ts';
 export { readSettingsFor, settingsLines, stateCommand } from './cli-state.ts';
-export { connect } from './client.ts';
-export { BOT_CARD_NOTE, VIEW_HELP } from '@boite/contracts';
+export { connect, isMethodNotFound } from './client.ts';
+export { applyAgentTaskChange, BOT_CARD_NOTE, VIEW_HELP } from '@boite/contracts';

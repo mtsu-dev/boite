@@ -30,6 +30,7 @@ import { given, MAX_PENDING, NO_BOT, THREAD_ID, want, type HostAsk, type StoredR
 import type { ContactStore } from './store.ts';
 import { contactNotice } from './answers.ts';
 import { memberAdmission } from './admission.ts';
+import { contactsOffWord } from './switch.ts';
 import { contactFace } from './face.ts';
 
 /** The member's first offer must come back before the caller's own request times out. */
@@ -145,8 +146,8 @@ export class ContactHostAsks {
           ...(request.gitRemote ? { gitRemote: request.gitRemote } : {}),
         }), OFFER_MS);
       } catch (error) {
-        // The host's signed refusal is final; silence is retried.
-        if (error instanceof PeerRefusal) this.#refuse(id, error.message);
+        // The host's signed refusal is final, except its contacts switched off: that waits like silence.
+        if (error instanceof PeerRefusal && !contactsOffWord(error.message)) this.#refuse(id, error.message);
         return;
       }
       const filed = answer as Partial<ContactRequest> | null;
@@ -247,8 +248,8 @@ export class ContactHostAsks {
           ...(request.target ? { target: request.target } : {}), ...(request.gitRemote ? { gitRemote: request.gitRemote } : {}),
         }), OFFER_MS);
       } catch (error) {
-        // The holder's signed refusal is final for it; silence is retried.
-        if (!(error instanceof PeerRefusal)) answer = null; else refusal = error;
+        // The holder's signed refusal is final for it; silence is retried, and so is a holder whose contacts are off.
+        if (!(error instanceof PeerRefusal) || contactsOffWord(error.message)) answer = null; else refusal = error;
       }
       // The contact moved here while the holder was asked, and the retry its move queued found this one busy: whatever the
       // holder said, its copy may have stayed behind, so the ask goes from here (a contact that heard it already ignores the repeat).

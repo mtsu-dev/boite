@@ -4,8 +4,8 @@ import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startUi } from './lib/ui.ts';
 
 // The agent's browser runs on the machine of the conversation and every client
-// watches it the same way: here the fake core's agent opens a page, and the
-// panel brings the Agent browser tab forward, covered until the user shows it.
+// watches it the same way: here the fake core's agent opens a page in the
+// background, and the owner can reveal the panel when ready.
 let server: { close(): Promise<void> };
 let page: BrowserPage;
 const id = (name: string) => `[data-testid="${name}"]`;
@@ -39,7 +39,7 @@ async function size(width: number, height: number) {
 beforeAll(async () => {
   const port = await freePort();
   server = await startUi(port);
-  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent`, windowSize: { width: 1280, height: 900 } });
+  page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent&contactNotice=0`, windowSize: { width: 1280, height: 900 } });
   await size(1280, 900);
   await page.waitFor(`document.querySelector('[data-thread-id="t-trace"]')`);
   await page.click('[data-thread-id="t-trace"]');
@@ -47,20 +47,16 @@ beforeAll(async () => {
 }, 90_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
-test('a page the agent opens shows the Agent browser covered, naming the machine; Show streams it and a tap reaches the page', async () => {
-  const machine = await page.evaluate<string>(`globalThis.__boiteTest.workspace.machines.find(m => m.store === ${store}).label`);
+test('an agent page stays in the background until shown, and a tap reaches the page', async () => {
   await page.evaluate(`${store}.client.call('browser.command', { threadId: 't-trace', action: { kind: 'open', url: 'https://example.com/docs' } })`);
-  await page.waitFor(`document.querySelector('${id('agent-browser-cover-text')}')`);
-  expect(await page.text(id('agent-browser-cover-text'))).toBe(`This agent controls a browser on ${machine}`);
-  expect(await page.text(id('agent-browser-cover'))).toContain('example.com/docs');
+  await page.waitFor(`document.querySelector('${id('agent-browser-background')}')`);
   expect(await page.evaluate<number>(`document.querySelectorAll('${id('remote-browser-frame')}').length`)).toBe(0);
-  await capture('agent-browser-cover-desktop.png');
+  await capture('agent-browser-background-desktop.png');
 
-  await page.click(id('agent-browser-show'));
+  await page.click(id('agent-browser-background'));
   await page.waitFor(`document.querySelector('${id('remote-browser-frame')}')?.width > 100`);
   expect(await page.evaluate<string>(`document.querySelector('${id('remote-browser-address')}').value`)).toBe('https://example.com/docs');
-  // The page takes the size of the view by default: the frame fills it with no band around it.
-  await page.waitFor(`(() => { const area = document.querySelector('.screen-area'), shown = document.querySelector('.screen'); return !!shown && Math.abs(shown.offsetWidth - area.clientWidth) <= 2 && Math.abs(shown.offsetHeight - area.clientHeight) <= 2; })()`);
+  await page.waitFor(`document.querySelector('${id('agent-browser-cookies')}').dataset.profile === 'default'`);
   await tapFrame();
   await page.waitFor(`${store}.client.call('browser.command', { threadId: 't-trace', action: { kind: 'snapshot' } }).then(reply => reply.value.text.includes('Taps: 1'))`);
   // The next frame draws the tap the page took.
@@ -202,11 +198,11 @@ test('a phone chooses between chat and the agent browser without closing its pag
   expect(await page.evaluate(`${store}.client.call('browser.remoteStatus', { threadId: 't-trace' }).then(status => status.live && status.tabs.some(tab => tab.tabId === ${JSON.stringify(first)}))`)).toBe(true);
   expect(await pageText()).toContain('example.com/docs');
 
-  // More pages never pull the phone back out of the chat.
-  await page.evaluate(`${store}.client.call('panel.open', { threadId: 't-trace', surface: { kind: 'browser', url: 'https://shop.example/cart' } })`);
+  // Opening more tabs leaves the phone on the chat until the agent explicitly shows one.
+  const second = await page.evaluate<string>(`${store}.client.call('browser.command', { threadId: 't-trace', action: { kind: 'open', url: 'https://shop.example/cart' } }).then(reply => reply.tabId)`);
   await page.settleAnimations();
   expect(await page.evaluate(`${store}.panelOpen`)).toBe(false);
-  await openPhoneBrowser(page);
+  await page.evaluate(`${store}.client.call('browser.command', { threadId: 't-trace', tabId: ${JSON.stringify(second)}, action: { kind: 'show' } })`);
   await page.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 2 && document.querySelector('${id('remote-browser-address')}')?.value === 'https://shop.example/cart'`);
   await page.evaluate('history.back()');
   await page.waitFor(`!document.querySelector('${id('right-panel')}')`);

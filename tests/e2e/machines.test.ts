@@ -1,6 +1,7 @@
 import { mobileAction } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
-import { basename, join } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { showThreadView } from './lib/views.ts';
 import { startUi } from './lib/ui.ts';
@@ -15,6 +16,10 @@ const id = (name: string) => `[data-testid="${name}"]`;
 async function capture(name: string) {
   await page.settleAnimations();
   await page.screenshot(join(import.meta.dir, '.artifacts', name));
+}
+async function press(key: string, code: number) {
+  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key, code: key, windowsVirtualKeyCode: code, ...(key === 'Enter' ? { text: '\r' } : {}) });
+  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key, windowsVirtualKeyCode: code });
 }
 beforeAll(async () => {
   const port = await freePort();
@@ -36,12 +41,23 @@ test('project and recent cards show both hosts, PRs and user-message ordering on
   await page.waitFor(`document.querySelector('[data-testid=machine-status-menu]')`);
   expect(await page.evaluate(`document.querySelectorAll('[data-testid=machine-status-menu] .status-dot[data-tone=success]').length`)).toBe(2);
   expect(await page.evaluate(`document.querySelector('[data-testid=machine-status-menu]').innerText.includes('Connected')`)).toBe(false);
-  await capture('single-machine-menu.png');
+  await press('End', 35);
+  expect(await page.evaluate('document.activeElement.textContent.trim()')).toBe('Manage machines');
+  await press('ArrowDown', 40);
+  expect(await page.evaluate('document.activeElement.dataset.value')).toBe('all');
+  await press('ArrowUp', 38);
+  expect(await page.evaluate('document.activeElement.textContent.trim()')).toBe('Manage machines');
+  await capture('machine-menu-keyboard.png');
   await page.click('[data-testid=machine-status-menu] [data-value="http://builder.test"]');
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 4`);
   await page.click(id('machine-status'));
   await page.click('[data-testid=machine-status-menu] [data-value=all]');
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 8`);
+  await page.click(id('machine-status'));
+  await press('End', 35);
+  await press('Enter', 13);
+  await page.waitFor(`document.querySelector('${id('machine-card')}')`);
+  await page.click(id('settings-back'));
   await capture('projects-machines-desktop.png');
   await showThreadView(page, 'recent');
   const rows = await page.evaluate<string[]>(
@@ -72,6 +88,11 @@ test('project and recent cards show both hosts, PRs and user-message ordering on
   expect(await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
   await page.evaluate(`document.documentElement.dataset.theme = 'light'`);
   await capture('recent-machines-phone-light.png');
+  await mobileAction(page, 'mobile-settings');
+  await page.click(id('mobile-settings-connection'));
+  await page.waitFor(`document.querySelectorAll('${id('machine-card')}').length === 2`);
+  await page.click(id('mobile-settings-back'));
+  await page.click(id('mobile-settings-leave'));
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await page.click(id('nav-settings'));
   await page.click(id('settings-tab-machines'));
@@ -195,6 +216,12 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.openThread?.id === ${JSON.stringify(ta.id)}`)).toBe(true);
     await page.click(id('settings-back'));
     await page.waitFor(`document.querySelector('[data-thread-id="${tb.id}"]')`);
+    await page.click(id('machine-status'));
+    await press('End', 35);
+    expect(await page.evaluate('document.activeElement.textContent.trim()')).toBe('Manage machines');
+    await press('Enter', 13);
+    await page.waitFor(`document.querySelector('${id('machine-card')}')`);
+    await page.click(id('settings-back'));
     await page.click(`[data-thread-id="${tb.id}"]`);
     await page.waitFor(`document.querySelector('${id('thread-title')}')?.textContent === 'Remote project'`);
     // The terminal is a row of the Panels door's list: the door opens the panel, whose switcher lists it.
@@ -203,9 +230,11 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.click(id('panel-add'));
     await page.waitFor(`document.querySelector('${id('panel-add-menu')} [data-value="terminal-toggle"]')`);
     await page.click(`${id('panel-add-menu')} [data-value="terminal-toggle"]`);
-    // PowerShell expands Windows short paths such as RUNNER~1 in its prompt.
+    // A shell may open with a plain "$" prompt. Ask it for the actual path
+    // through the same input and output the owner uses.
+    const terminalText = "document.querySelector('[data-testid=terminal-drawer] .xterm-rows')?.textContent";
     try {
-      await page.waitFor(`document.querySelector('[data-testid=terminal-drawer] .xterm-rows')?.textContent.includes(${JSON.stringify(basename(second.dataDir))})`);
+      await page.waitFor(`${terminalText}?.trim().length > 0`);
     } catch (error) {
       const [terminal, screen] = await Promise.allSettled([
         b.call('terminals.open', { threadId: tb.id, cols: 80, rows: 24 }).then(state => ({ output: state.output.slice(-4096), sequence: state.sequence, shell: state.shell, windowsPty: state.windowsPty })),
@@ -221,17 +250,44 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...terminalPoint });
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...terminalPoint });
     await page.waitFor(`document.activeElement?.classList.contains('xterm-helper-textarea')`);
+    // Ordinary keyboard events exercise xterm's key handler, unlike insertText.
+    const typeCommand = async (command: string) => {
+      for (const char of command) {
+        await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: char, text: char });
+        await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: char });
+      }
+      await press('Enter', 13);
+    };
+    const waitForLine = (line: string) => page.waitFor(`(() => {
+      const expected = ${JSON.stringify(line)};
+      const lines = Array.from(document.querySelectorAll('[data-testid=terminal-drawer] .xterm-rows > div'),
+        row => row.textContent.replaceAll('\u00a0', ' '));
+      return lines.some((start, index) => {
+        if (!start.trim() || !expected.startsWith(start.trimEnd())) return false;
+        let text = start;
+        // A narrow pane can wrap the path across several rendered rows.
+        while (text.length < expected.length && expected.startsWith(text) && ++index < lines.length) text += lines[index];
+        return text.trimEnd() === expected;
+      });
+    })()`);
+    const cwd = realpathSync(second.dataDir);
+    const checkCwd = async (left: string, right: string) => {
+      const command = `bun -e "console.log('${left}' + require('node:fs').realpathSync('.') + '${right}')"`;
+      await typeCommand(command);
+      await waitForLine(left + cwd + right);
+      if (process.platform !== 'win32') {
+        const rendered = await page.evaluate<string>(terminalText);
+        // Ignore the column padding readline adds where a command wraps.
+        expect(rendered.replace(/\s/g, '')).toContain(command.replace(/\s/g, ''));
+      }
+    };
+    await checkCwd('[[', ']]');
     // Reloading summaries for the same conversation must preserve terminal focus.
     await page.evaluate('globalThis.__boiteTest.workspace.active.reload()');
     expect(await page.evaluate(`document.activeElement?.classList.contains('xterm-helper-textarea')`)).toBe(true);
-    // Ordinary keyboard events exercise xterm's key handler, unlike insertText.
-    for (const char of 'echo remote-terminal-e2e') {
-      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: char, text: char });
-      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: char });
-    }
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-    await page.waitFor(`document.querySelector('[data-testid=terminal-drawer] .xterm-rows')?.textContent.split('remote-terminal-e2e').length >= 3`);
+    await checkCwd('{{', '}}');
+    await typeCommand('echo remote-terminal-e2e');
+    await waitForLine('remote-terminal-e2e');
     await capture('terminal-remote-real-desktop.png');
     await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await capture('terminal-remote-real-phone.png');
@@ -264,7 +320,7 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.click(`[data-thread-id="${tb.id}"]`);
     await page.waitFor(`document.querySelector('${id('chat')}')?.textContent.includes('Only on the remote host')`);
     await page.waitFor(`globalThis.__boiteTest.workspace.active.settings?.asyncQuestions === false`);
-    expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.settings.agentCpuCapPercent === 45 && globalThis.__boiteTest.workspace.active.settings.warmProcessMinutes === 2`)).toBe(true);
+    expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.settings.${limit} === 45 && globalThis.__boiteTest.workspace.active.settings.warmProcessMinutes === 2`)).toBe(true);
     await page.click(id('nav-settings'));
     await page.click(id('settings-tab-machines'));
     const admin = await connect(restarted.url, restarted.token);
@@ -368,6 +424,13 @@ test('one invitation groups two real cores: the page connects the second by itse
     if (await page.evaluate(`globalThis.__boiteTest.workspace.active.page === 'settings'`)) await page.click(id('settings-back'));
     await page.waitFor(`document.querySelector('[data-thread-id="${tb.id}"]')`);
     expect(await b.call('sessions.list', {})).toHaveLength(1);
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await mobileAction(page, 'mobile-settings');
+    await page.click(id('mobile-settings-connection'));
+    await page.waitFor(`document.querySelectorAll('${id('machine-card')}').length === 2`);
+    await page.click(id('mobile-settings-back'));
+    await page.click(id('mobile-settings-leave'));
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
 
     // The address the second machine's key was saved for is retired, and somebody else listens there.
     // At start the first machine is asked before that key is sent: it never is, and the page reaches the second anew.

@@ -3,10 +3,13 @@ export const strings = {
   /** The Keyboard settings page: the table, the file, and the commands the palette has no word for. */
   keyboard: {
     heading: 'Shortcuts',
+    escapeKey: 'Esc',
+    wheelKey: 'Wheel',
     intro: 'Click a shortcut, then press the keys you want instead. It applies at once on this machine.',
     search: 'Filter commands',
     groups: { general: 'General', surfaces: 'Side panel', thread: 'Thread and composer', jump: 'Go to a thread', theme: 'Theme', terminal: 'Terminal' },
     record: 'Press the keys',
+    recordWheel: 'Hold the keys and turn the wheel',
     change: 'Change the shortcut',
     reset: 'Back to the default',
     resetAll: 'Reset all',
@@ -14,6 +17,9 @@ export const strings = {
     conflict: '{chord} already runs "{command}". Move it here?',
     replace: 'Move it here',
     needsModifier: 'Hold Ctrl, Alt or Win with the key. A key alone, or with Shift only, is typing.',
+    wheelNeedsModifier: 'Hold Ctrl, Alt or Win while you turn the wheel. The wheel alone, or with Shift only, scrolls.',
+    wheelOnly: 'This one runs on the wheel: hold the keys, then turn it.',
+    wheelHint: 'In the desktop app. Wheel up enlarges, wheel down shrinks.',
     noMatch: 'No command matches.',
     file: 'Shortcuts file',
     openFile: 'Open the file',
@@ -47,6 +53,7 @@ export const strings = {
       terminalHistory: 'Recent commands of the shell',
       terminalPreviousCommand: 'Go to the previous command',
       terminalNextCommand: 'Go to the next command',
+      zoomWheel: 'Interface size with the wheel',
       /** `Go to thread 3`: the third row of the sidebar, as drawn. */
       thread: 'Go to thread {n}'
     }

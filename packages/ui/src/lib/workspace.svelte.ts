@@ -27,11 +27,10 @@ import { onReveal, reveal } from './reveal';
 import { AutoSettingsSync } from './auto-settings-sync.svelte';
 import { GroupLinks } from './group-links.svelte';
 import { limitsMachine, setNotificationCore, setPushHomeClient } from './notify';
-import { appPage } from './app-origin';
 import { pictureSources } from './agent-pictures.svelte';
 import { bootWorkspace, byHand, hostOf, primaryMachine } from './workspace-boot';
 import { machineIcons, namedByUser, PROFILE_KEY, profileKey, profileName, profiles, typedName, type MachineIconName } from './machine-names';
-import { desktopShell } from './shell-platform';
+import { desktopShell, mobileApp } from './shell-platform';
 
 export { machineIcons, type MachineIconName } from './machine-names';
 
@@ -475,9 +474,9 @@ export class Workspace {
     if (existing && existing.store.connection === 'ready') return fail(strings.machines.duplicate);
     // A machine paired by hand at this address stays what it is: the group neither replaces its key nor claims it.
     if (existing && endpoint.ticket !== undefined && existing.coreId !== endpoint.coreId) return false;
-    // The phone app's window opened on no machine: the first one added becomes the one it shows.
+    // The Android app's window opened on no machine: the first one added becomes the one it shows.
     // A first add that failed left it detached and out of the list: the next one takes it again.
-    const adopt = !existing && appPage() && !store.localCore && (store.endpointUrl === null || !this.machines.some((m) => m.store === store));
+    const adopt = !existing && mobileApp() && !store.localCore && (store.endpointUrl === null || !this.machines.some((m) => m.store === store));
     const target = existing?.store ?? (adopt ? store : new Store());
     target.client?.close();
     target.detach();
@@ -551,7 +550,7 @@ export class Workspace {
     const previous = this.active;
     if (previous === target) return;
     void previous.suspend();
-    target.sidebarWidth = previous.sidebarWidth;
+    target.sidebarWidth = previous.sidebarWidth; target.agentsSidebarWidth = previous.agentsSidebarWidth;
     target.sidebarCollapsed = previous.sidebarCollapsed;
     target.search = previous.search;
     this.active = target;
@@ -578,7 +577,7 @@ export class Workspace {
   }
 
   /** A named draft, a project's fresh draft, or the machine's last visit when no destination is given. */
-  async select(target: Store, threadId?: string, projectId?: string | null, options: { fresh?: boolean; draftId?: string } = {}): Promise<void> {
+  async select(target: Store, threadId?: string, projectId?: string | null, options: { fresh?: boolean; draftId?: string; match?: { messageId: string; query: string } } = {}): Promise<void> {
     this.selecting += 1;
     try {
       await this.#select(target, threadId, projectId, options);
@@ -587,11 +586,11 @@ export class Workspace {
     }
   }
 
-  async #select(target: Store, threadId: string | undefined, projectId: string | null | undefined, options: { fresh?: boolean; draftId?: string }): Promise<void> {
+  async #select(target: Store, threadId: string | undefined, projectId: string | null | undefined, options: { fresh?: boolean; draftId?: string; match?: { messageId: string; query: string } }): Promise<void> {
     ++this.#generation;
     this.#moveTo(target);
     target.visible = true;
-    if (threadId) await target.open(threadId);
+    if (threadId) await (options.match ? target.open(threadId, true, options) : target.open(threadId));
     else if (projectId !== undefined || options.draftId !== undefined) target.startDraft(projectId, options);
     else {
       target.showChat();

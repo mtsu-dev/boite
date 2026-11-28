@@ -86,7 +86,7 @@ function targetOf(parsed: Parsed, env: CliIo['env']): Target {
     if (parsed.core !== undefined) throw new Error(`this CLI speaks for thread ${own} on its own core; --core is for a terminal`);
     return { url, token, threadId: own };
   }
-  const threadId = parsed.thread ?? own ?? (['server', 'logs', 'issue', 'journal-check', 'plugin'].includes(parsed.positional[0] ?? '') || isPluginCommandWord(parsed.positional[0]) || ownerWithoutThread(parsed) ? '' : undefined);
+  const threadId = parsed.thread ?? own ?? (['server', 'logs', 'issue', 'transcripts', 'journal-check', 'plugin'].includes(parsed.positional[0] ?? '') || isPluginCommandWord(parsed.positional[0]) || ownerWithoutThread(parsed) ? '' : undefined);
   if (parsed.core !== undefined) {
     // The token stays out of the command line, where any process listing would show it.
     const remoteToken = env.BOITE_TOKEN || undefined;
@@ -224,6 +224,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     // A global `--level` yields to the command's own `--min-level`, which it would otherwise override.
     logs: async () => (await families()).logsCommand([...(parsed.limit === undefined ? [] : ['--limit', String(parsed.limit)]), ...(parsed.level === undefined || rest.some(entry => entry === '--min-level' || entry.startsWith('--min-level=')) ? [] : ['--level', parsed.level]), ...rest], client, threadId, agentCaller, io.cwd, print),
     issue: async () => (await families()).issueCommand(rest, client, threadId, agentCaller, io.cwd, print),
+    transcripts: async () => (await families()).transcriptsCommand(rest, client, threadId, agentCaller, print),
     server: async () => {
       const action = rest[0] ?? 'check';
       if (!['check', 'update', 'cancel'].includes(action)) throw new Usage('server expects check, update or cancel');
@@ -248,6 +249,15 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     attach: async () => {
       const message = await client.call('artifacts.publish', { threadId, path: absolute(io.cwd, want(0, 'a file')) });
       print([`attached: ${rest[0]}`, `message: ${message.id}`], message);
+    },
+    proof: async () => {
+      if (rest.length < 3 || rest.length > 4) throw new Usage('boite proof <message-id> <output-line> <unchecked> [capture]');
+      const [messageId, line, unchecked, capture] = rest;
+      const message = await client.call('artifacts.prove', {
+        threadId, messageId: messageId!, line: line!, unchecked: unchecked!,
+        ...(capture === undefined ? {} : { path: absolute(io.cwd, capture) }),
+      });
+      print([`proof: ${message.id}`], message);
     },
     delegate: async () => {
       const { DELEGATE_ACTIONS, delegateCommand } = await families();
@@ -533,7 +543,12 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       else if (action === 'clear') change = { action };
       else if (action === 'start' || action === 'done' || action === 'remove') change = { action, id: want(1, 'a task id') };
       else throw new Usage(`task: unknown action ${action}`);
-      const activity = await client.call('threads.tasks.change', { threadId, ...change });
+      const { applyAgentTaskChange, isMethodNotFound } = await families();
+      const activity = await client.call('threads.tasks.change', { threadId, ...change }).catch(async (error: unknown) => {
+        if (!isMethodNotFound(error)) throw error;
+        const current = await client.call('threads.tasks.get', { threadId });
+        return client.call('threads.tasks.set', { threadId, tasks: applyAgentTaskChange(current, change) });
+      });
       print(activity.tasks.length === 0 ? ['tasks: none'] : activity.tasks.map(taskRow), activity.tasks);
     },
     todo: async () => {
@@ -647,7 +662,9 @@ export function watchStatus(watch: import('@boite/contracts').PullRequestWatch):
   const { total, running, failed } = seen.checks;
   const checks = total === 0 ? 'no checks' : `${total} checks, ${running} running, ${failed} failed`;
   const queue = seen.queue ? `merge queue position ${seen.queue.position}` : null;
-  return [`head ${seen.head}`, checks, seen.conflicting ? `conflicts with ${seen.base}` : null, seen.behind ? `behind ${seen.base}` : null, queue, paused].filter(Boolean).join('; ');
+  const baseFailure = seen.baseFailure;
+  const baseStatus = baseFailure ? `base ${seen.base} (${baseFailure.sha.slice(0, 7)}): ${baseFailure.name} failed (${baseFailure.conclusion.toLowerCase()})${baseFailure.url ? ` ${baseFailure.url}` : ''}` : null;
+  return [`head ${seen.head}`, checks, baseStatus, seen.conflicting ? `conflicts with ${seen.base}` : null, seen.behind ? `behind ${seen.base}` : null, queue, paused].filter(Boolean).join('; ');
 }
 
 /**

@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { Bot, CloudOff, Square } from '@lucide/svelte';
-  import { pullRequestWatchWaits, type ThreadSummary } from '@boite/contracts';
+  import { Bot, CloudOff, GitMerge, GitPullRequest, Radar, Square, Terminal } from '@lucide/svelte';
+  import type { ThreadSummary } from '@boite/contracts';
   import { backgroundLabel } from '../lib/background';
   import { secondClock } from '../lib/clock.svelte';
   import { ago, elapsed, exactTime } from '../lib/format';
+  import { pullRequestWait, watchStatus } from '../lib/pull-request-watch';
   import { fill, strings } from '../lib/strings';
   import { threadState } from '../lib/thread-state';
   import { stateForm } from '../lib/status-order';
@@ -23,18 +24,18 @@
    * One grammar in every list (rows, Recent, the palette, the phone,
    * Activity), from `stateForm`: the user's turn is an amber dot, a failure
    * its "!" disc, a stop the grey square a stopped subagent wears in the thread
-   * (DelegationActivity.svelte), work a turning accent arc, an unreached machine
-   * its cloud; each mark is followed by its word ("Needs you", "Failed",
-   * "Stopped", "Working", "Queued", "Offline") in the row's neutral ink, the hue staying on the mark. News (a
-   * turn that ended unread) says "Done" in the success ink, with no mark, before the row's time; rest shows the
-   * time alone. Work turns, as it does in the thread; a queued turn's
-   * arc waits, still. Work also counts its time, second by second: the turn's
-   * clock stands for "Working", the other kinds keep their word and add the
-   * clock after it at a lighter weight, sub-agents put it before their chip.
+   * (DelegationActivity.svelte), active work (`working`) a turning accent arc,
+   * a queued turn a still arc, an unreached machine its cloud; passive waits
+   * (`delegating`, `watching`, `monitoring`, `background`) never spin and pulse
+   * their own glyph instead (bot chip, `GitMerge` for merge queue,
+   * `GitPullRequest` for CI, `Radar` for monitoring, `Terminal`/`Bot`/dot for
+   * background work) beside the elapsed clock so the title keeps its room.
+   * News (a turn that ended unread) says "Done" in the success ink, with no
+   * mark, before the row's time; rest shows the time alone.
    * `fit`: the desktop list, where the word stays at every width a user gets by
-   * default and the title gives way first (two lines, cut at a word); the word
-   * goes only where the title would keep under about 12 characters a line (the
-   * `thread-row` container, ThreadCard.svelte), and the mark keeps its clock.
+   * default and the title gives way first; the word goes only where the title
+   * would keep under about 12 characters a line (the `thread-row` container,
+   * ThreadCard.svelte), and the mark keeps its clock.
    * `mark`: a column that holds the mark only (Activity's mark column, the
    * palette). In both, the word stays in the tooltip and the accessible name.
    * An archived thread carries no live state: its time alone.
@@ -50,8 +51,9 @@
   let wait = $derived(thread.backgroundWait ?? null);
   /** The states that count time: the turn, its sub-agents, or the work it left running. */
   let live = $derived(form === 'work' && kind !== 'queued');
-  /** The pull requests the row still waits on: their checks run. */
-  let watches = $derived((thread.pullRequestWatches ?? []).filter(pullRequestWatchWaits));
+  let { active: watches, paused: pausedWatch } = $derived(pullRequestWait(thread.pullRequestWatches));
+  let mergeQueue = $derived(!pausedWatch && watches.length > 0 && watches.every(watch => watch.seen?.queue && watch.seen.checks.running === 0));
+  let bgKind = $derived((['workflow', 'agent', 'shell'] as const).find(each => (thread.backgroundWork?.kinds ?? []).includes(each)) ?? ('other' as const));
   /** What was under way when the machine went away is only its last known state. */
   let stale = $derived(away && (live || kind === 'queued'));
   /**
@@ -65,27 +67,25 @@
     stale ? null
     : kind === 'working' ? earliest(thread.requestSince, thread.runningSince)
     : kind === 'monitoring' ? thread.requestSince ?? thread.backgroundWork?.since ?? null
-    : kind === 'watching' ? thread.requestSince ?? (watches.length ? Math.min(...watches.map(watch => watch.since)) : null)
+    : kind === 'watching' ? pausedWatch ? null : thread.requestSince ?? (watches.length ? Math.min(...watches.map(watch => watch.since)) : null)
     : kind === 'delegating' ? subagents?.since ?? null
     : live ? thread.backgroundWork?.since ?? (wait?.state === 'waiting' ? wait.since : null) : null);
   /** Counting time reads the second clock, only while the agent works: the list's clock ticks far slower. */
   let spent = $derived(since === null ? null : elapsed(Math.max(secondClock.now, now) - since));
   /**
-   * The word beside the mark: what the work waits on, so a list tells a CI run from a command or a workflow
-   * without a hover ("CI running", "Command", "Sub-agents"); the turn itself reads "Working", an unreached
-   * machine "Offline". Mixed background work names the heaviest: a workflow, an agent, then a shell.
+   * Fallback word when a live state has no elapsed clock (paused watch, or unknown start), and the label for
+   * non-live states ("Needs you", "Failed", "Stopped", "Queued", "Offline").
    */
   let word = $derived.by(() => {
     if (stale) return strings.connection.offline;
     if (kind === null) return null;
     const words = strings.sidebar.state.workWord;
     if (kind === 'delegating' || kind === 'monitoring') return words[kind];
-    if (kind === 'watching') return watches.length > 0 && watches.every(watch => watch.seen?.queue && watch.seen.checks.running === 0) ? words.mergeQueue : words.ci;
-    if (kind === 'background') {
-      const kinds = thread.backgroundWork?.kinds ?? [];
-      const heaviest = (['workflow', 'agent', 'shell'] as const).find(each => kinds.includes(each));
-      return words[heaviest ?? 'other'];
+    if (kind === 'watching') {
+      if (pausedWatch) return strings.sidebar.state.watching;
+      return mergeQueue ? words.mergeQueue : words.ci;
     }
+    if (kind === 'background') return words[bgKind];
     return strings.sidebar.state[kind];
   });
   let label = $derived.by(() => {
@@ -103,6 +103,7 @@
       return `${head}\n${what}`;
     }
     if (kind === 'watching') {
+      if (pausedWatch) return `#${pausedWatch.number} · ${watchStatus(pausedWatch)}`;
       const head = watches.length === 1 ? state.watching : fill(state.watchingMany, { count: String(watches.length) });
       const queued = (watch: (typeof watches)[number]) => watch.seen?.queue ? ` (${fill(strings.tasks.watchQueued, { position: String(watch.seen.queue.position) })})` : '';
       return `${head}\n${watches.map(watch => `#${watch.number}${queued(watch)}`).join(', ')}${spent === null ? '' : `\n${spent}`}`;
@@ -135,15 +136,19 @@
   <!-- The mark and its word read as one image named by the state: the word may give way to the title (`fit`). -->
   <span class="when state {stale ? 'unreachable' : kind}" class:fit data-testid="thread-state" data-state={stale ? 'unreachable' : kind} title={name} aria-label={name} role="img">
     {#if stale}<CloudOff size={11} aria-hidden="true" />
-    {:else if form === 'work'}<span class="work-ring" class:turning={kind !== 'queued'} aria-hidden="true"></span>
+    {:else if kind === 'working'}<span class="work-ring turning" aria-hidden="true"></span>
+    {:else if kind === 'queued'}<span class="work-ring" aria-hidden="true"></span>
+    {:else if kind === 'watching'}{#if mergeQueue}<GitMerge size={11} class="pulse" aria-hidden="true" />{:else}<GitPullRequest size={11} class={pausedWatch ? undefined : 'pulse'} aria-hidden="true" />{/if}
+    {:else if kind === 'monitoring'}<Radar size={11} class="pulse" aria-hidden="true" />
+    {:else if kind === 'background'}{#if bgKind === 'shell'}<Terminal size={11} class="pulse" aria-hidden="true" />{:else if bgKind === 'agent'}<Bot size={11} class="pulse" aria-hidden="true" />{:else}<span class="bg-dot pulse" aria-hidden="true"></span>{/if}
+    {:else if kind === 'delegating'}{#if mark || !chip}<Bot size={11} class="pulse" aria-hidden="true" />{/if}
     {:else if kind === 'error'}<FailMark />
     {:else if kind === 'interrupted'}<Square size={9} fill="currentColor" aria-hidden="true" />
     {:else}<span class="dot" class:needs-dot={kind === 'waiting'} aria-hidden="true"></span>{/if}
-    <!-- Waiting on sub-agents, the chip is the word: the robot and their count, no "Sub-agents" before it.
-         The turn's clock is its word: a ring that turns beside a time can only be the agent at work. -->
-    {#if !mark && !(kind === 'delegating' && chip && !stale) && !(kind === 'working' && spent !== null)}<span class="word ui-label" aria-hidden="true">{word}</span>{/if}
+    <!-- Live states with an elapsed clock show icon + clock (or clock + pulsing bot chip while delegating) with no word, keeping the title wide. -->
+    {#if !mark && !(kind === 'delegating' && chip && !stale) && !(live && spent !== null)}<span class="word ui-label" aria-hidden="true">{word}</span>{/if}
     {#if !mark && spent !== null}<span class="time ui-label" data-testid="thread-elapsed" aria-hidden="true">{spent}</span>{/if}
-    {#if chip}<span class="agents" class:asking={chip.asking} data-testid="thread-subagents" data-count={chip.shown} aria-hidden="true"><Bot size={10} /><span class="ui-label">{chip.shown}</span></span>{/if}
+    {#if chip}<span class="agents" class:asking={chip.asking} class:pulse={kind === 'delegating'} data-testid="thread-subagents" data-count={chip.shown} aria-hidden="true"><Bot size={10} /><span class="ui-label">{chip.shown}</span></span>{/if}
   </span>
 {/if}
 
@@ -162,8 +167,6 @@
     gap: 4px;
     color: var(--color-muted-foreground);
   }
-  /* The word and a lone clock inherit the row's weight. A clock after a word stays lighter in the same hue. */
-  .word + .time { font-weight: 400; }
   .state.waiting { color: var(--color-live); }
   .state:is(.working, .queued, .delegating, .monitoring, .background, .watching) { color: var(--color-accent); }
   .state.error { color: var(--color-danger); }
@@ -181,16 +184,18 @@
      It stays when a narrow list drops the word: the count is the row's only sign of its children. */
   .agents { display: inline-flex; align-items: center; gap: 3px; height: 16px; padding: 0 5px; margin-left: 2px; border-radius: var(--radius-sm); background: color-mix(in srgb, currentColor 14%, transparent); font-weight: 600; color: var(--color-accent); }
   .agents.asking { color: var(--color-live); }
-  /* Every mark is 8 px. Work, of any kind: an accent arc that turns (still while queued), so it never reads as an
-     idle ring or as the amber of the user's turn; which work it is lives in the tooltip. Its loop steps on the
-     shared 60 Hz grid and stops with the window at rest (app.css `--loops`). */
+  /* Active turn (`working`): an accent arc that turns (still while queued). Passive waits never spin: they breathe
+     slowly on the shared 60 Hz grid (`--loop-ease-out-quint-48`) and pause with the window at rest (`--loops`). */
   .work-ring { flex: none; box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); }
   .work-ring.turning { transform: none; animation: spin 0.9s steps(54) infinite var(--loops); }
-  /* The user's turn is an amber dot; a failure has its own shape (FailMark.svelte); a stop is neutral, never red. */
+  .state :global(.pulse) { flex: none; animation: pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops); }
+  /* The user's turn is an amber dot; generic background work is a smaller accent dot; a failure has its own shape (FailMark.svelte); a stop is neutral, never red. */
   .dot { flex: none; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); }
+  .bg-dot { flex: none; width: 6px; height: 6px; border-radius: var(--radius-full); background: currentColor; }
   .state :global(svg) { flex: none; }
   .interrupted :global(svg) { color: var(--color-subtle); }
   /* Still under reduced motion, as Spinner.svelte. */
-  @media (prefers-reduced-motion: reduce) { .work-ring.turning { animation: none; } }
-  :global(html[data-motion='reduced']) .work-ring.turning { animation: none; }
+  @media (prefers-reduced-motion: reduce) { .work-ring.turning, .state :global(.pulse) { animation: none; } }
+  :global(html[data-motion='reduced']) .work-ring.turning,
+  :global(html[data-motion='reduced']) .state :global(.pulse) { animation: none; }
 </style>

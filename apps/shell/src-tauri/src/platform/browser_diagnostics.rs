@@ -48,6 +48,7 @@ pub async fn attach(view: tauri::Webview, id: String) -> Result<(), String> {
 }
 
 async fn attach_events(view: tauri::Webview, id: String) -> Result<(), String> {
+    let agent = crate::browser_control::is_agent_surface(&id);
     let (sender, receiver) = mpsc::channel();
     let native = view.clone();
     native.with_webview(move |platform| {
@@ -85,7 +86,11 @@ async fn attach_events(view: tauri::Webview, id: String) -> Result<(), String> {
     let result = tauri::async_runtime::spawn_blocking(move || receiver.recv_timeout(Duration::from_secs(10)).map_err(|_| "browser diagnostics timed out".to_owned())?)
         .await.map_err(|error| error.to_string())?;
     result?;
-    super::browser_control::call(view.clone(), "Runtime.enable".into(), json!({})).await?;
+    // An agent's tab shares this session with the core, which turns the runtime on only for pages of this
+    // machine (packages/core/src/browser/page-runtime.ts): a public page can see it run and score the tab as automated.
+    if !agent {
+        super::browser_control::call(view.clone(), "Runtime.enable".into(), json!({})).await?;
+    }
     super::browser_control::call(view, "Network.enable".into(), json!({ "maxTotalBufferSize": 0, "maxResourceBufferSize": 0 })).await?;
     Ok(())
 }

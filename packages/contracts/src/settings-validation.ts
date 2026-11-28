@@ -1,6 +1,7 @@
 import type { GoalTrackerModel, ModelFavorite, ModelFavorites, Settings, SubscriptionProxy, TitleModel } from './index.ts';
-import { BROWSER_PROFILE_NAME_MAX, BROWSER_PROFILES_MAX, browserProfileIdError, browserProfileNameError, browserUserAgentError, DEFAULT_BROWSER_PROFILE, type BrowserProfile } from './browser';
+import { BROWSER_ENGINES, BROWSER_PROFILE_NAME_MAX, BROWSER_PROFILES_MAX, browserProfileIdError, browserProfileNameError, browserUserAgentError, DEFAULT_BROWSER_PROFILE, type BrowserBuiltinProfiles, type BrowserEngine, type BrowserProfile } from './browser';
 import { SYNC_KEY_PATTERN, SYNC_OVERRIDES_MAX } from './settings-sync';
+import { TRANSCRIPT_DAYS_MAX, TRANSCRIPT_MODES, TRANSCRIPT_POLICY_FIELDS, transcriptPolicyValid } from './transcripts';
 import { AGENT_BOT_CREATION, COORDINATION_REACH, type AgentBotCreation, type CoordinationReach } from './settings';
 
 // Both supported hosts expose URL; contracts otherwise need no DOM or Node types.
@@ -196,6 +197,16 @@ function subscriptionProxyRule(value: unknown): Settings['subscriptionProxy'] | 
   return { enabled: proxy.enabled, kind: proxy.kind!, baseUrl, dashboardUrl, ...(mode === undefined ? {} : { mode }) };
 }
 
+function transcriptStorageRule(value: unknown): Settings['transcriptStorage'] | Refusal {
+  const storage = record(value);
+  if (storage === null || !(TRANSCRIPT_MODES as readonly unknown[]).includes(storage.mode)) return refuse(`transcriptStorage.mode must be ${TRANSCRIPT_MODES.join(', ')}`);
+  if (Object.keys(storage).some(key => key !== 'mode' && key !== 'custom')) return refuse('transcriptStorage holds mode and custom only');
+  if (storage.custom !== undefined && !transcriptPolicyValid(storage.custom)) {
+    return refuse(`transcriptStorage.custom must set ${TRANSCRIPT_POLICY_FIELDS.join(', ')}, each null (never) or an integer between 0 and ${TRANSCRIPT_DAYS_MAX} days`);
+  }
+  return { mode: storage.mode, ...(storage.custom === undefined ? {} : { custom: storage.custom }) } as Settings['transcriptStorage'];
+}
+
 function worktreeStorageRule(value: unknown): Settings['worktreeStorage'] | Refusal {
   const storage = record(value);
   if (storage === null || !['project', 'shared'].includes(storage.mode as string)) return refuse('worktreeStorage.mode must be project or shared');
@@ -209,6 +220,8 @@ function worktreeStorageRule(value: unknown): Settings['worktreeStorage'] | Refu
   return { mode: storage.mode, directory } as Settings['worktreeStorage'];
 }
 
+const engineValid = (value: unknown): value is BrowserEngine | undefined => value === undefined || BROWSER_ENGINES.includes(value as BrowserEngine);
+
 function browserProfilesRule(value: unknown): BrowserProfile[] | Refusal {
   if (!Array.isArray(value) || value.length > BROWSER_PROFILES_MAX) return refuse(`browserProfiles must list at most ${BROWSER_PROFILES_MAX} profiles`);
   const profiles: BrowserProfile[] = [];
@@ -220,10 +233,11 @@ function browserProfilesRule(value: unknown): BrowserProfile[] | Refusal {
     if (profiles.some(profile => profile.id === entry.id || profile.name.toLowerCase() === name.toLowerCase())) {
       return refuse(`browserProfiles: ${entry.id} repeats another profile's id or name`);
     }
+    if (!engineValid(entry.engine)) return refuse(`browserProfiles: ${entry.id}: engine must be ${BROWSER_ENGINES.join(' or ')}`);
     const userAgentError = browserUserAgentError(entry.userAgent);
     if (userAgentError) return refuse(`browserProfiles: ${entry.id}: ${userAgentError}`);
     const userAgent = entry.userAgent?.value.trim() ? { mode: entry.userAgent.mode, value: entry.userAgent.value.trim() } : undefined;
-    profiles.push({ id: entry.id as string, name, ...(userAgent ? { userAgent } : {}) });
+    profiles.push({ id: entry.id as string, name, ...(entry.engine ? { engine: entry.engine } : {}), ...(userAgent ? { userAgent } : {}) });
   }
   return profiles;
 }
@@ -282,6 +296,7 @@ const SETTING_RULES: { readonly [K in keyof Settings]-?: FieldRule<K> } = {
   agentBotCreation: value => (AGENT_BOT_CREATION as readonly unknown[]).includes(value) ? value as AgentBotCreation : refuse(`agentBotCreation must be one of ${AGENT_BOT_CREATION.join(', ')}`),
   coordinationReach: value => (COORDINATION_REACH as readonly unknown[]).includes(value) ? value as CoordinationReach : refuse(`coordinationReach must be one of ${COORDINATION_REACH.join(', ')}`),
   worktreeStorage: worktreeStorageRule,
+  transcriptStorage: transcriptStorageRule,
   publicUrl: value => {
     if (value === null) return null;
     return publicOrigin(value) ?? refuse('publicUrl must be an HTTPS origin without path, credentials, query or fragment');
@@ -297,12 +312,20 @@ const SETTING_RULES: { readonly [K in keyof Settings]-?: FieldRule<K> } = {
       && (next.browserProfiles === undefined || next.browserProfiles.some(profile => profile.id === value)));
     return known ? value as string : refuse('browserDefaultProfile must be default or the id of a browser profile, never private');
   },
+  browserBuiltinProfiles: value => {
+    const builtins = record(value), builtin = builtins?.default === undefined ? {} : record(builtins.default);
+    const valid = builtins !== null && builtin !== null && Object.keys(builtins).every(key => key === DEFAULT_BROWSER_PROFILE)
+      && Object.keys(builtin).every(key => key === 'engine') && engineValid(builtin.engine);
+    if (!valid) return refuse(`browserBuiltinProfiles may only set default.engine, to ${BROWSER_ENGINES.join(' or ')}`);
+    return (builtin.engine ? { default: { engine: builtin.engine } } : {}) as BrowserBuiltinProfiles;
+  },
   warmProcessMinutes: amount('warmProcessMinutes') as FieldRule<'warmProcessMinutes'>,
   agentCpuCapPercent: amount('agentCpuCapPercent', 100) as FieldRule<'agentCpuCapPercent'>,
   threadMemoryCapMb: amount('threadMemoryCapMb') as FieldRule<'threadMemoryCapMb'>,
   agentMemoryBudgetPercent: value => typeof value === 'number' && Number.isInteger(value) && value >= 10 && value <= 90 ? value
     : refuse('agentMemoryBudgetPercent must be an integer between 10 and 90'),
   autoGoals: bool('autoGoals') as FieldRule<'autoGoals'>,
+  contacts: bool('contacts') as FieldRule<'contacts'>,
   autoGoalMinChars: value => typeof value === 'number' && Number.isInteger(value) && value >= AUTO_GOAL_MIN_CHARS.min && value <= AUTO_GOAL_MIN_CHARS.max ? value
     : refuse(`autoGoalMinChars must be an integer between ${AUTO_GOAL_MIN_CHARS.min} and ${AUTO_GOAL_MIN_CHARS.max}`),
   memoryReserveMb: value => typeof value === 'number' && Number.isInteger(value) && (value === 0 || (value >= 256 && value <= 1048576)) ? value

@@ -110,6 +110,34 @@ test('a load sample is a load-only event for a client that accepts it and the wh
   expect(seen.legacy.filter(event => event === 'thread.load')).toHaveLength(0);
 });
 
+test('progress on one turn uses a patch for opted-in sockets and a summary for legacy sockets', async () => {
+  const modern = await connect(harness.url, harness.token, { accepts: ['thread.progress'] });
+  const legacy = await harness.connect();
+  const { threadId } = await echoThread(harness, legacy);
+  const token = harness.core.plugins.tokens.tokenFor('progress-observer', ['threads.read']);
+  const plugin = await connect(harness.url, token, { client: { name: 'plugin', version: '0' } });
+  clients.push(modern, plugin);
+  const { journal, threads } = harness.core;
+  const turnId = 'progress-turn';
+  journal.putThread({ ...threads.require(threadId), status: 'running' });
+  journal.putTurn({ id: turnId, threadId, status: 'running', queuedAt: 1, startedAt: 2, finishedAt: null, usage: null, error: null });
+  threads.progress.begin(threadId, turnId);
+  const lean = modern.next('thread.progress', event => event.threadId === threadId);
+  const full = legacy.next('thread.updated', row => row.id === threadId);
+  const pluginRows: ThreadSummary[] = [];
+  plugin.on('thread.updated', row => { if (row.id === threadId && row.progress?.turnId === turnId) pluginRows.push(row); });
+  threads.progress.report(threadId, turnId, 'thinking');
+  const patch = await lean;
+  const row = await full;
+  expect(patch.progress).toMatchObject({ turnId, phase: 'thinking' });
+  expect(row.progress).toEqual(patch.progress);
+  // This reply arrives after any event queued for the same socket.
+  await plugin.call('threads.list', {});
+  expect(pluginRows).toEqual([]);
+  expect(JSON.stringify(patch).length).toBeLessThan(JSON.stringify(row).length / 3);
+  console.info(`Progress event ${JSON.stringify(patch).length} bytes, legacy row ${JSON.stringify(row).length} bytes`);
+});
+
 test('a thread whose last process exits gets a zero load, so no client keeps counting it as running', async () => {
   const owner = await harness.connect();
   const { threadId } = await echoThread(harness, owner);

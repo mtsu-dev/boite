@@ -1,4 +1,7 @@
 <script lang="ts">
+  import SettingsSection from './SettingsSection.svelte';
+  import SettingField from './SettingField.svelte';
+  import SettingSwitch from './SettingSwitch.svelte';
   import Notice from './Notice.svelte';
   import { errorText } from '../lib/errors';
   import { exactTime } from '../lib/format';
@@ -7,7 +10,6 @@
   import { RpcFailure } from '../lib/client';
   import HooksCard from './HooksCard.svelte';
   import SyncMark from './SyncMark.svelte';
-  import InfoTip from './InfoTip.svelte';
   import type { Store } from '../lib/store.svelte';
   import { strings } from '../lib/strings';
 
@@ -113,6 +115,17 @@
     } catch (cause) { if (!stale()) error = failure(cause); }
   }
 
+  function changeInterval(event: Event & { currentTarget: HTMLInputElement }) {
+    const input = event.currentTarget;
+    const minutes = input.valueAsNumber;
+    input.value = String(autoPull.intervalMinutes);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+      error = t.intervalHint;
+      return;
+    }
+    void run('auto', { ...autoPull, intervalMinutes: minutes });
+  }
+
   async function browse(target?: string) {
     const client = store.client;
     if (!client || busy) return;
@@ -147,7 +160,6 @@
 {/snippet}
 
 <div class="page" data-testid="brain-page" aria-busy={busy}>
-  <header><div><h1 class="ui-label-box"><span class="ui-label">{t.heading}</span></h1></div></header>
   {#if error}<p class="error" role="alert" data-testid="brain-error">{error}</p>{/if}
   {#if status && !status.config.path}
     {@render linkHelp()}
@@ -156,10 +168,12 @@
     {/each}
   {/if}
   {#if status?.config.path}
-    <section class="brain-connection" id="settings-brain-folder" data-testid="brain-sync-card">
+    {@const config = status.config}
+    <SettingsSection title={folderName || status.config.path} id="settings-brain-folder" testid="brain-sync-card">
       <div class="connection-top">
         <div class="folder-mark"><Brain size={24} strokeWidth={1.5} /></div>
-        <div class="folder-info"><h2>{folderName}</h2><code>{status.config.path}</code></div>
+        <div class="folder-info"><code>{status.config.path}</code></div>
+        <button class="ghost small" disabled={busy} onclick={() => { editing = !editing; path = status!.config.path!; folders = null; }} data-testid="brain-change"><span class="ui-label">{editing ? strings.common.cancel : t.change}</span></button>
         <button class="primary sync-button" disabled={busy || !status.git?.upstream || status.git.dirty} onclick={() => void run('sync')} data-testid="brain-sync"><RefreshCw size={15} /><span class="ui-label">{busy ? t.working : t.sync}</span></button>
       </div>
       <div class="sync-state" role="status" data-testid="brain-last-sync">
@@ -169,14 +183,22 @@
         {:else if status.git.ahead || status.git.behind}<span class="ui-label">{t.counts.replace('{ahead}', String(status.git.ahead)).replace('{behind}', String(status.git.behind))}</span>
         {:else}<Check size={14} /><span class="ui-label">{status.lastSync ? `${t.lastSync} ${exactTime(status.lastSync)}` : t.never}</span>{/if}
       </div>
-      <div class="connection-bottom">
-        <label class="sharing"><input type="checkbox" role="switch" checked={status.config.enabled} onchange={event => { event.currentTarget.checked = status!.config.enabled; void run('toggle'); }} disabled={busy} data-testid="brain-enabled" /><span class="ui-label">{t.enabled}</span><SyncMark {store} key="brain:enabled" /><InfoTip topic={t.enabled} text={t.enabledHint} testid="brain-enabled-help" /></label>
-        <button class="ghost small" disabled={busy} onclick={() => { editing = !editing; path = status!.config.path!; folders = null; }} data-testid="brain-change"><span class="ui-label">{editing ? strings.common.cancel : t.change}</span></button>
-      </div>
-      <div class="global-instructions">
-        <label class="sharing"><input type="checkbox" role="switch" checked={status.config.globalInstructions ?? false} disabled={busy || !status.config.enabled} data-testid="brain-global" onchange={event => { event.currentTarget.checked = status!.config.globalInstructions ?? false; void run('global'); }} /><span class="ui-label">{t.globalInstructions}</span><SyncMark {store} key="brain:globalInstructions" /></label>
-        {@render linkHelp()}
-        {#if status.links?.length}
+      <SettingField title={t.enabled} help={t.enabledHint} helpTestid="brain-enabled-help">
+        {#snippet actions()}<SyncMark {store} key="brain:enabled" />{/snippet}
+        {#snippet control(attributes)}
+          <SettingSwitch {...attributes} checked={config.enabled} disabled={busy} data-testid="brain-enabled"
+            onchange={event => { event.currentTarget.checked = status!.config.enabled; void run('toggle'); }} />
+        {/snippet}
+      </SettingField>
+      <SettingField title={t.globalInstructions}>
+        {#snippet actions()}<SyncMark {store} key="brain:globalInstructions" />{/snippet}
+        {#snippet control(attributes)}
+          <SettingSwitch {...attributes} checked={config.globalInstructions ?? false} disabled={busy || !config.enabled} data-testid="brain-global"
+            onchange={event => { event.currentTarget.checked = status!.config.globalInstructions ?? false; void run('global'); }} />
+        {/snippet}
+      </SettingField>
+      {@render linkHelp()}
+      {#if status.links?.length}
           <details class="global-links" data-testid="brain-links" open={status.links.some(link => link.state === 'blocked')}>
             <summary>{t.globalDetails}<span>{status.links.filter(link => link.state !== 'blocked').length}/{status.links.length}</span></summary>
             <p>{t.globalHint}</p>
@@ -190,30 +212,54 @@
               </div>
             {/each}
           </details>
-        {/if}
-      </div>
-      <div class="boite-guide">
-        <label class="sharing"><input type="checkbox" role="switch" checked={status.config.boiteGuide !== false} disabled={busy || !status.config.enabled} data-testid="brain-guide" onchange={event => { event.currentTarget.checked = status!.config.boiteGuide !== false; void run('guide'); }} /><span class="ui-label">{t.boiteGuide}</span><SyncMark {store} key="brain:boiteGuide" /><InfoTip topic={t.boiteGuide} text={t.boiteGuideHint} /></label>
-      </div>
-      {#if status.git?.upstream || status.config.autoPull}
-        <div class="automation">
-          <h3>{t.autoPull}<SyncMark {store} key="brain:autoPull" /></h3>
-          <label class="sharing"><input type="checkbox" role="switch" checked={autoPull.onStartup} disabled={busy} data-testid="brain-startup" onchange={event => { event.currentTarget.checked = autoPull.onStartup; void run('auto', { ...autoPull, onStartup: !autoPull.onStartup }); }} /><span class="ui-label">{t.onStartup}</span></label>
-          <div class="interval-row">
-            <label class="sharing"><input type="checkbox" role="switch" checked={autoPull.intervalMinutes > 0} disabled={busy} data-testid="brain-periodic" onchange={event => { event.currentTarget.checked = autoPull.intervalMinutes > 0; void run('auto', { ...autoPull, intervalMinutes: autoPull.intervalMinutes ? 0 : 15 }); }} /><span class="ui-label">{t.periodic}</span></label>
-            {#if autoPull.intervalMinutes > 0}
-              <label class="interval-value"><input type="number" min="1" max="1440" step="1" value={autoPull.intervalMinutes} aria-label={t.interval} disabled={busy} data-testid="brain-interval" onchange={event => { const input = event.currentTarget; const minutes = input.valueAsNumber; input.value = String(autoPull.intervalMinutes); if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) { error = t.intervalHint; return; } void run('auto', { ...autoPull, intervalMinutes: minutes }); }} /><span class="ui-label">{t.minutes}</span></label>
-            {/if}
-          </div>
-        </div>
       {/if}
-    </section>
+      <SettingField title={t.boiteGuide} help={t.boiteGuideHint}>
+        {#snippet actions()}<SyncMark {store} key="brain:boiteGuide" />{/snippet}
+        {#snippet control(attributes)}
+          <SettingSwitch {...attributes} checked={config.boiteGuide !== false} disabled={busy || !config.enabled} data-testid="brain-guide"
+            onchange={event => { event.currentTarget.checked = status!.config.boiteGuide !== false; void run('guide'); }} />
+        {/snippet}
+      </SettingField>
+    </SettingsSection>
+    {#if status.git?.upstream || status.config.autoPull}
+      <SettingsSection title={t.autoPull}>
+        {#snippet actions()}<SyncMark {store} key="brain:autoPull" />{/snippet}
+        <SettingField title={t.onStartup}>
+          {#snippet control(attributes)}
+            <SettingSwitch {...attributes} checked={autoPull.onStartup} disabled={busy} data-testid="brain-startup"
+              onchange={event => { event.currentTarget.checked = autoPull.onStartup; void run('auto', { ...autoPull, onStartup: !autoPull.onStartup }); }} />
+          {/snippet}
+        </SettingField>
+        <SettingField title={t.periodic}>
+          {#snippet control(attributes)}
+            <SettingSwitch {...attributes} checked={autoPull.intervalMinutes > 0} disabled={busy} data-testid="brain-periodic"
+              onchange={event => { event.currentTarget.checked = autoPull.intervalMinutes > 0; void run('auto', { ...autoPull, intervalMinutes: autoPull.intervalMinutes ? 0 : 15 }); }} />
+          {/snippet}
+        </SettingField>
+        {#if autoPull.intervalMinutes > 0}
+          <SettingField title={t.interval}>
+            {#snippet control(attributes)}
+              <div class="interval-value">
+                <input {...attributes} type="number" min="1" max="1440" step="1" value={autoPull.intervalMinutes} disabled={busy} data-testid="brain-interval" onchange={changeInterval} />
+                <span class="ui-label">{t.minutes}</span>
+              </div>
+            {/snippet}
+          </SettingField>
+        {/if}
+      </SettingsSection>
+    {/if}
   {/if}
   {#if status && (!status.config.path || editing)}
     <form class="folder-form" id={status.config.path ? undefined : 'settings-brain-folder'} onsubmit={event => { event.preventDefault(); void run('save'); }}>
       {#if !status.config.path}<Brain size={32} strokeWidth={1.5} /><h2>{t.empty}</h2><p>{t.emptyHint}</p>{/if}
-      <label for="brain-path">{t.folder}</label>
-      <div class="path-row"><input id="brain-path" data-testid="brain-path" bind:value={path} placeholder={t.pathHint} disabled={busy} /><button type="button" disabled={busy} data-testid="brain-browse" onclick={() => void choose()}><Folder size={15} /><span class="ui-label">{t.browse}</span></button></div>
+      <SettingField title={t.folder} stacked>
+        {#snippet control(attributes)}
+          <div class="path-row">
+            <input {...attributes} data-testid="brain-path" bind:value={path} placeholder={t.pathHint} disabled={busy} />
+            <button type="button" disabled={busy} data-testid="brain-browse" onclick={() => void choose()}><Folder size={15} /><span class="ui-label">{t.browse}</span></button>
+          </div>
+        {/snippet}
+      </SettingField>
       {#if folders}
         <div class="folders" data-testid="brain-folders">
           <code>{folders.path}</code>
@@ -226,7 +272,7 @@
     </form>
   {/if}
   {#if status?.config.path}
-    <section class="inventory" data-testid="brain-inventory" aria-label={t.detected}>
+    <SettingsSection title={t.detected} testid="brain-inventory">
       <div class="catalog-nav">
         <div class="categories" role="group" aria-label={t.detected}>
           {#each kinds as kind (kind)}
@@ -245,7 +291,7 @@
       {/each}
       {#if !entries.length}<p class="empty-category">{t.noEntries}</p>{/if}
       {#if selected === 'plugin'}<p class="catalog-hint">{t.pluginHint}</p>{/if}
-    </section>
+    </SettingsSection>
     {#if status.git}<details class="git-details"><summary><GitBranch size={14} /><span class="ui-label">{t.details}</span></summary><div><code>{status.git.branch}{#if status.git.upstream} → {status.git.upstream}{/if}</code><p>{t.counts.replace('{ahead}', String(status.git.ahead)).replace('{behind}', String(status.git.behind))}</p></div></details>{/if}
   {/if}
   <!-- The agents' own hooks are theirs, not the brain folder's: the card shows with or without one. -->
@@ -255,24 +301,17 @@
 <style>
   /* The padding is the settings page's own (app.css), so the title lines up with every other tab. */
   .page { width: 100%; }
-  .page > :is(section, form, details, .error) { max-width: var(--settings-width); }
-  h1 { margin: 0; font-size: var(--text-lg); }
+  .page > :is(:global(section), form, details, .error) { max-width: var(--settings-width); }
   h2 { margin: 0; font-size: var(--text-md); font-weight: 600; }
-  header { margin-bottom: 28px; }
   p { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
-  #settings-brain-folder { scroll-margin-top: 24px; }
-  .brain-connection { border-radius: var(--radius-lg); background: var(--color-surface); overflow: hidden; }
-  .connection-top { display: flex; align-items: center; gap: 14px; padding: 24px 24px 0; }
+  .page :global(#settings-brain-folder) { scroll-margin-top: 24px; }
+  .connection-top { display: flex; align-items: center; gap: 14px; padding-top: var(--space-4); }
   .folder-mark { width: 44px; height: 44px; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--color-surface-2); flex: none; }
   .folder-info { flex: 1; min-width: 0; }
-  .folder-info h2 { overflow-wrap: anywhere; margin-bottom: 4px; }
   .sync-button { flex: none; }
   code { display: block; font-size: var(--text-sm); color: var(--color-muted-foreground); overflow-wrap: anywhere; }
-  .sync-state { display: flex; gap: 6px; align-items: center; padding: 16px 24px 24px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
+  .sync-state { display: flex; gap: 6px; align-items: center; padding: var(--space-3) 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .sync-state :global(svg) { flex: none; }
-  .connection-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 20px 12px 24px; border-top: 1px solid var(--color-border); }
-  .sharing { display: flex; align-items: center; gap: 10px; font-size: var(--text-sm); }
-  .global-instructions, .boite-guide { padding: 16px 24px; border-top: 1px solid var(--color-border); }
   .global-links { margin-top: 12px; font-size: var(--text-sm); }
   .link-help { margin-top: 12px; }
   .link-help ol { margin: 6px 0; padding-left: 20px; }
@@ -283,19 +322,14 @@
   .link-row { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 12px 0; border-top: 1px solid var(--color-border); }
   .link-row code, .link-row p, .link-row .link-error { grid-column: 1 / -1; margin: 0; }
   .link-row > span:nth-child(2):not(.error) { color: var(--color-muted-foreground); }
-  .automation { display: grid; gap: 14px; padding: 20px 24px; border-top: 1px solid var(--color-border); }
-  .automation h3 { margin: 0; font-size: var(--text-sm); font-weight: 400; color: var(--color-muted-foreground); }
-  .interval-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--control); }
   .interval-value { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .interval-value input { width: 78px; }
   .folder-form { padding: 24px; margin-top: 16px; background: var(--color-surface); border-radius: var(--radius-lg); }
   .folder-form h2 { margin-top: 16px; }
   .folder-form p { margin: 6px 0 24px; }
-  .folder-form label { font-size: var(--text-sm); }
-  .path-row { display: flex; gap: 8px; margin: 8px 0 16px; }
+  .path-row { display: flex; gap: 8px; flex: 1; }
   .path-row input { flex: 1; min-width: 0; }
   .form-actions { display: flex; gap: 8px; }
-  .inventory { margin-top: 28px; }
   .catalog-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--color-border); padding-bottom: 10px; }
   .categories { display: flex; gap: 4px; min-width: 0; }
   .category { gap: 8px; font-size: var(--text-sm); }
@@ -322,12 +356,8 @@
   .folder { justify-content: flex-start; flex-shrink: 0; }
   @media (max-width: 720px) {
     .page { padding: 20px 16px; }
-    .connection-top { padding: 20px 16px 0; flex-wrap: wrap; gap: 12px; }
+    .connection-top { flex-wrap: wrap; gap: 12px; }
     .sync-button { width: 100%; }
-    .sync-state { padding: 12px 16px 20px; }
-    .connection-bottom { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
-    .automation { padding: 16px; }
-    .global-instructions, .boite-guide { padding: 16px; }
     .folder-form { padding: 20px 16px; }
     .path-row { flex-wrap: wrap; }
     .path-row input { flex-basis: 100%; }

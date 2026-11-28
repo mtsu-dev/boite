@@ -10,7 +10,8 @@ requests mailed the owner every event of each contributor's pull request. The `r
 
 `PR title` runs `scripts/ci/pr-title.ts` on title edits. The squash title is
 `type(scope): summary`, with an optional scope and one of `feat`, `fix`, `perf`,
-`refactor`, `docs`, `test`, `ci`, `build`, `chore` or `revert`. Its body is empty.
+`refactor`, `docs`, `test`, `ci`, `build`, `chore` or `revert`, and no em dash
+(U+2014). Its body is empty.
 
 ## Merge queue
 
@@ -23,9 +24,9 @@ pull request's CI after each merge.
 `ci` and `PR title` also run on `merge_group`. A group runs `ci` in `queue`
 mode against its `main` base: the same path rules as a pull request, with the
 diff covering every pull request ahead of it, and the Windows, macOS, desktop,
-E2E, stress, Docker and APK jobs a pull request run leaves out
-([pull request runs](#pull-request-runs)). `Bundle size` skips there, since it
-compares a pull request with its base. A group's `PR
+full E2E, stress, Docker and APK jobs
+([pull request runs](#pull-request-runs)). `Bundle size` and `Thread transfer`
+skip there, since they compare a pull request with its base. A group's `PR
 title` checks the squash title of its last commit, the one `main` receives.
 The queue builds up to three groups at once, each on top of the ones ahead of
 it, without waiting to fill a group: with five, the full matrices shared the
@@ -79,14 +80,17 @@ fixtures. A local Linux run verifies path and admission logic but does not
 replace the native Windows process/file checks selected by CI. Fixture-only
 echo execution must not be reported as external-provider sandbox coverage.
 
-A pull request whose selection includes desktop also runs [Bundle growth](#bundle-growth).
+A pull request whose selection includes desktop also runs [Bundle growth](#bundle-growth),
+and one that changes the core or the UI runs [Thread transfer](#thread-transfer).
 
 The `Plan` job only runs `changes.ts`, about 15 s, so the jobs it gates start
 sooner. `Repository checks`, beside it on every change, installs frozen
 dependencies, runs `bun audit` (with the ignored advisories named and justified
 in `ci.yml`), local link checks, `bun test scripts/ci ./bench
 ./apps/shell/scripts`, architecture checks and their tests, translation
-validation, the no-em-dash UI copy rule (`bun run check:copy`), oxlint
+validation, the no-em-dash UI copy rule (`bun run check:copy`), the no-em-dash
+rule on every tracked text file (`bun run check:em-dash`; a fixture that needs
+U+2014 writes it as an escape), oxlint
 (`bun run lint`, every file, no warning allowed) and checksum-verified actionlint 1.7.12. When one job did both, every other job
 waited about 54 s for it (median of 27 runs, 2026-11-16), 40 of them for the
 script tests.
@@ -154,9 +158,9 @@ ruleset lacks or one no pull request reports. No job needs it: the tests still
 run, and once the ruleset matches, a rerun of that job alone turns the run
 green. Pull requests skip it, so it is not required. `--ruleset <file>`
 compares with saved `gh api` output instead.
-`Bundle size` is reported but left out of the ruleset on purpose
-(`ADVISORY` in the script): its failure shows on the pull request and blocks
-nothing.
+`Bundle size` and `Thread transfer` are reported but left out of the ruleset
+on purpose (`ADVISORY` in the script): their failure shows on the pull request
+and blocks nothing.
 
 - Adding a job: merge the pull request, then add its name to the ruleset in
   the same sitting; until then main's run fails and the new job is unguarded.
@@ -299,19 +303,24 @@ inspector answers only when the JavaScript thread is free.
 ### Pull request runs
 
 A pull request, draft or ready, runs `pr` mode: the plan, the repository
-checks, the two Linux x64 core shards, the two UI shards, `Bundle size`, and
+checks, the two Linux x64 core shards, the two UI shards, `Bundle size`,
+`Thread transfer`, and
 the focused telemetry and E2E type checks, each only when its paths changed.
 Protection code, protected fixtures and shared toolchain inputs also select
 the two Windows core shards, `Native Windows protection` and `Native Windows
 protection (MinGW)`. Each Windows core shard builds the userspace sandbox
 helper and runs its half of the ordinary suite with it. The two native jobs
-build both helpers again and run the opt-in native protection fixtures beside
-them instead of before the suite, one job per helper (`NATIVE_HELPER`): the
-SDK build, with the diagnostics below, and the MinGW build. Each takes about
-7.5 minutes where one job ran both helpers in 12.7 (median of 23 pull
-requests, 2026-11-21), so the Windows core shards end such a run again. Other pull requests leave Windows out. macOS, desktop packages, E2E, stress,
-Docker and the APKs skip: the [merge queue](#merge-queue) runs them on top of
-`main`.
+build both helpers and run the opt-in native protection fixtures alongside
+the core shards, one job per helper (`NATIVE_HELPER`). The SDK job also runs
+the diagnostics below. Each native job takes about 7.5 minutes. The previous
+job ran both helpers in 12.7 minutes (median of 23 pull requests, 2026-11-21).
+
+Changes to the UI, contracts, E2E fixtures or unknown inputs also run
+`E2E 1/5` on Windows. It covers Changes and keyboard focus at desktop and
+phone widths, and stopping a running Mochi on a phone. The job uploads its
+test log and available captures even if another job fails. The
+[merge queue](#merge-queue) runs all five shards, macOS, desktop packages,
+stress, Docker and APKs on top of `main`.
 
 The SDK job also archives `windows-null-access-matrix`: a standalone,
 opt-in comparison of host and LPAC NUL opens with four requested access masks.
@@ -403,7 +412,7 @@ name and the pull request can enter the queue. The group's run reports the same
 names on its own commit, and gates the merge on them. There only the path rules
 skip a job: `changes.ts` gives a group the `queue` plan whatever its pull
 requests' draft flags, and no job condition in `ci.yml` reads the event or the
-draft flag, `Bundle size` and `Ruleset check names` aside
+draft flag, `Bundle size`, `Thread transfer` and `Ruleset check names` aside
 (`required-checks.test.ts`). A Windows, macOS, desktop or E2E failure therefore
 shows first in the queue, which removes the pull request.
 
@@ -587,6 +596,124 @@ The job summary shows each measure, its base, the growth and the ceiling.
 Reproduce a measurement with `bun run build:ui && bun run build:core &&
 bun scripts/ci/budgets.ts measure sizes.json`.
 
+### Thread transfer
+
+`bench/transfer/measure.ts` measures what one agent turn costs a phone, in
+bytes, never in time. Each of `bench/transfer/fixtures/` holds one turn of
+Claude, Codex or OpenCode and replays through the real driver: Claude's SDK
+messages through a scripted query, the two others' output through the fake
+Codex app server (`CODEX_FAKE_REPLAY`) and the fake ACP agent
+(`ACP_FAKE_REPLAY`), which keep the recorded thread and session ids. A client
+the core serves as remote, like a phone, opens the empty thread with the
+parameters a phone sends (`thread-preload.ts`), watches the turn to
+`turn.finished`, then a second one reopens the finished thread.
+
+The timers that join deltas before they go out, the bus's 16 ms window, a
+remote socket's 80 ms and 250 ms holds and the 1 s beat of a running Codex
+command's output, run on `pacing.ts`. The bench holds
+them: none fires on its own, and a phase ends by firing the pending ones until
+600 ms pass with no frame and no timer left. Text then joins until the next
+event, as from an agent faster than every window, however the replay spaces
+its output; the core takes no load samples (`loadSampling: false`), which
+would cut a stream at a moment the runner's speed picks. `measure.test.ts`
+replays Codex and OpenCode with a 1.1 s pause, longer than every timer, before
+every 39th item (`REPLAY_PAUSE_MS`), one of Codex's command output deltas, and
+expects the same numbers as without.
+
+| Measure | What it counts |
+| --- | --- |
+| `total` | Wire bytes of the three phases |
+| `snapshot` | Wire bytes of the reopening |
+| `liveWire` | Wire bytes of the live turn |
+| `liveDecoded` | UTF-8 bytes of the live turn's messages, uncompressed |
+| `liveMessages` | WebSocket messages of the live turn |
+
+A frame's wire bytes are computed from the frame (`wireBytes`), the way the
+core's socket sends it with the Bun `package.json` pins. Bun compresses each
+frame alone, with no context carried from the last: zlib's raw deflate with a
+sync flush, minus its 4-byte tail, and a 2-byte header, 4 from a 126-byte
+payload, 10 from 65536. Every phase checks the computed sum against the bytes
+the relay counted on the socket and throws when they differ, so a change in
+Bun's compressor shows as an error, not as growth. What belongs to the machine
+running the bench is left out before counting: `core.log`, `process.*` and
+`thread.load` frames, the data folder's path (written `/data`), memory and CPU readings.
+Random ids come from a seeded generator and the clock stands still, so a
+commit gives the same numbers on every run of one OS: about 15 s for the three
+agents. CI measures on its Linux runners; a Windows run counts a few dozen
+bytes more, so compare runs of the same OS.
+
+`thread-transfer.yml` measures every main commit, one job the next push never
+cancels, and keeps the numbers 90 days as the `thread-transfer` artifact. The
+`Thread transfer` job in `ci.yml` measures a pull request that changes the core
+or the UI (`changes.ts`) twice and fails when the two runs differ. It compares
+with the main commit the merge ref sits on, like [Bundle growth](#bundle-growth):
+that commit's artifact, or a worktree of it measured in the same job with the
+Bun that commit pins (`bun x bun@<version>`), or nothing when the commit
+predates the bench. A byte count may grow 1 % over
+main (rounded down) and the message count not at all; above, the job fails
+until the pull request body explains the growth under a `## Thread transfer`
+heading, read when the job runs. The job is advisory, like `Bundle size`.
+
+Reproduce a measurement with `bun scripts/ci/transfer.ts measure out.json`.
+`bench/transfer/record.ts` records the fixtures again from live turns: its
+header lists the logins it uses. OpenCode runs on the OpenCode Go subscription
+only and refuses any other model. `anonymize.ts` replaces paths, ids and names
+before a fixture is written, and `anonymize.test.ts` fails on a fixture that
+still names a path, an address or a skill of the recording machine.
+
+### Pull request comment
+
+Each pull request gets one comment, "Thread transfer impact", edited in place
+on every push: a table per agent (main, the pull request, the impact, the
+ceiling and whether it holds), the bundle sizes from [Bundle growth](#bundle-growth),
+the base and head commits and the conclusion of the `ci` run.
+
+The jobs that measure run the pull request's code with read access only. Each
+leaves a JSON report as an artifact named after the attempt:
+`transfer-report.json` in `thread-transfer-report-<attempt>`,
+`bundle-report.json` in `bundle-report-<attempt>`. The comment reads each
+report from the attempt its job last ran in: a rerun carries a job over with
+its first start time, earlier than the attempt's, and a job a rerun replaced
+never lends its old report.
+`pr-comment.yml` runs on `workflow_run` once `ci` completes, from the default
+branch, with `pull-requests: write` and `actions: read`, and never checks out
+the pull request. `scripts/ci/pr-comment.ts` downloads each report only when
+the artifact holds at most 64 KiB, reads it only as a plain file, and accepts
+it only in the exact shape of `parseReport` in `scripts/ci/pr-report.ts`:
+known keys, integers in range, 40-character commit hashes, and the run's own
+pull request number and head commit. The ceilings and verdicts the comment
+shows are computed again from the numbers by the default branch's code. Only a
+pull request into the default branch gets the comment, and only when GitHub
+ties the run to that one pull request: a branch open against two targets runs
+once for each, and those runs are left alone. One from a fork is found by its
+head branch; a run whose head the pull request has already left changes
+nothing. The comment is the newest one by
+`github-actions[bot]` that starts with `<!-- boite:thread-transfer-impact -->`.
+
+A report holds the pull request's own numbers and the main commit it was
+compared with, nothing else. The comment uses that commit only when it is
+main's tip at the run's creation: the head of the last push run on main
+created before the run's first attempt, which a rerun keeps. It then reads
+main's numbers there from the push runs of `thread-transfer.yml` and
+`bundle-size.yml`, the bundle ceiling from the published release, and the
+reasons from the pull request body. Any other base, or main's numbers missing
+there, leaves the impact column at n/a; a push to main in the same seconds as
+the run can do so too. The measuring job's own verdict stays in its run.
+Before writing, the job checks again that the pull request is open, targets
+the default branch and still has the run's head, and skips when a newer run
+or attempt of `ci` exists for the same pull request and commit. A job that
+ran and left no report shows as such, never as a pull request that changes
+nothing. A job that passed without a report ran a workflow from before the
+reports, on a branch that has not merged main since: it counts as absent, and
+a run with neither report writes no comment.
+
+A `pull_request_target` job would also hold write access, but it starts before
+the measurements exist; `workflow_run` starts once they do. A change to
+`pr-comment.yml` or `pr-comment.ts` takes effect only once merged; until
+then, `pr-comment.ts --run <run id>` with `GITHUB_REPOSITORY=mtsu-dev/boite`
+posts the comment from a finished run as the signed-in `gh` user, who edits
+only their own comment.
+
 ### E2E preparation
 
 `BOITE_E2E_PREBUILT_UI=1` tests the built production UI and refuses missing
@@ -597,7 +724,7 @@ browser profiles. Matrix `fail-fast: false` preserves other shards' results
 after a failure.
 
 The `Build UI` job builds both UIs once on Linux: `bun run build:ui` (artifact
-`ui-dist`, `.well-known` included) and the fake-client bundle
+`ui-dist`) and the fake-client bundle
 (`bun tests/e2e/lib/warm.ts --build-only`, artifact `ui-e2e-fake`). The shards
 and stress download them instead of building about 31 s each on Windows.
 On `6004522f` (2026-10-17), the Linux UI of `app.yml` run 39065496375 and a
@@ -714,8 +841,7 @@ and the night was lost on `ended cancelled` (run 39226757576). The job writes th
 its `sha` output, and every later job checks out, tags and publishes that
 commit, never `github.sha`; the version step runs that commit's `nightly.ts`
 with `GITHUB_SHA` set to it. `desktop.yml`, `android-server.yml`, `mobile.yml`,
-`server.yml` and `server-verify.yml` take it as their `ref` input. `app.yml` deploys its own
-checkout, so it does not follow and a cancelled run still fails it. The whole
+`server.yml` and `server-verify.yml` take it as their `ref` input. The whole
 wait is bounded at two hours: 35 minutes behind the main run ahead, 35 for the
 followed run and 35 for its rerun.
 
@@ -799,18 +925,6 @@ volumes ([server](server.md)). The signed native Android app is required too
 ([Android app](android-native.md)), and so is the Boite Server APK, signed
 with the same key or reused while `apps/android-server` outside `termux/` is
 unchanged ([Android server](android-server.md#publishing-the-app)).
-
-## The phone app's address
-
-`app.yml` builds the UI on `main` when `packages/ui/`, `packages/contracts/` or
-the workflow change, or by hand; from `main` it waits for that commit's CI to
-pass (`scripts/ci/commit-ci.ts`, as the nightly does) and deploys it with
-GitHub Pages to the
-repository's custom domain, `APP_ORIGIN` in the contracts
-([phone](phone.md#the-app-on-its-own-address)). It packs the site itself so
-`/.well-known/assetlinks.json` ships, which `upload-pages-artifact` would leave
-out as a hidden folder. Pages must use GitHub Actions as its source, and the
-domain's DNS names `mtsu-dev.github.io`.
 
 ## Pull request reviews
 

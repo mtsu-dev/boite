@@ -1,5 +1,6 @@
 import { PLUGIN_ADD_SECTION, parseGroupRelayUrl, type QuotaAlert, type ThreadId } from '@boite/contracts';
-import { appPage } from '../app-origin';
+import { mobileApp } from '../shell-platform';
+import { copyByCommand } from '../clipboard';
 import { servesThisPage } from '../endpoint';
 import {
   notificationCore,
@@ -24,7 +25,7 @@ import { PUSH_ENABLED_KEY } from '../pwa';
 import type { Client } from '../client';
 import { experimentOn } from '../experiments.svelte';
 import type { DropKind } from '../native-drop';
-import { clampSidebar, SIDEBAR_DEFAULT, writeLayout } from '../prefs';
+import { AGENTS_SIDEBAR_MAX, clampSidebar, SIDEBAR_DEFAULT, writeLayout } from '../prefs';
 import { rightPanel, type BoundPanel } from '../right-panel.svelte';
 import { strings } from '../strings';
 import type { Page, SettingsTab, Store } from '../store.svelte';
@@ -60,6 +61,7 @@ export class Layout {
   /** The find bar over the open thread, and a count each ask bumps so a second Ctrl+F refocuses it. */
   findOpen = $state(false);
   findRequest = $state(0);
+  messageSearchJump = $state<{ threadId: string; messageId: string; query: string } | null>(null);
   /** Bumped to open the draft's project dropdown from the keyboard. */
   projectChoiceRequest = $state(0);
   page = $state<Page>('chat');
@@ -72,6 +74,8 @@ export class Layout {
   /** The desktop sidebar's remembered folded state. */
   sidebarCollapsed = $state(false);
   sidebarWidth = $state(SIDEBAR_DEFAULT);
+  /** Optional width chosen specifically on the Mochis page, kept separate so it never alters the thread list. */
+  agentsSidebarWidth = $state<number | null>(null);
   /** What a drag from the system over the window would do: add a project or attach files. */
   dropping = $state<DropKind | false>(false);
   search = $state('');
@@ -88,26 +92,46 @@ export class Layout {
   // Layout
   // -------------------------------------------------------------------------
 
+  #saveLayout(): void {
+    writeLayout({
+      sidebarWidth: this.sidebarWidth,
+      sidebarCollapsed: this.sidebarCollapsed,
+      ...(this.agentsSidebarWidth !== null ? { agentsSidebarWidth: this.agentsSidebarWidth } : {})
+    });
+  }
+
   setSidebarWidth(width: number): void {
     this.sidebarWidth = clampSidebar(width);
-    writeLayout({ sidebarWidth: this.sidebarWidth, sidebarCollapsed: this.sidebarCollapsed });
+    this.#saveLayout();
+  }
+
+  setAgentsSidebarWidth(width: number | null): void {
+    this.agentsSidebarWidth = width === null ? null : clampSidebar(width, AGENTS_SIDEBAR_MAX);
+    this.#saveLayout();
   }
 
   toggleSidebar(): void {
     this.sidebarCollapsed = !this.sidebarCollapsed;
-    writeLayout({ sidebarWidth: this.sidebarWidth, sidebarCollapsed: this.sidebarCollapsed });
+    this.#saveLayout();
   }
 
-  async copy(text: string): Promise<void> {
+  async copy(text: string, options?: { reportFailure?: boolean; within?: HTMLElement }): Promise<boolean> {
     const client = this.ctx.client;
     const clientGeneration = this.ctx.clientGeneration;
     const navigation = this.ctx.threads.openGeneration;
     try {
-      await navigator.clipboard.writeText(text);
+      const clipboard = navigator.clipboard;
+      if (clipboard) {
+        await clipboard.writeText(text);
+        return true;
+      }
+      if (copyByCommand(text, options?.within)) return true;
     } catch {
-      if (this.ctx.client === client && this.ctx.clientGeneration === clientGeneration && this.ctx.threads.openGeneration === navigation)
-        this.ctx.store.reportError(strings.errors.clipboard, 'minor');
+      // Report the failure below if the view still owns the action.
     }
+    if (options?.reportFailure !== false && this.ctx.client === client && this.ctx.clientGeneration === clientGeneration && this.ctx.threads.openGeneration === navigation)
+      this.ctx.store.reportError(strings.errors.clipboard, 'minor');
+    return false;
   }
 
   // -------------------------------------------------------------------------
@@ -313,11 +337,11 @@ export class Layout {
     }).catch(() => undefined);
   }
 
-  /** The shown machine is one this page subscribes on: the one serving it, or any on the phone app's page. */
+  /** The shown machine is one this page subscribes on: the one serving it, or any on the Android app's page. */
   private mayHoldPush(): boolean {
     const s = this.ctx.store;
     const relay = s.endpointUrl === null ? null : parseGroupRelayUrl(s.endpointUrl);
     if (relay !== null && servesThisPage(relay.member)) return false;
-    return appPage() || !s.endpointUrl || servesThisPage(s.endpointUrl);
+    return mobileApp() || !s.endpointUrl || servesThisPage(s.endpointUrl);
   }
 }

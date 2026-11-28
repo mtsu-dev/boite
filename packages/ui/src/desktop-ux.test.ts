@@ -12,13 +12,14 @@ import { runCommand } from './lib/commands.svelte';
 import { undo } from './lib/undo.svelte';
 import { confirm } from './lib/confirm.svelte';
 import { fill, strings } from './lib/strings';
-import { clampPanel, rightPanel } from './lib/right-panel.svelte';
+import { clampPanel, panelSibling, rightPanel } from './lib/right-panel.svelte';
 import { contactsRail } from './lib/contacts-rail.svelte';
 import { AgentsView, openAgent } from './lib/agents.svelte';
 import { saveAgent } from './lib/agent-menu';
 import { teamsOf } from './lib/teams.svelte';
 import { botEngine } from './lib/agents-view.svelte';
 import { subagentsAtWork, threadsAtWork } from './lib/work-counts';
+import { MOCHI_LAYOUT_STORAGE_KEY, mochiLayout } from './lib/mochi-layout.svelte';
 
 /**
  * The desktop behaviours the UX audit found broken, on the whole app over the
@@ -44,8 +45,72 @@ afterEach(() => {
   // A panel a test opened stays in memory: the next test starts with none, its thread list in place.
   rightPanel.threads = {};
   work.load();
+  mochiLayout.load();
   workspace.view = 'projects';
   undo.dismiss();
+});
+
+test('Mochi layout starts on with the app rail; switched off, a compact sidebar foot opens Mochis in the sidebar list, toggles the rail from Filter, and keeps Settings reachable when folded', async () => {
+  writeExperiments(['resident-agents']);
+  await mountOnFake('/?fake=1&agents=1');
+  try {
+    // A fresh desktop draws the vertical AppRail and no sidebar foot.
+    await waitFor(() => document.querySelector('[data-testid=app-rail]') !== null);
+    expect(document.querySelector('[data-testid=sidebar-foot]')).toBeNull();
+    expect(window.localStorage.getItem(MOCHI_LAYOUT_STORAGE_KEY)).toBeNull();
+
+    // Switched off: no AppRail, the compact footer holds Activity, Mochis, Limits and Settings.
+    mochiLayout.set(false);
+    await waitFor(() => document.querySelector('[data-testid=sidebar-foot]') !== null);
+    expect(document.querySelector('[data-testid=app-rail]')).toBeNull();
+    const foot = query('[data-testid=sidebar-foot]');
+    expect(foot.querySelector('[data-testid=nav-activity]')).not.toBeNull();
+    expect(foot.querySelector('[data-testid=nav-agents]')).not.toBeNull();
+    expect(foot.querySelector('[data-testid=nav-limits]')).not.toBeNull();
+    expect(foot.querySelector('[data-testid=nav-settings]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-testid=nav-settings]')).toHaveLength(1);
+
+    // Mochis opens from the foot with the full list in the sidebar and a + menu; Back returns to threads.
+    query<HTMLButtonElement>('[data-testid=nav-agents]').click();
+    await waitFor(() => document.querySelector('[data-testid=agents-rail-add]') !== null && document.querySelector('[data-testid^="agent-entry-"]') !== null);
+    expect(document.querySelector('[data-testid=bot-column-head]')).toBeNull();
+    query<HTMLButtonElement>('[data-testid=side-back]').click();
+    await waitFor(() => store.page === 'chat' && document.querySelector('[data-testid=thread-row]') !== null);
+
+    // Collapsing the sidebar removes the foot and puts the fallback Settings button in the titlebar; status-connection stays mounted.
+    expect(document.querySelectorAll('[data-testid=status-connection]')).toHaveLength(1);
+    store.sidebarCollapsed = true;
+    flushSync();
+    expect(document.querySelector('[data-testid=sidebar-foot]')).toBeNull();
+    expect(document.querySelector('[data-testid=titlebar] [data-testid=nav-settings]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-testid=nav-settings]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid=status-connection]')).toHaveLength(1);
+    expect(query('[data-testid=status-connection]').getAttribute('data-state')).toBe('ready');
+    store.sidebarCollapsed = false;
+    flushSync();
+    expect(document.querySelector('[data-testid=titlebar] [data-testid=nav-settings]')).toBeNull();
+
+    // Filter > Display switches Mochi layout on and persists it on this device; switching back restores the foot.
+    query<HTMLButtonElement>('[data-testid=grouping-options]').click();
+    await waitFor(() => document.querySelector('[data-value=mochi-layout]') !== null);
+    const toggle = () => query<HTMLButtonElement>('[data-value=mochi-layout]');
+    expect(toggle().getAttribute('aria-checked')).toBe('false');
+    toggle().click();
+    await waitFor(() => document.querySelector('[data-testid=app-rail]') !== null);
+    expect(document.querySelector('[data-testid=sidebar-foot]')).toBeNull();
+    expect(document.querySelectorAll('[data-testid=status-connection]')).toHaveLength(1);
+    expect(window.localStorage.getItem(MOCHI_LAYOUT_STORAGE_KEY)).toBe('1');
+    expect(toggle().getAttribute('aria-checked')).toBe('true');
+
+    toggle().click();
+    await waitFor(() => document.querySelector('[data-testid=sidebar-foot]') !== null);
+    expect(document.querySelector('[data-testid=app-rail]')).toBeNull();
+    expect(document.querySelectorAll('[data-testid=status-connection]')).toHaveLength(1);
+    expect(window.localStorage.getItem(MOCHI_LAYOUT_STORAGE_KEY)).toBe('0');
+  } finally {
+    store.sidebarCollapsed = false;
+    store.showChat();
+  }
 });
 
 test('a maximized panel stays with its thread: the Contacts page beside the list is not squeezed to nothing', async () => {
@@ -67,6 +132,7 @@ test('a maximized panel stays with its thread: the Contacts page beside the list
 });
 
 test('contacts are a place at the top of the rail, under Activity and above the bots, never a side of the Mochis column: its head folds the column on the right, a row opens a contact', async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   await mountOnFake();
   try {
@@ -114,6 +180,12 @@ test('contacts are a place at the top of the rail, under Activity and above the 
     query<HTMLButtonElement>('[data-testid=contacts-rail-home]').click();
     await waitFor(() => store.page === 'home');
 
+    // The owner's switch off takes the button and the column away; on, they come back.
+    store.showChat();
+    await store.saveSettings({ contacts: false });
+    await waitFor(() => document.querySelector('[data-testid=rail-contacts]') === null && document.querySelector('[data-testid=contacts-rail]') === null);
+    await store.saveSettings({ contacts: true });
+    await waitFor(() => document.querySelector('[data-testid=rail-contacts]') !== null && document.querySelector('[data-testid=contacts-rail]') !== null);
   } finally {
     if (!contactsRail.folded) contactsRail.toggle();
     store.showChat();
@@ -186,6 +258,7 @@ test('a docked side panel leaves the list column alone: the thread list beside a
 });
 
 test('the rail puts teams first, and a picture moved with the keyboard keeps its new place on this device', async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   localStorage.removeItem('boite.rail.order');
   await mountOnFake('/?fake=1&agents=1');
@@ -217,6 +290,7 @@ test('the rail puts teams first, and a picture moved with the keyboard keeps its
 });
 
 test("the rail counts the threads and subagents at work and a mochi's unread replies, and the open mochi's working arc follows its squircle", async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1&working=3&team=1');
   try {
@@ -271,13 +345,21 @@ test("the rail counts the threads and subagents at work and a mochi's unread rep
   }
 });
 
-test("a right click on a mochi's rail picture opens its menu, not the webview's, and its picks reach the mochi", async () => {
+test("a mochi's rail menu opens by keyboard and pointer, returns focus and acts on that mochi", async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   try {
     await waitFor(() => document.querySelector('[data-testid=rail-bot]') !== null);
     const bot = query<HTMLButtonElement>('[data-testid=rail-bot]');
     const id = bot.dataset['agentId']!;
+    bot.focus();
+    const menuKey = new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true });
+    bot.dispatchEvent(menuKey);
+    expect(menuKey.defaultPrevented).toBe(true);
+    await waitFor(() => document.activeElement?.closest('[data-testid=context-menu]') !== null);
+    press(document.activeElement!, 'Escape');
+    await waitFor(() => document.activeElement === bot);
     const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 80 });
     bot.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
@@ -305,6 +387,7 @@ test("a right click on a mochi's rail picture opens its menu, not the webview's,
 });
 
 test("the rail's Add rests out of sight beside the mochis and stays while its menu is open, so the menu keeps it shown", async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   try {
@@ -324,7 +407,7 @@ test("the rail's Add rests out of sight beside the mochis and stays while its me
     const bot = query<HTMLButtonElement>('[data-testid=rail-bot]');
     bot.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 80 }));
     await waitFor(() => add.getAttribute('aria-expanded') === 'false');
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
     expect(add.getAttribute('aria-expanded')).toBe('false');
   } finally {
@@ -333,6 +416,7 @@ test("the rail's Add rests out of sight beside the mochis and stays while its me
 });
 
 test("with no mochi or team in the rail yet, its Add always shows: nothing else there would bring it", async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1');
   await waitFor(() => document.querySelector('[data-testid=rail-add]') !== null);
@@ -372,6 +456,7 @@ test('an empty rail has no edge to fade: the two edges would be all its list hol
 });
 
 test("a right click on a team's rail picture opens the team's menu, and its picks reach the team", async () => {
+  mochiLayout.set(true);
   writeExperiments(['resident-agents']);
   await mountOnFake('/?fake=1&agents=1');
   try {
@@ -571,7 +656,7 @@ test('an archived thread comes back from Settings > General', async () => {
   await waitFor(() => store.page === 'chat' && store.openThread?.id === 't-trace');
 });
 
-test('the palette and the project menu reach the archive, its list already read', async () => {
+test('the palette reaches the archive in Settings; the archived count of a card opens its archived threads under it, as Done', async () => {
   // A jump to a card scrolls it into view, which jsdom does not draw.
   Element.prototype.scrollIntoView ??= vi.fn();
   await mountOnFake();
@@ -582,18 +667,33 @@ test('the palette and the project menu reach the archive, its list already read'
   expect(document.querySelector('[data-testid=archived-show]')).toBeNull();
   expect(query('[data-testid=archived-list]').textContent).toContain('Finish the trace tab');
 
+  // The archive is a card of Settings > General, never the thread list's place: the list stays as it was.
+  expect(store.page === 'settings' && store.settingsTab === 'general').toBe(true);
+  expect(document.querySelector('[data-testid=sidebar] [data-testid=archived-list]')).toBeNull();
+
+  // On the card, the archived threads are a count in its head, beside Done, and its menu no longer sends them to Settings.
   store.showChat();
-  await waitFor(() => document.querySelector('[data-testid=project-menu]') !== null);
-  query<HTMLButtonElement>('[data-testid=project-menu]').click();
-  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archived]') !== null);
-  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=archived]').click();
-  // A card's menu opens the archive in the list itself, on its project; All projects widens it back to every one.
-  await waitFor(() => store.page === 'chat' && document.querySelector('[data-testid=sidebar-archived] [data-testid=archived-focus]') !== null);
-  query<HTMLButtonElement>('[data-testid=archived-all]').click();
-  await waitFor(() => document.querySelector('[data-testid=sidebar-archived] [data-testid=archived-list]')?.textContent?.includes('Finish the trace tab') === true);
-  // The first line gives the threads back.
-  query<HTMLButtonElement>('[data-testid=sidebar-archived-back]').click();
-  await waitFor(() => document.querySelector('[data-testid=sidebar-archived]') === null && document.querySelector('[data-testid=thread-row]') !== null);
+  const card = '[data-testid=sidebar] section[data-project-id="p-boite"]';
+  const toggle = `${card} .head [data-testid=project-archived-toggle]`;
+  await waitFor(() => document.querySelector(toggle) !== null);
+  expect(query(toggle).dataset.count).toBe('2');
+  query<HTMLButtonElement>(`${card} [data-testid=project-menu]`).click();
+  await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
+  expect(document.querySelector('[data-testid=context-menu] [data-value=archived]')).toBeNull();
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
+
+  // Pressed, it opens the fold under the card, its rows in the list, where a row opens the conversation.
+  query<HTMLButtonElement>(toggle).click();
+  const row = `${card} [data-testid=project-archived] [data-testid=done-thread][data-thread-id=t-trace]`;
+  await waitFor(() => document.querySelector(row) !== null);
+  expect([query(toggle).getAttribute('aria-expanded'), query(`${card} [data-testid=group-label-archived]`).textContent]).toEqual(['true', expect.stringContaining('2')]);
+  expect(store.page).toBe('chat');
+  query<HTMLButtonElement>(`${row} [data-testid=done-thread-open]`).click();
+  await waitFor(() => store.page === 'chat' && store.openThread?.id === 't-trace');
+  // Pressed again, it folds.
+  query<HTMLButtonElement>(toggle).click();
+  await waitFor(() => document.querySelector(row) === null && query(toggle).getAttribute('aria-expanded') === 'false');
 });
 
 test('Ctrl+Shift+T brings back the thread archived last on the machine, from this window or another, and opens it', async () => {
@@ -1039,3 +1139,82 @@ test('a page says where it applies once: one line for most of its cards, a tag o
   expect(document.querySelector('[data-testid=settings-scope] [data-testid=settings-machine]')).toBeNull();
   expect(document.querySelectorAll('[data-testid=card-scope]')).toHaveLength(0);
 });
+
+test('the mochis column caps its visible width at 280 px across the bar, right panel and handle without altering the thread list width', async () => {
+  const drag = (handle: HTMLElement, fromX: number, toX: number) => {
+    const pointer = (type: string, x: number) => {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: 100 });
+      Object.defineProperties(event, { pointerType: { value: 'mouse' }, pointerId: { value: 1 } });
+      return event;
+    };
+    handle.dispatchEvent(pointer('pointerdown', fromX));
+    handle.dispatchEvent(pointer('pointermove', toX));
+    handle.dispatchEvent(pointer('pointerup', toX));
+    flushSync();
+  };
+
+  writeExperiments(['resident-agents']);
+  await mountOnFake('/?fake=1&agents=1');
+  try {
+    await waitFor(() => store.openThread !== null);
+    store.setSidebarWidth(360);
+    flushSync();
+    expect(query('.app').style.getPropertyValue('--bar-left')).toBe('calc(360px + var(--frame-gap))');
+    expect(query('[data-testid=sidebar]').style.getPropertyValue('--sidebar-width')).toBe('360px');
+    expect(query('[data-testid=sidebar-resize]').getAttribute('aria-valuenow')).toBe('360');
+    expect(query('[data-testid=sidebar-resize]').getAttribute('aria-valuemax')).toBe('440');
+    expect(panelSibling(store, 1400)).toBe(360);
+
+    // On the Mochis page the column caps at 280 px: title bar, column, right panel and handle agree.
+    workspace.showAgents(store);
+    const view = AgentsView.of(store);
+    await view.refresh();
+    await openAgent(store, view.snapshot!.profiles[0]!.id);
+    await waitFor(() => store.page === 'agents' && document.querySelector('[data-testid=agents-resize]') !== null);
+    flushSync();
+
+    const agentsRail = () => query<HTMLElement>('.agents-rail');
+    const agentsHandle = () => query<HTMLElement>('[data-testid=agents-resize]');
+    expect(agentsRail().style.getPropertyValue('--sidebar-width')).toBe('280px');
+    expect(query('.app').style.getPropertyValue('--bar-left')).toBe('calc(280px + var(--frame-gap))');
+    expect(agentsHandle().getAttribute('aria-valuenow')).toBe('280');
+    expect(agentsHandle().getAttribute('aria-valuemax')).toBe('280');
+    expect(panelSibling(store, 1400)).toBe(280);
+
+    // Dragging past 280 px stops at the cap and leaves the thread list's chosen 360 px intact.
+    drag(agentsHandle(), 280, 440);
+    expect(agentsRail().style.getPropertyValue('--sidebar-width')).toBe('280px');
+    expect(query('.app').style.getPropertyValue('--bar-left')).toBe('calc(280px + var(--frame-gap))');
+    expect(agentsHandle().getAttribute('aria-valuenow')).toBe('280');
+    expect(panelSibling(store, 1400)).toBe(280);
+    expect(store.sidebarWidth).toBe(360);
+
+    // Dragging narrower shrinks the Mochis column in sync without changing the thread list's width.
+    drag(agentsHandle(), 280, 240);
+    expect(agentsRail().style.getPropertyValue('--sidebar-width')).toBe('240px');
+    expect(query('.app').style.getPropertyValue('--bar-left')).toBe('calc(240px + var(--frame-gap))');
+    expect(agentsHandle().getAttribute('aria-valuenow')).toBe('240');
+    expect(panelSibling(store, 1400)).toBe(240);
+    expect(store.sidebarWidth).toBe(360);
+
+    // Keyboard stepping past the cap and resetting stay within the Mochis cap and leave Threads alone.
+    agentsHandle().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    flushSync();
+    expect(agentsHandle().getAttribute('aria-valuenow')).toBe('256');
+    agentsHandle().dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    flushSync();
+    expect(agentsHandle().getAttribute('aria-valuenow')).toBe('280');
+    expect(store.sidebarWidth).toBe(360);
+
+    // Back on Threads: the user's 360 px width is still there.
+    store.showChat();
+    await waitFor(() => store.page === 'chat' && document.querySelector('[data-testid=sidebar]') !== null);
+    flushSync();
+    expect(query('[data-testid=sidebar]').style.getPropertyValue('--sidebar-width')).toBe('360px');
+    expect(query('.app').style.getPropertyValue('--bar-left')).toBe('calc(360px + var(--frame-gap))');
+    expect(panelSibling(store, 1400)).toBe(360);
+  } finally {
+    store.showChat();
+  }
+});
+

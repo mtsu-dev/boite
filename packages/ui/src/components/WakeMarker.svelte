@@ -15,7 +15,7 @@
   import type { Message, MessagePart } from '@boite/contracts';
   import { clockTime, fullTime } from '../lib/format';
   import { promptText } from '../lib/message-display';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
 
   /**
    * A turn the core started by itself: on a persistent agent's thread a
@@ -40,7 +40,7 @@
   <span class="rule"></span>
   <button type="button" class="ghost small label" aria-expanded={prompt ? open : undefined} disabled={!prompt} title={prompt ? (open ? strings.chat.wakeHide : strings.chat.wakeShow) : undefined} onclick={() => (open = !open)}>
     <Icon size={13} strokeWidth={1.75} />
-    <span class="ui-label text">{label}</span>
+    <span class="ui-label text" class:attributed={part?.byPlugin}>{label}{#if part?.byPlugin}{' · '}{fill(strings.plugins.byPlugin, { name: part.byPlugin.pluginName })}{/if}</span>
     <time datetime={new Date(message.createdAt).toISOString()} title={fullTime(message.createdAt)}>{clockTime(message.createdAt)}</time>
     {#if prompt}<span class="fold-caret" class:open aria-hidden="true"><ChevronRight size={12} /></span>{/if}
   </button>
@@ -83,6 +83,7 @@
   .label:hover:not(:disabled) .text, .label:focus-visible .text { color: var(--color-foreground); }
   .label :global(svg) { color: var(--color-subtle); }
   .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); transition: color var(--dur-2) var(--ease-out-quint); }
+  .text.attributed { white-space: normal; overflow-wrap: anywhere; }
   time { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-3) var(--ease-out-quint); }
   .fold.open { grid-template-rows: 1fr; }

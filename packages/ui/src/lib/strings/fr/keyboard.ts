@@ -4,10 +4,13 @@ export const fr: Translation = {
 
   keyboard: {
     heading: 'Raccourcis',
+    escapeKey: 'Échap',
+    wheelKey: 'Molette',
     intro: 'Cliquez sur un raccourci, puis appuyez sur les touches voulues. Le changement s\'applique aussitôt sur cette machine.',
     search: 'Filtrer les commandes',
     groups: { general: 'Général', surfaces: 'Panneau latéral', thread: 'Fil et message', jump: 'Aller à un fil', theme: 'Thème', terminal: 'Terminal' },
     record: 'Appuyez sur les touches',
+    recordWheel: 'Tenez les touches et tournez la molette',
     change: 'Changer le raccourci',
     reset: 'Revenir au défaut',
     resetAll: 'Tout réinitialiser',
@@ -15,6 +18,9 @@ export const fr: Translation = {
     conflict: '{chord} lance déjà "{command}". Le déplacer ici ?',
     replace: 'Le déplacer ici',
     needsModifier: "Tenez Ctrl, Alt ou Win avec la touche. Une touche seule, ou avec Maj seulement, c'est de la frappe.",
+    wheelNeedsModifier: 'Tenez Ctrl, Alt ou Win en tournant la molette. La molette seule, ou avec Maj seulement, fait défiler.',
+    wheelOnly: 'Celle-ci se lance à la molette : tenez les touches, puis tournez-la.',
+    wheelHint: "Dans l'appli de bureau. Molette vers le haut pour agrandir, vers le bas pour réduire.",
     noMatch: 'Aucune commande ne correspond.',
     file: 'Fichier des raccourcis',
     openFile: 'Ouvrir le fichier',
@@ -48,6 +54,7 @@ export const fr: Translation = {
       terminalHistory: 'Commandes récentes du shell',
       terminalPreviousCommand: 'Aller à la commande précédente',
       terminalNextCommand: 'Aller à la commande suivante',
+      zoomWheel: "Taille de l'interface à la molette",
       thread: 'Aller au fil {n}'
     }
   }

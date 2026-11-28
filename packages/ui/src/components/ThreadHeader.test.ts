@@ -42,6 +42,64 @@ async function start(): Promise<ReturnType<typeof vi.spyOn>> {
   return vi.spyOn(store, 'rename').mockResolvedValue();
 }
 
+test('the open thread names the work it is waiting on and shows when the wait began', async () => {
+  await start();
+  const since = Date.now() - 60_000;
+  store.openThread = { ...store.openThread!, status: 'idle', backgroundWait: { state: 'waiting', for: 'release build', since, until: null } };
+  await settle();
+  const wait = document.querySelector('[data-testid=thread-header] [data-testid=thread-wait]');
+  expect(wait?.textContent).toContain('Waiting on release build');
+  expect(wait?.querySelector('[data-testid=agent-elapsed]')?.textContent).toMatch(/^1m \d\ds$/);
+  store.openThread = { ...store.openThread!, backgroundWait: null };
+  await settle();
+  expect(document.querySelector('[data-testid=thread-header] [data-testid=thread-wait]')).toBeNull();
+});
+
+test('an idle parent shows its active children until they finish, and a child question takes priority', async () => {
+  await start();
+  const parent = { ...store.openThread!, status: 'idle' as const, openQuestions: 0, backgroundWait: null, backgroundWork: null, pullRequestWatches: [] };
+  store.openThread = parent;
+  const before = store.threads;
+  const children = ['one', 'two'].map(id => ({ ...parent, id, parentThreadId: parent.id, status: 'running' as const, runningSince: Date.now() - 60_000 }));
+  const wait = () => document.querySelector('[data-testid=thread-header] [data-testid=thread-wait]');
+  store.threads = [...before, ...children];
+  await settle();
+  expect(wait()?.textContent).toContain(strings.app.rail.subagentsMany.replace('{count}', '2'));
+  expect(wait()?.querySelector('[data-testid=agent-elapsed]')?.textContent).toMatch(/^1m \d\ds$/);
+  store.threads = [...before, children[0]!, { ...children[1]!, status: 'waiting' }];
+  await settle();
+  expect(wait()?.textContent?.trim()).toBe(strings.sidebar.state.waiting);
+  store.threads = before;
+  await settle();
+  expect(wait()).toBeNull();
+});
+
+test('a paused pull request watch shows its reason and next read instead of its last CI result', async () => {
+  await start();
+  const since = Date.now() - 600_000;
+  const watch = {
+    url: 'https://github.com/example/repo/pull/12', repository: 'example/repo', number: 12, since,
+    seen: { checkedAt: since, head: 'abc', base: 'main', checks: { total: 2, running: 2, failed: 0 }, conflicting: false }, paused: null,
+  };
+  const thread = { ...store.openThread!, status: 'idle' as const, backgroundWait: null, backgroundWork: null };
+  store.openThread = { ...thread, pullRequestWatches: [watch] };
+  await settle();
+  const wait = () => document.querySelector('[data-testid=thread-header] [data-testid=thread-wait]');
+  expect(wait()?.textContent).toContain('CI running #12');
+  const paused = { ...watch, paused: { reason: 'rate-limit' as const, until: Date.now() + 60_000, message: 'rate limit' } };
+  store.openThread = { ...thread, pullRequestWatches: [paused] };
+  await settle();
+  expect(wait()?.textContent).toMatch(/GitHub rate limit · retry .+/);
+  expect(wait()?.querySelector('[data-testid=agent-elapsed]')).toBeNull();
+
+  const active = { ...watch, url: 'https://github.com/example/repo/pull/34', number: 34, since: Date.now() - 120_000 };
+  store.openThread = { ...thread, pullRequestWatches: [paused, active] };
+  await settle();
+  expect(wait()?.textContent).toContain('CI running #34');
+  expect(wait()?.textContent).not.toContain('#12');
+  expect(wait()?.querySelector('[data-testid=agent-elapsed]')?.textContent).toMatch(/^2m \d\ds$/);
+});
+
 test('a rename begun on one thread writes to that thread after another surface opens a different one', async () => {
   const rename = await start();
   const input = await renameOpen('Title for the trace thread');
@@ -218,15 +276,16 @@ test("a phone's header is back, the title, one menu of the thread's actions and 
   const menu = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
   const values = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('[data-value]')].map(node => node.dataset['value']);
   const rows = values(menu);
-  // Find first (a phone has no Ctrl+F), the frequent actions, the named group, then Delete: eight rows at most, no section of panels.
+  // Find first (a phone has no Ctrl+F), the thread actions, the named group, then Delete.
   expect(menu.querySelectorAll('.section')).toHaveLength(0);
-  expect(rows[0]).toBe('find');
+  expect(rows.slice(0, 2)).toEqual(['find', 'export-thread']);
   // The made-again title beside Rename: both name the thread.
   expect(rows.indexOf('retitle')).toBe(rows.indexOf('rename') + 1);
-  expect(rows.length).toBeLessThanOrEqual(8);
+  expect(rows.length).toBeLessThanOrEqual(10);
   expect(rows.at(-1)).toBe('delete');
-  // No bot to give it to and no path on a phone: the folder group holds the thread's pull request and the move, never a copy.
+  // The phone offers the ID up front and leaves Copy path to the desktop.
   expect(rows).toContain('more');
+  expect(rows).toContain('copy-thread-id');
   expect(rows).not.toContain('copy');
   menu.querySelector<HTMLElement>('[data-value=more]')!.click(); await settle();
   expect(values(menu)).toEqual(expect.arrayContaining(['thread-pr', 'move']));
@@ -241,18 +300,18 @@ test("a phone's header is back, the title, one menu of the thread's actions and 
   expect(store.panelOpen).toBe(!was);
 });
 
-test("a desktop header's menu has find first, eight rows at most and names its group for what it holds, with no panel", async () => {
+test("a desktop header's menu starts with find and export, has ten rows at most and names its group for what it holds, with no panel", async () => {
   await start();
   document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger]')!.click(); await settle();
   const menu = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
   expect(menu.querySelector('[data-value="kind:changes"]')).toBeNull();
   // Every row in view on a 900 px window: the default 360 px cap scrolled Delete out of sight.
   expect(parseFloat(menu.style.maxHeight)).toBeGreaterThan(360);
-  // Find first, the frequent actions, the named group, then Delete: eight rows at most.
+  // Find first, the thread actions, the named group, then Delete.
   const actions = [...menu.querySelectorAll<HTMLElement>('[data-value]')].map(node => node.dataset['value']);
-  expect(actions[0]).toBe('find');
-  expect(actions.length).toBeLessThanOrEqual(8);
-  for (const id of ['find', 'rename', 'retitle', 'pin', 'done', 'archive']) expect(menu.querySelector(`[data-value="${id}"]`)).not.toBeNull();
+  expect(actions.slice(0, 2)).toEqual(['find', 'export-thread']);
+  expect(actions.length).toBeLessThanOrEqual(10);
+  for (const id of ['rename', 'retitle', 'pin', 'copy-thread-id', 'done', 'archive']) expect(menu.querySelector(`[data-value="${id}"]`)).not.toBeNull();
   expect(actions.indexOf('retitle')).toBe(actions.indexOf('rename') + 1);
   const group = menu.querySelector<HTMLButtonElement>('[data-value="more"]');
   // Named for what it holds: no bot here, so the move and the folder.

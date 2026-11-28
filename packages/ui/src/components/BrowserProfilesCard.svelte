@@ -1,8 +1,9 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
-  import { BROWSER_PROFILES_MAX, checkSettingsPatch, DEFAULT_BROWSER_PROFILE, type BrowserProfile } from '@boite/contracts';
+  import { BROWSER_ENGINES, BROWSER_PROFILES_MAX, checkSettingsPatch, DEFAULT_BROWSER_PROFILE, type BrowserEngine, type BrowserProfile } from '@boite/contracts';
   import { tick } from 'svelte';
   import InfoTip from './InfoTip.svelte';
+  import SettingsSection from './SettingsSection.svelte';
   import CardScope from './CardScope.svelte';
   import BrowserUserAgent from './BrowserUserAgent.svelte';
   import Menu from './Menu.svelte';
@@ -31,6 +32,8 @@
   let busy = $state(false);
   let field = $state<HTMLInputElement | undefined>(undefined);
   let notice = $state('');
+  /** The profile whose User-Agent form is open: its engine waits until the form closes. */
+  let editingAgent = $state<string | null>(null);
 
   /** The machines whose agent browser the owner may hand sign-ins to: connected, with full control. */
   let targets = $derived(canCopySignIns() ? workspace.machines.filter((machine) => machine.store.owner && machine.store.connection === 'ready') : []);
@@ -73,6 +76,16 @@
     event.preventDefault();
     const profile = { id: newProfileId(), name: draft };
     if (await save(profiles => checked([...profiles, profile]))) draft = '';
+  }
+
+  const engineName = (engine: BrowserEngine): string => (engine === 'app' ? s.engineApp : s.engineChrome);
+
+  /** Only the owner picks it, here: the core reads it when the profile's agent browser next starts. */
+  async function pickEngine(id: string, engine: BrowserEngine): Promise<void> {
+    if (browserProfiles.engine(id) === engine) return;
+    busy = true;
+    problem = '';
+    try { await browserProfiles.saveEngine(id, engine); } finally { busy = false; }
   }
 
   async function startRename(profile: BrowserProfile): Promise<void> {
@@ -125,13 +138,14 @@
   }
 </script>
 
-<section class="card" id="settings-browser-profiles" data-testid="browser-profiles-card">
-  <h2><span class="ui-label">{s.card}</span><CardScope /></h2>
+<SettingsSection id="settings-browser-profiles" testid="browser-profiles-card" title={s.card}>
+  {#snippet actions()}<CardScope />{/snippet}
   <h3 class="ui-label-box"><span class="ui-label">{s.heading}</span><InfoTip topic={s.heading} text={s.hint} /></h3>
   <ul>
     {#each rows as profile (profile.id)}
       {@const builtIn = profile.id === DEFAULT_BROWSER_PROFILE}
       {@const isDefault = profile.id === browserProfiles.defaultId}
+      {@const engine = browserProfiles.engine(profile.id)}
       <li data-testid="browser-profile-row" data-profile={profile.id}>
         {#if renaming === profile.id}
           <form class="rename" onsubmit={rename}>
@@ -152,7 +166,10 @@
           {#if !builtIn}
             <button type="button" class="small ghost" data-testid="browser-profile-rename" disabled={busy || !ready} onclick={() => void startRename(profile)}>{strings.common.rename}</button>
             <button type="button" class="small ghost danger" data-testid="browser-profile-delete" disabled={busy || !ready} onclick={() => void remove(profile)}>{strings.common.delete}</button>
-            <BrowserUserAgent {profile} disabled={busy || !ready} />
+          {/if}
+          <Menu items={BROWSER_ENGINES.map((id) => ({ id, label: engineName(id), checked: id === engine, radio: true }))} onpick={(id) => void pickEngine(profile.id, id as BrowserEngine)} label={fill(s.engineLabel, { name: profile.name })} variant="ghost" placement="bottom" disabled={busy || !ready || editingAgent === profile.id} testid="browser-profile-engine"><span class="ui-label">{fill(s.engine, { name: engineName(engine) })}</span></Menu>
+          {#if !builtIn && engine === 'chrome'}
+            <BrowserUserAgent {profile} disabled={busy || !ready} bind:open={() => editingAgent === profile.id, (open) => { editingAgent = open ? profile.id : editingAgent === profile.id ? null : editingAgent; }} />
           {/if}
         {/if}
       </li>
@@ -164,7 +181,7 @@
   </form>
   {#if problem}<p class="problem" role="alert" data-testid="browser-profile-error">{problem}</p>{/if}
   {#if notice}<p class="notice" role="status" data-testid="browser-profile-notice">{notice}</p>{/if}
-</section>
+</SettingsSection>
 
 <style>
   h3 { margin: 4px 0 10px; font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }

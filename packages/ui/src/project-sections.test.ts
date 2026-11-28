@@ -1,4 +1,3 @@
-import { closeArchived } from './lib/archived-view.svelte';
 import { afterEach, expect, test, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
 import type { Project, ThreadSummary } from '@boite/contracts';
@@ -10,13 +9,12 @@ import { closeTour } from './lib/onboarding.svelte';
 import { work } from './lib/work-prefs.svelte';
 import { projectThreadView, projectSections } from './lib/project-threads.svelte';
 import { recentPreferences } from './lib/recent.svelte';
-import { archivedFocus, clearArchivedFocus } from './lib/archived-focus.svelte';
 import type { ProjectEntry } from './lib/project-view.svelte';
 
 /*
  * The Projects view in sections, over the in-memory fake: projects whose every
- * conversation is at work on top once working grouping is on, the open ones, the ones whose work was set
- * aside, then the idle fold. A project moves between them as its threads do.
+ * conversation is at work on top once working grouping is on, the open ones, the paused ones where nothing
+ * runs or waits, then the fold of projects without a thread. A project moves between them as its threads do.
  */
 
 const { openUrl } = vi.hoisted(() => ({ openUrl: vi.fn(async (_url: string) => {}) }));
@@ -34,9 +32,7 @@ afterEach(() => {
   recentPreferences.groupWorking = false;
   work.load();
   workspace.view = 'projects';
-  projectThreadView.shelfOpen = false;
-  projectThreadView.workingOpen = true;
-  projectThreadView.laterOpen = true;
+  projectThreadView.resetFolds();
 });
 
 async function waitFor(check: () => boolean, attempts = 2000): Promise<void> {
@@ -115,53 +111,75 @@ test('with working grouping on, a project whose every conversation is at work si
   expect([toggle.getAttribute('aria-expanded'), toggle.querySelector('.fold-count')?.textContent]).toEqual(['false', '1']);
 });
 
-test('a project whose only conversations were archived by hand shows them under Set aside; one with only done history goes to the idle fold', async () => {
+test('a project where nothing runs and nothing waits sits under Inactive; one without a thread goes to the closed No threads fold, archived history included', async () => {
   await mountOnFake();
-  const paused = await project('paused');
+  const resting = await project('resting');
+  const archivedOnly = await project('archived-only');
   const finished = await project('finished');
-  const later = await thread(paused.id, 'Pick this up');
+  const quiet = await thread(resting.id, 'Nothing to do');
+  const putAway = await thread(resting.id, 'Put away');
+  await store.archive(putAway.id);
+  const later = await thread(archivedOnly.id, 'Pick this up');
   const shipped = await thread(finished.id, 'Shipped');
   await store.archive(later.id);
   await store.archive(shipped.id, true);
+  // Read, its turn over: at rest.
+  setThread(quiet.id, { status: 'idle', unread: false });
 
-  // The set-aside conversation is the card's body, drawn without a click, and put away as quietly as a done one
-  // (no brighter "pending" row).
-  const row = `[data-testid=later-projects] section[data-project-id="${paused.id}"] [data-testid=done-thread][data-thread-id="${later.id}"]`;
-  await waitFor(() => document.querySelector(row) !== null);
-  expect(document.querySelector(row)!.classList.contains('pending')).toBe(false);
-  // The header keeps one count: the archived ones are no pill on the card, their count is in its menu, on the way to
-  // their home in the list, the archive opened on this project.
-  const laterCard = `[data-testid=later-projects] section[data-project-id="${paused.id}"]`;
-  expect(document.querySelector(`${laterCard} [data-testid=project-archived-toggle]`)).toBeNull();
-  const item = '[data-testid=context-menu] [data-testid=project-archived-toggle]';
-  document.querySelector<HTMLButtonElement>(`${laterCard} [data-testid=project-menu]`)!.click();
-  await waitFor(() => document.querySelector(item) !== null);
-  const home = document.querySelector<HTMLButtonElement>(item)!;
-  expect([home.dataset.value, home.querySelector('.hint')?.textContent]).toEqual(['archived', '1']);
-  home.click();
-  await waitFor(() => document.querySelector('[data-testid=sidebar-archived]') !== null);
-  expect([archivedFocus.store === store, archivedFocus.projectId]).toEqual([true, paused.id]);
-  clearArchivedFocus();
-  closeArchived();
-
-  // Nothing left to do there: the idle fold, never a card.
+  // Inactive starts open and lists the card as the open ones are drawn.
+  await waitFor(() => card('[data-testid=paused-projects]', resting.id) !== null);
+  expect(document.querySelector('[data-testid=paused-projects-toggle]')?.getAttribute('aria-expanded')).toBe('true');
+  // Archived by hand or done, a project left without a thread is no card and no section of its own anymore.
+  expect(document.querySelector('[data-testid=later-projects]')).toBeNull();
+  expect(card('[data-testid=sidebar]', archivedOnly.id)).toBeNull();
   expect(card('[data-testid=sidebar]', finished.id)).toBeNull();
-  projectThreadView.shelfOpen = true;
-  await waitFor(() => document.querySelector(`[data-testid=project-shelf] [data-testid=idle-project][data-project-id="${finished.id}"]`) !== null);
-  expect(document.querySelector(`[data-testid=project-shelf] [data-project-id="${paused.id}"]`)).toBeNull();
+  // A card counts its archived threads in its head, beside Done; the count opens them under the card, as Done does,
+  // and the card's menu no longer sends them to Settings.
+  const pausedCard = `[data-testid=paused-projects] section[data-project-id="${resting.id}"]`;
+  const count = document.querySelector<HTMLButtonElement>(`${pausedCard} .head [data-testid=project-archived-toggle]`)!;
+  expect([count.dataset.count, count.getAttribute('aria-expanded')]).toEqual(['1', 'false']);
+  document.querySelector<HTMLButtonElement>(`${pausedCard} [data-testid=project-menu]`)!.click();
+  await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
+  expect(document.querySelector('[data-testid=context-menu] [data-value=archived]')).toBeNull();
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
+  count.click();
+  await waitFor(() => document.querySelector(`${pausedCard} [data-testid=project-archived] [data-thread-id="${putAway.id}"]`) !== null);
+  expect(store.page).toBe('chat');
+  count.click();
+  await waitFor(() => document.querySelector(`${pausedCard} [data-testid=project-archived] [data-thread-id="${putAway.id}"]`) === null);
 
-  // Restored, the conversation is open again: the project joins the open cards and Set aside empties.
+  // Folded, Inactive keeps its header and count and hides the card.
+  await waitFor(() => document.querySelector('[data-testid=paused-projects-toggle]') !== null);
+  document.querySelector<HTMLButtonElement>('[data-testid=paused-projects-toggle]')!.click();
+  await waitFor(() => document.querySelector('[data-testid=paused-projects] .disclosure-fold')?.classList.contains('open') === false);
+  expect(document.querySelector('[data-testid=paused-projects-toggle] .fold-count')?.textContent).toBe(String(document.querySelectorAll('[data-testid=paused-projects] section[data-testid=project]').length));
+
+  // A reply to read is for the user: the project leaves Inactive for the open cards, which no fold hides.
+  setThread(quiet.id, { unread: true });
+  await waitFor(() => card('[data-testid=paused-projects]', resting.id) === null && card('[data-testid=sidebar]', resting.id) !== null);
+
+  // No threads starts closed; open, it lists both projects, each with its history's count.
+  const shelf = document.querySelector<HTMLButtonElement>('[data-testid=project-shelf-toggle]')!;
+  expect([shelf.getAttribute('aria-expanded'), shelf.querySelector('.label')?.textContent]).toEqual(['false', 'No threads']);
+  shelf.click();
+  const row = (id: string) => document.querySelector(`[data-testid=project-shelf] [data-testid=idle-project][data-project-id="${id}"]`);
+  await waitFor(() => row(archivedOnly.id) !== null && row(finished.id) !== null);
+  expect(row(archivedOnly.id)!.querySelector('[data-testid=project-archived-toggle]')?.getAttribute('data-count')).toBe('1');
+  expect(row(finished.id)!.querySelector('[data-testid=project-done-toggle]')?.getAttribute('data-count')).toBe('1');
+
+  // Restored, the conversation is back: its project leaves the fold for the cards.
   await store.client!.call('threads.archive', { threadId: later.id, archived: false });
-  await waitFor(() => document.querySelector('[data-testid=later-projects]') === null && card('[data-testid=sidebar]', paused.id) !== null);
+  await waitFor(() => row(archivedOnly.id) === null && card('[data-testid=sidebar]', archivedOnly.id) !== null);
 });
 
 test('an unsent new draft keeps its project among the open ones; without a grouping, its projects stay open cards', () => {
-  const entry = (id: string, threads: Partial<ThreadSummary>[], counts: Partial<Project> = {}, drafts: { projectId: string; text: string }[] = []): ProjectEntry => ({
+  const entry = (id: string, threads: Partial<ThreadSummary>[], counts: Partial<Project> = {}, drafts: { projectId: string; text: string }[] = [], open = false): ProjectEntry => ({
     machine: {
       id: 'local', label: 'local',
       store: {
         threadsOf: () => threads.map((t, i) => ({ id: `${id}-${i}`, status: 'idle', pinned: false, ...t })),
-        subagents: () => null, composerStates: {}, draft: null, draftEntries: drafts
+        subagents: () => null, composerStates: {}, draft: open ? { projectId: id } : null, draftEntries: drafts
       }
     } as never,
     project: { id, name: id, path: `/${id}`, createdAt: 0, ...counts }
@@ -170,10 +188,15 @@ test('an unsent new draft keeps its project among the open ones; without a group
     entry('busy', [{ status: 'running' }]),
     // A prompt typed for a new conversation waits on the user: a folded Working section must not hide it.
     entry('drafting', [{ status: 'running' }], {}, [{ projectId: 'drafting', text: 'Unsent new conversation' }]),
-    entry('open', [{}]), entry('paused', [], { archivedThreads: 2 }), entry('quiet', [], { archivedThreads: 1, doneThreads: 1 })
+    // So does the new draft open on screen, before it has text.
+    entry('opened', [{ status: 'running' }], {}, [], true),
+    // A reply to read waits on the user; a read one at rest does not.
+    entry('news', [{ unread: true }]), entry('resting', [{}]),
+    // Without a thread, archived or done history or none, a project has no card.
+    entry('archived', [], { archivedThreads: 2 }), entry('quiet', [], { archivedThreads: 1, doneThreads: 1 })
   ];
   const ids = (sections: Record<string, ProjectEntry[]>) => Object.fromEntries(Object.entries(sections).map(([key, list]) => [key, list.map((e) => e.project.id)]));
-  expect(ids(projectSections(entries, true, true))).toEqual({ working: ['busy'], open: ['drafting', 'open'], later: ['paused'], idle: ['quiet'] });
-  expect(ids(projectSections(entries, false, true))).toEqual({ working: ['busy'], open: ['drafting', 'open', 'paused', 'quiet'], later: [], idle: [] });
-  expect(ids(projectSections(entries, true, false))).toEqual({ working: [], open: ['busy', 'drafting', 'open'], later: ['paused'], idle: ['quiet'] });
+  expect(ids(projectSections(entries, true, true))).toEqual({ working: ['busy'], open: ['drafting', 'opened', 'news'], paused: ['resting'], idle: ['archived', 'quiet'] });
+  expect(ids(projectSections(entries, false, true))).toEqual({ working: ['busy'], open: ['drafting', 'opened', 'news', 'resting', 'archived', 'quiet'], paused: [], idle: [] });
+  expect(ids(projectSections(entries, true, false))).toEqual({ working: [], open: ['busy', 'drafting', 'opened', 'news'], paused: ['resting'], idle: ['archived', 'quiet'] });
 });

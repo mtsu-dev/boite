@@ -16,6 +16,23 @@ draft folder when you have no project yet.
 
 The chat shows Starting agent while the agent launches, then Working for once
 it starts working. The startup timer counts the current turn.
+Your message stays near the top while the reply fits below it. When the reply
+outgrows that space, the chat follows the latest text until you scroll up.
+Once the thread is done, its last reply ends on one quiet line, Worked for and
+the time. Point at the reply, or move the keyboard into it, to see when it
+finished, the tokens it spent and its buttons (Copy, and Retry or Fork where
+the reply allows them). An earlier reply's line shows at rest only its marks,
+such as a compaction or a memory update; its time, tokens and buttons come when
+you point at the reply, move the keyboard into any part of it or, on a phone,
+tap it. On a phone the last reply's line shows its time and buttons, and the
+"i" at its end holds when it finished and the tokens.
+The conversation header names what it is waiting on and how long the wait has
+lasted when the start time is available. In the thread list, rows waiting on
+sub-agents (including ones on another machine), pull requests, monitors or
+background work show a pulsing icon and the elapsed time (with full details in
+the tooltip), while rows waiting on your answer keep the steady Needs you dot.
+When a pull request watch pauses, the header gives the reason and the next
+check time.
 
 An agent can warn that something went wrong beside its work while it carries
 on: the disk was full and part of the conversation was not saved, attached
@@ -42,26 +59,54 @@ does. Turn off Check spelling and correct as I type in Settings, General, In
 the conversation, to keep your text as typed, with no red underline.
 
 Add a project with Add a project at the bottom of the sidebar. The sidebar
-lists threads by project or by recent activity: switch between Projects and
-Recent in Display options.
+lists threads by project or by recent activity: on a desktop, switch between
+Projects and Recent under View in the Filter menu; on a phone, in the list's
+title. On a desktop, the left app rail shows your mochis, teams and shortcuts
+along the window's edge. Turn off Mochi layout under Display in the Filter menu
+to hide it: Activity, Contacts, Mochis, machines, updates, limits and Settings
+then sit in a compact bar at the foot of the sidebar. The two arrows at the start of the
+list's head go back and forward through the conversations and pages you opened,
+as a mouse's side buttons do.
+
+If a machine's conversation list is incomplete, press Try again in the list.
+The conversations already loaded stay available while Boite reloads it.
 
 Fold a project to hide its threads. Its heading shows the thread count just
 after the project name, on desktop and phone.
+
+In the Projects view, the projects where something needs you come first.
+Below them, Inactive gathers the projects where no thread runs and nothing
+waits on you; fold it to hide them. No threads, closed at launch, lists the
+projects without a single thread: choose one to start a thread there. Archived
+projects come last, closed too. Turn off Inactive projects in the Filter menu
+to keep every project in the main list.
 
 A thread with a pull request keeps its last badge on this device. When you
 reopen Boite, the badge can appear as soon as the thread is listed, and Boite
 updates it when it checks again.
 
-The Threads button in the app rail, and the Threads tab on a phone, show how
-many threads are at work across your machines. When subagents are at work too,
-a second, lighter number counts them: in the rail, under the first, both at
-the rail's edge so the button's icon stays readable; beside it on the phone's tab.
+The Threads button in the app rail (when Mochi layout is on) and the Threads
+tab on a phone show how many threads are at work across your machines. When
+subagents are at work too, a second, lighter number counts them: in the rail,
+under the first, both at the rail's edge so the button's icon stays readable;
+beside it on the phone's tab.
 
-A middle click on the Activity button in the app rail takes the finished
-threads off Activity on every machine, without opening it. Failures, stops,
-questions and permissions stay, and so does the button's number. On a phone,
-or without a middle button, Mark all as read at the top of Activity clears the
-finished threads along with failures and stops.
+A middle click on the Activity button takes the finished threads off Activity
+on every machine, without opening it. Failures, stops, questions and
+permissions stay, and so does the button's number. On a phone, or without a
+middle button, Mark all as read at the top of Activity clears the finished
+threads along with failures and stops.
+
+## Find conversations and messages
+
+Press Ctrl+K (Cmd+K on Mac). On a phone, tap the magnifying glass in the
+thread list and choose Search all. Search by thread title, project, model,
+branch or pull request number. For example,
+type `opus orchard` to find Orchard conversations that used Opus.
+
+Mentions in messages shows the best matching message in each conversation,
+including archives. Put a phrase in double quotes to find its words together.
+Choose a mention to open the conversation at that message.
 
 ## Drafts without a project
 
@@ -90,10 +135,11 @@ folder, stay.
 
 ## Worktrees
 
-A worktree conversation starts on a temporary branch, then Boite renames the
-branch after the conversation's title while the first turn runs. A branch you
-named yourself, or one with a remote, keeps its name. The header shows the
-branch.
+A new worktree conversation starts from the project's default branch. Boite
+checks the remote for its latest commit and uses the local default branch when
+offline. Boite renames the temporary branch after the conversation's title
+while the first turn runs. A branch you named yourself, or one with a remote,
+keeps its name. The header shows the branch.
 
 - Worktree by default, in a project's Manage project menu, turns the switch on
   for every new thread there.
@@ -107,14 +153,19 @@ branch.
   checks the branch out there again with all its commits. Changes that were never committed are gone with
   the folder. When the branch is gone too, the conversation says which folder
   is missing.
-- Remove settled worktrees, in Manage project, deletes a worktree an hour
+- Remove settled worktrees, in Manage project, retires a worktree an hour
   after all its conversations are done or archived, only when its last commit
-  is on another branch or in a merged pull request. Uncommitted changes always
-  stay.
+  is on another branch or in a merged pull request. It keeps worktrees with
+  uncommitted changes, including files Git ignores. Boite logs where it saved
+  files that changed during removal or that Boite could not verify. Run
+  `boite projects recoveries` from your terminal to find those files and
+  check them before deleting them by hand. Deleted copies drop out of the list
+  the next time you run the command.
 - Ask to finish after merge: once every pull request of a worktree conversation
   is merged or closed, Boite asks its agent whether the conversation is done.
   The agent moves it to Done or keeps it open when it still has something to
-  say. Nothing goes to Done by itself.
+  say, or when its last answer waits on you: a build to try, a question, a
+  choice or an offer. Nothing goes to Done by itself.
 
 ## Titles
 
@@ -125,12 +176,23 @@ refined once the first answer is done. A title you set yourself is never
 replaced.
 
 - Rename a thread with Rename in its thread menu, or in the header.
+- Choose Copy thread ID in the thread menu to put the thread's ID on the clipboard.
 - Regenerate title, in the thread menu or the title menu, asks again. The item
   reads Writing a title while it works.
 - Settings, General, Agent replies, Title model picks the model. Automatic
   uses the thread's own agent on its small model.
 - Muse Code, OpenCode, Antigravity, Grok and pi keep the prompt's title under
   Automatic.
+
+## Export a conversation
+
+Choose Export... in the conversation or mochi menu, or Export conversation in the
+Command Palette. Pick Markdown (.md) or HTML (.html), then Download. On desktop,
+Download saves to your Downloads folder and shows the saved path. HTML opens
+offline in a browser. When Markdown is selected, Copy Markdown puts the text on
+the clipboard. Include tool calls, Include diffs and Include thinking are optional.
+The export covers the complete conversation and lists attachments by name. Council
+conversations are not exported.
 
 ## Notifications
 
@@ -142,21 +204,35 @@ above the message box or the bottom tabs.
 
 - Mark done moves a thread to the Done group. Archive puts it aside to pick up
   later; the toast offers Undo, or press Ctrl+Z.
-- The agent of an archived thread stops. Restore it from Archived threads in
-  the Filter menu or in a project's menu, which list them in place of the
-  thread list, or from Settings, General, Archived threads. Its agent starts
-  again with your first message.
-- A project's Done list shows ten rows at a time; scroll it for the rest.
+- A project's archived threads open under its card from the archive count in
+  its heading, beside the Done count, on desktop and phone, ten rows at a time.
+  Select a row to read the conversation.
+- Archived threads is also a section of Settings > General, for every project.
+  Filter and the command palette open it there. Each row shows the
+  project, why the thread was archived and when it will be deleted, with
+  Restore and Delete. Select a title to read the conversation. Restore it from
+  the row or from the open conversation before sending a message. Restoring brings back your message
+  draft. Its agent starts again with your first message.
+- A project's Done list opens from the Done count in its heading, on desktop
+  and phone, and shows ten rows at a time; scroll it for the rest.
+  The row shows when each conversation was put away. To reveal Restore on
+  desktop, point to the row or focus it with the keyboard. Restore is visible
+  on touch screens.
 - Delete done threads after (days) defaults to 3. Manual archives are kept.
+- Delete shows how long the conversation's machine keeps its history. Choose
+  Archive in the same dialog to put a current conversation aside.
 - The owner can restore a deleted conversation from Show deleted conversations
-  in Settings, General, Archived threads, for the number of days set in Keep
-  deleted conversations for. On a paired phone, use Undo in the confirmation
-  toast immediately after deleting a conversation.
+  for the number of days set in Keep deleted conversations for. Find both under
+  Settings > General on desktop and Settings > General > Archived threads on
+  a phone. Pick a machine in Archived threads to change its retention settings.
+  On a paired phone, use Undo in the confirmation toast immediately after
+  deleting a conversation.
+- Once a mode is picked in Conversation storage, it replaces Keep deleted
+  conversations for: see [Conversation storage](#conversation-storage).
 - Archive project takes a project out of the list. Its threads keep running,
-  and a new thread brings it back. Remove from Boite takes the project and its
-  threads out of the app but keeps them saved, with their history and usage:
-  add the same folder again and they come back, the open ones reopened. The
-  files on disk stay.
+  and a new thread brings it back. Remove from Boite stops its conversations
+  and hides the project. Add the same folder again to recover its history and
+  reopen the conversations that were open. Files on disk stay in place.
 
 ## Import a Claude Code or Codex session
 
@@ -188,3 +264,32 @@ logo, pick Refresh icon in Manage project.
 - Technical reference: [drafts](internals/drafts.md),
   [titles](internals/titles.md), [imports](internals/imports.md),
   [project icons](internals/project-icons.md).
+
+
+## Conversation storage
+
+Agents write a lot to disk as they work. Conversation storage, under
+Settings > General (Settings > General > Archived threads on a phone), decides
+what the machine keeps as a conversation ages. Nothing changes until you pick
+a mode and press Apply.
+
+| Mode | A deleted conversation | An open conversation |
+| --- | --- | --- |
+| Delete | compacted at once, erased after 7 days | kept whole |
+| Classic | compacted after 7 days and kept, its images erased after 30 days | kept whole |
+| Storage | compacted after 30 days and kept with its images | compacted after 30 days without activity |
+| Custom | you set each delay | you set each delay |
+
+- Compacted means smaller, not summarized: every message, the agent's
+  reasoning, every tool call and every error stay. Long tool outputs are
+  shortened and each image is stored once.
+- A deleted conversation restores until it is compacted. After that it has
+  left the app and stays readable for audits, by you and by your agents.
+- An open conversation that was compacted still shows whole. Replying to it
+  starts a fresh agent session from what the app shows.
+- Usage and costs are kept in every mode, even for an erased conversation.
+- Pick a mode to see what it would free on this machine before applying it.
+  Compare shows the four modes side by side; Custom opens it so you can type
+  each delay, and an empty field means never.
+- Sessions no conversation uses are listed under the modes once one is
+  applied. Compact them keeps them for audits; nothing erases them.

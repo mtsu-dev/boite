@@ -108,6 +108,7 @@ export const REQUESTABLE_SETTINGS = {
   autoGoals: { page: 'general', section: 'agent-replies', sensitive: false },
   threadDoneRetentionDays: { page: 'general', section: 'archived', sensitive: true },
   threadDeletionRetentionDays: { page: 'general', section: 'archived', sensitive: true },
+  transcriptStorage: { page: 'general', section: 'transcripts', sensitive: true },
   worktreeStorage: { page: 'general', section: 'worktrees', sensitive: true },
   focusGuard: { page: 'general', section: 'quiet', sensitive: true },
   muteAgents: { page: 'general', section: 'quiet', sensitive: true },
@@ -134,6 +135,8 @@ export const REQUESTABLE_SETTINGS = {
   groupBots: { page: 'machines', section: 'machines', sensitive: false },
   agentBotCreation: { page: 'general', section: AGENTS_ALONE_SECTION, sensitive: false },
   coordinationReach: { page: 'general', section: AGENTS_ALONE_SECTION, sensitive: false },
+  // It opens this machine to other people's Boites: the card opens the page, where the switch sits beside its explanation.
+  contacts: { page: 'general', section: AGENTS_ALONE_SECTION, sensitive: true },
 } as const satisfies Partial<Record<keyof Settings, SettingPlace>>;
 
 export type RequestableSetting = keyof typeof REQUESTABLE_SETTINGS;
@@ -276,7 +279,7 @@ export const PLUGIN_ADD_SECTION = 'plugins-add';
 const MISSING: Partial<Record<RequestableSetting, unknown>> = {
   asyncQuestions: true,
   autoInstallUpdates: false,
-  autoResumeLimitedThreads: false,
+  autoResumeLimitedThreads: true,
   autoGoals: false,
   cacheKeepalive: null,
   backgroundCompaction: false,
@@ -285,6 +288,7 @@ const MISSING: Partial<Record<RequestableSetting, unknown>> = {
   groupBots: false,
   agentBotCreation: 'ask',
   coordinationReach: 'project',
+  contacts: false,
   shortAnswers: true,
   toolSummaries: false,
   titleModel: null,

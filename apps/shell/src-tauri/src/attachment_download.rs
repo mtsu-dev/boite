@@ -11,7 +11,12 @@ const MAX_BYTES: u64 = 512 * 1024 * 1024;
 
 fn ticket_url(value: &str) -> Result<reqwest::Url, String> {
     let url = reqwest::Url::parse(value).map_err(|_| "url: expected a ticketed HTTP(S) file")?;
-    let ticket = url.path().strip_prefix("/file/").unwrap_or("");
+    let path = url.path();
+    let relayed = path.strip_prefix("/group/relay/")
+        .and_then(|path| path.split_once("/file/"))
+        .filter(|(id, _)| id.len() == 64 && id.bytes().all(|c| c.is_ascii_digit() || matches!(c, b'a'..=b'f')))
+        .map(|(_, ticket)| ticket);
+    let ticket = path.strip_prefix("/file/").or(relayed).unwrap_or("");
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none()
         || !url.username().is_empty() || url.password().is_some() || url.query().is_some() || url.fragment().is_some()
         || ticket.len() < 32 || !ticket.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')) {
@@ -165,6 +170,10 @@ mod tests {
     fn only_ticket_routes_can_be_downloaded_and_existing_files_are_preserved() {
         let ticket = "a".repeat(64);
         assert!(ticket_url(&format!("http://127.0.0.1:4311/file/{ticket}")).is_ok());
+        let peer = "1".repeat(64);
+        assert!(ticket_url(&format!("https://host/group/relay/{peer}/file/{ticket}")).is_ok());
+        assert!(ticket_url(&format!("https://host/group/relay/{peer}/view/{ticket}")).is_err());
+        assert!(ticket_url(&format!("https://host/group/relay/peer/file/{ticket}")).is_err());
         for value in ["file:///tmp/file", "https://host/file/no", "https://host/shutdown", "https://user:pass@host/file/"] {
             assert!(ticket_url(value).is_err());
         }

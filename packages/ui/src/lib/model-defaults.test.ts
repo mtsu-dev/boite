@@ -105,6 +105,15 @@ test('persists an override and drops an effort the account no longer offers', ()
   expect(readModelDefaults()).toEqual({});
 });
 
+test('an old leveled default keeps its alias effort until the user overrides it', () => {
+  const models: ModelInfo[] = [{ id: 'gemini-4-neon', name: 'Gemini 4 Neon',
+    aliases: [{ id: 'gemini-4-neon-low', effort: 'low' }], effort: { levels, default: 'medium' } }];
+  const preferred = { model: 'gemini-4-neon-low', effort: null };
+  expect(resolveModelDefault('antigravity', models, { antigravity: preferred })).toEqual({ model: 'gemini-4-neon', effort: 'low' });
+  expect(resolveModelDefault('antigravity', models, { antigravity: { ...preferred, effort: 'high' } })).toEqual({ model: 'gemini-4-neon', effort: 'high' });
+  expect(resolveModelDefault('antigravity', models, { antigravity: { ...preferred, effort: 'removed' } })).toEqual({ model: 'gemini-4-neon', effort: 'low' });
+});
+
 test('a configured default survives reconnect and wins over the previous thread model', async ({ ready }) => {
   const { store } = await ready({ delayMs: 0 });
   const provider = store.providerOf('claude')!;

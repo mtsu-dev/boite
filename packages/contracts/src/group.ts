@@ -84,15 +84,6 @@ export interface DeviceInvite {
   expiresAt: Timestamp;
 }
 
-/**
- * Where the phone app is served from: a page that belongs to no core. Every
- * core accepts its sockets, as it does the desktop shell's, and the app reaches
- * the machines of the group it was added to from there. A core's
- * `BOITE_APP_ORIGIN` and the UI's `VITE_BOITE_APP_ORIGIN` name another one, for
- * tests and for a fork that serves its own.
- */
-export const APP_ORIGIN = 'https://boite.mtsu.dev';
-
 /** The fragment key of a device link that carries a machine's group invitation. */
 export const DEVICE_LINK_JOIN = 'join';
 
@@ -140,6 +131,20 @@ export interface UngroupedData {
   /** The machine's key, SPKI PEM: its `coreId` is the SHA-256 of this text. */
   publicKey: string;
   /** Ed25519 over `ungroupedInput(coreId, nonce)`, base64. */
+  sig: string;
+}
+
+/** What a known member signs when a hello presents a revoked key. */
+export function deviceRevokedInput(coreId: string, nonce: string, deviceId: string): string {
+  return `boite-group-device-revoked\n${coreId}\n${nonce}\n${deviceId}`;
+}
+
+/** The Unauthorized error for a revoked key. Any grant offered stays unspent. */
+export interface DeviceRevokedData {
+  reason: 'device-revoked';
+  /** The refusing member's SPKI PEM, whose SHA-256 is its core id. */
+  publicKey: string;
+  /** Ed25519 over `deviceRevokedInput(coreId, nonce, deviceId)`, base64. */
   sig: string;
 }
 

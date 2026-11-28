@@ -26,6 +26,7 @@ test('manifest binds every platform payload to the exact immutable release tag',
   expect(result.notes).toBe('Changes');
   // The shell offers no release that reads less of the journal than its own data.
   expect(result.journal_schema).toBe(SCHEMA_VERSION);
+  expect(result.windows_data_lock).toBe(true);
   expect(() => journalSchema('export const SCHEMA_VERSION = next;')).toThrow('SCHEMA_VERSION');
 });
 

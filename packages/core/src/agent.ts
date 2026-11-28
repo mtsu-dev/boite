@@ -18,7 +18,7 @@ import { newToken } from './ids.ts';
 import { registerGitMethods } from './git.ts';
 import { registerTodoMethods } from './todos.ts';
 import { existingInside, registerWorkdirMethods, resolveInside } from './workdir.ts';
-import { publishArtifact, readArtifact } from './artifacts.ts';
+import { publishArtifact, publishProof, readArtifact } from './artifacts.ts';
 import { checkView, publishView, viewBlock } from './views.ts';
 
 /** More than a plan, and the tasks surface stops being readable anyway. */
@@ -85,6 +85,9 @@ export function agentEnvFor(
     [AGENT_ENV.coreUrl]: fields.coreUrl,
     [AGENT_ENV.token]: fields.token,
   };
+  for (const key of Object.keys(env)) {
+    if ((platform === 'win32' ? key.toUpperCase() : key) === 'BOITE_DATA_DIR') delete env[key];
+  }
   if (fields.cliDir === null) return env;
   const key = platform === 'win32'
     ? Object.keys(env).find((name) => name.toLowerCase() === 'path') ?? 'PATH'
@@ -242,6 +245,7 @@ export function registerAgentMethods(core: Core): void {
   core.router.register('browser.hostDetach', (_params, { connection }) => core.browser.hostDetach(connection));
   core.router.register('browser.hostReply', (params, { connection }) => core.browser.hostReply(params, connection));
   core.router.register('artifacts.publish', (params) => publishArtifact(core, params));
+  core.router.register('artifacts.prove', (params) => publishProof(core, params));
   core.router.register('artifacts.read', (params) => readArtifact(core, params));
   core.router.register('artifacts.view', (params) => publishView(core, params));
   core.router.register('artifacts.viewCheck', (params) => checkView(core, params));
@@ -272,8 +276,10 @@ export function registerAgentMethods(core: Core): void {
     const surface = checkSurface(thread.cwd, params.surface);
     // One browser per conversation: a page opens as a new tab of the browser
     // its agent drives, and every client brings that tab forward on its own.
-    if (surface.kind === 'browser') await core.browser.command({ threadId: thread.id, action: { kind: 'open', url: surface.url } });
-    else core.bus.emit('panel.requested', { threadId: thread.id, surface, at: Date.now() });
+    if (surface.kind === 'browser') {
+      const { tabId } = await core.browser.command({ threadId: thread.id, action: { kind: 'open', url: surface.url, manual: true } });
+      await core.browser.command({ threadId: thread.id, tabId, action: { kind: 'show' } });
+    } else core.bus.emit('panel.requested', { threadId: thread.id, surface, at: Date.now() });
     // Nobody is watching this thread: the agent learns its request went nowhere
     // rather than believing the user saw something.
     return { shown: core.subscribers.hasSubscribers(thread.id) };
@@ -294,7 +300,7 @@ export function registerAgentMethods(core: Core): void {
       await core.browser.command({ threadId: thread.id, tabId: opened, action: { kind: 'activate' } });
       return { ok: true } as const;
     }
-    const reply = await core.browser.command({ threadId: thread.id, action: { kind: 'open', url: surface.url } });
+    const reply = await core.browser.command({ threadId: thread.id, action: { kind: 'open', url: surface.url, manual: true } });
     if (reply.tabId !== undefined) {
       pageTabs.set(key, reply.tabId);
       if (pageTabs.size > 500) pageTabs.delete(pageTabs.keys().next().value!);

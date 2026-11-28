@@ -12,6 +12,7 @@ import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { gitRemoteOf } from './git-remote.ts';
 import { contactFace } from './face.ts';
+import { assertContacts, contactsRefusal } from './switch.ts';
 import { contactNotice } from './answers.ts';
 
 /** Cards the bot drew for the owner, by question id, so their answer acts after a restart too. */
@@ -91,6 +92,7 @@ function connectable(core: Core, bot: Bot, target: unknown, field: string) {
  * the thread named on their card, reaches any.
  */
 function connectThreads(core: Core, bot: Bot, request: ContactRequest, name: string, target: unknown, by: Decider): ContactRequest {
+  assertContacts(core);
   const thread = connectable(core, bot, target, 'contacts.bot.connect.target');
   if (by === 'bot') {
     const project = thread.projectId === null ? null : core.journal.getProject(thread.projectId);
@@ -126,6 +128,7 @@ function openTo(core: Core, request: ContactRequest, name: string, projectId: st
 
 /** A thread starts here for the contact's request, in relation with the thread that asked. */
 async function startThread(core: Core, bot: Bot, request: ContactRequest, name: string, params: StartParams, by: Decider): Promise<{ request: ContactRequest; threadId: string }> {
+  assertContacts(core);
   const project = grantedProject(core, bot, request, name, params.project, 'contacts.bot.start', 'project');
   const brief = text(params.brief, 'brief', 8000).trim();
   const address = `${dashed(name)}/${request.from.threadId}`;
@@ -135,7 +138,7 @@ async function startThread(core: Core, bot: Bot, request: ContactRequest, name: 
   const spawned = await core.threads.spawns.spawn({
     threadId: bot.threadId, project: project.id, prompt, requestId: `contacts-${request.id}`, title: `${name}: ${brief.split('\n')[0]!}`.slice(0, 80),
     ...(params.worktree === undefined ? {} : { worktree: params.worktree }), ...(params.model === undefined ? {} : { model: params.model }), ...(params.effort === undefined ? {} : { effort: params.effort }),
-  });
+  }, true);
   const relation = core.contacts.relations.add({ coreId: request.coreId, contact: name, local: { threadId: spawned.thread.id, title: spawned.thread.title }, remote: request.from, requestId: request.id });
   return { request: core.contacts.requests.settle(request.id, true, undefined, undefined, by, relation), threadId: spawned.thread.id };
 }
@@ -163,6 +166,8 @@ export function connectByOwner(core: Core, id: string, threadId: unknown): Conta
 }
 
 export async function runPlan(core: Core, id: string): Promise<ContactRequest> {
+  // Contacts switched off: nothing accepted, the request keeps waiting for the owner.
+  assertContacts(core);
   const { request } = core.contacts.requests.pending(id, 'in');
   const bot = contactsBot(core);
   const plan = request.plan;
@@ -173,6 +178,8 @@ export async function runPlan(core: Core, id: string): Promise<ContactRequest> {
     const { brief, model, effort, worktree } = plan;
     return (await startThread(core, bot, request, name, { project: plan.project.id, brief, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(worktree ? { worktree } : {}) }, 'owner')).request;
   } catch (error) {
+    // Switched off while the plan ran: no acceptance is recorded.
+    if (contactsRefusal(error)) throw error;
     core.log('warn', `contacts: the plan for request ${id} did not run: ${messageOf(error)}`, { source: 'contacts' });
     core.contacts.requests.mark(id, { stage: 'bot', approved: true, plan: undefined });
     tellBot(core, `contacts-plan-${id}-${Date.now()}`, `The owner accepted request ${id} from ${request.contact}, but your plan did not run: ${messageOf(error)}. Settle it another way with boite contacts connect or start, without asking them again.`);
@@ -227,6 +234,8 @@ export class ContactsBotMethods {
 
   forward(params: RpcParams<'contacts.bot.forward'>): ContactRequest {
     requireBot(this.#core, params.threadId, 'contacts.bot.forward');
+    // Forwarding asks another contact: refused while contacts are off, like collaboration.ask.
+    assertContacts(this.#core);
     const request = this.#core.contacts.requests.forward(params);
     // Stamped here, after the forward itself: the bot's thread shows it at this time.
     return this.#core.contacts.requests.forwarded(request.id) ?? request;
@@ -349,6 +358,7 @@ export class ContactsBotMethods {
     try {
       if (card.kind === 'share' && picked === 'yes') this.#core.contacts.requests.settle(card.requestId, true, card.projectId, undefined, 'owner');
       else if (card.kind === 'owner' && picked === 'accept') {
+        assertContacts(this.#core);
         // The plan the owner read runs now; without one the bot acts on its next wake.
         if (this.#core.contacts.requests.pending(card.requestId, 'in').request.plan) void runPlan(this.#core, card.requestId).catch(error => this.#core.log('warn', `contacts: request ${card.requestId}: ${messageOf(error)}`, { source: 'contacts' }));
         else this.#core.contacts.requests.mark(card.requestId, { stage: 'bot', approved: true });

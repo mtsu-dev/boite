@@ -4,6 +4,8 @@
  */
 import type { SessionConfigOption, SessionConfigOptionCategory } from '@agentclientprotocol/sdk/unstable';
 import type { ModelInfo, ProviderDescriptor } from '@boite/contracts';
+import { isAntigravity } from '../antigravity.ts';
+import { antigravityCatalog } from './antigravity-catalog.ts';
 import { grokEffortOf } from '../grok.ts';
 import { isGrok } from './protocol.ts';
 
@@ -59,14 +61,9 @@ export function agentModelsOf(created: unknown): AgentModels | null {
 }
 
 /** The values of a select option, groups flattened, in the order the agent listed them. */
-function selectChoices(option: SessionConfigOption): { value: string; name: string }[] {
+function selectChoices(option: SessionConfigOption): { value: string; name: string; _meta?: unknown }[] {
   if (option.type !== 'select') return [];
-  const choices: { value: string; name: string }[] = [];
-  for (const entry of option.options) {
-    if ('group' in entry) choices.push(...entry.options.map((choice) => ({ value: choice.value, name: choice.name })));
-    else choices.push({ value: entry.value, name: entry.name });
-  }
-  return choices;
+  return option.options.flatMap(entry => 'group' in entry ? entry.options : [entry]);
 }
 
 export function selectValues(option: SessionConfigOption): string[] {
@@ -105,8 +102,8 @@ export function effortFrom(option: SessionConfigOption | null): ModelInfo['effor
   if (choices.length === 0) return null;
   const levels = choices.map((choice) => ({ id: choice.value, label: choice.name }));
   const current = option.type === 'select' ? String(option.currentValue) : '';
-  const fallback = levels.some((level) => level.id === current) ? current : (levels[0]?.id ?? '');
-  return { levels, default: fallback };
+  const announced = choices.find(choice => plainObject(choice._meta)?.default === true);
+  return { levels, default: announced?.value ?? (levels.some(level => level.id === current) ? current : levels[0]!.id) };
 }
 
 /**
@@ -123,8 +120,16 @@ export function modelsFrom(
   options: SessionConfigOption[] | null,
   listed: AgentModels | null,
 ): ModelInfo[] {
-  if (listed !== null && (isGrok(provider) || categoryOption(options, 'model') === null)) return modelsFromList(provider, listed);
-  return modelsFromConfig(provider, options);
+  const modelOption = categoryOption(options, 'model');
+  const useList = listed !== null && (isGrok(provider) || modelOption === null);
+  const models = useList ? modelsFromList(provider, listed) : modelsFromConfig(provider, options);
+  if (!isAntigravity(provider)) return models;
+  const nativeEffort = useList ? effortFrom(effortOption(options)) : null;
+  const primary = nativeEffort === null ? models : models.map(model => model.default ? { ...model, effort: nativeEffort } : model);
+  const choices = useList ? listed.available.map(row => ({ value: row.modelId, _meta: row.meta }))
+    : modelOption === null ? [] : selectChoices(modelOption);
+  const defaults = new Set(choices.filter(choice => plainObject(choice._meta)?.default === true).map(choice => choice.value));
+  return antigravityCatalog(primary, !useList && listed !== null ? modelsFromList(provider, listed) : [], defaults);
 }
 
 /**

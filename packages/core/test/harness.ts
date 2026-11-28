@@ -33,11 +33,12 @@ export interface TestCoreOptions {
   bundleHash?: string;
   helloTimeoutMs?: number;
   settings?: Partial<Settings>;
-  /** `boot`: keep `agentBotCreation` and `coordinationReach` as the core's own start stored them. */
+  /** `boot`: keep `agentBotCreation`, `coordinationReach` and `contacts` as the core's own start stored them. */
   agentDefaults?: 'boot';
   boiteGuide?: boolean;
   onShutdown?: () => void;
   retentionPassMs?: number;
+  loadSampling?: CoreOptions['loadSampling'];
   pullRequestWatches?: CoreOptions['pullRequestWatches'];
   /** A data directory an earlier test core used: the restart a test wants to see. The test removes it. */
   dataDir?: string;
@@ -100,12 +101,13 @@ export async function startTestCore(options: TestCoreOptions = {}): Promise<Test
 
   const token = newToken();
   const journalExisted = existsSync(join(dataDir, 'journal.db'));
-  const core = new Core({ dataDir, token, version: options.version ?? TEST_VERSION, onShutdown: options.onShutdown, bundleHash: options.bundleHash, serverUpdates: options.serverUpdates, retentionPassMs: options.retentionPassMs, pullRequestWatches: options.pullRequestWatches, secretVault: options.secretVault ?? (() => Promise.resolve(new MemoryVault())), policyFile: options.policyFile ?? join(dataDir, 'no-policy.json') });
+  const core = new Core({ dataDir, token, version: options.version ?? TEST_VERSION, onShutdown: options.onShutdown, bundleHash: options.bundleHash, serverUpdates: options.serverUpdates, retentionPassMs: options.retentionPassMs, loadSampling: options.loadSampling, pullRequestWatches: options.pullRequestWatches, secretVault: options.secretVault ?? (() => Promise.resolve(new MemoryVault())), policyFile: options.policyFile ?? join(dataDir, 'no-policy.json') });
   // The scripted agents echo their prompt, and the line that teaches `boite ask`
   // would ride along in every reply: a test that wants it turns it back on.
   // A new data directory starts closed (`agentBotCreation`, `coordinationReach`); the suites written before
   // those settings drive agents across projects and machines, so the harness opens it unless a test asks for the start as shipped.
-  core.settings.set({ asyncQuestions: false, shortAnswers: false, ...(journalExisted || options.agentDefaults === 'boot' ? {} : OPEN_AGENT_DEFAULTS), ...options.settings });
+  // Contacts start off on a new data directory too (`contacts`); the contact suites predate the switch, so it is on for them the same way.
+  core.settings.set({ asyncQuestions: false, shortAnswers: false, ...(journalExisted || options.agentDefaults === 'boot' ? {} : { ...OPEN_AGENT_DEFAULTS, contacts: true }), ...options.settings });
   // An install never reads the real update sources on GitHub: a test that needs one sets its own.
   core.plugins.updateSources = {};
   // Keep scripted replies limited to test input unless testing session context.

@@ -52,6 +52,7 @@ export const fr: Translation = {
       'network.contacts': 'Contacts',
       'network.push': 'Notifications push',
       pullRequests: 'Pull requests',
+      mcp: 'Serveurs MCP gérés par Boite',
       modelPrices: 'Mise à jour des prix des modèles'
     },
     values: {

@@ -143,3 +143,13 @@ test('a window Douane cannot fully explain says how much was used outside it, fr
   ]);
   expect(lines('leaked').every(line => line.parentElement!.classList.contains('details'))).toBe(true);
 });
+
+test('a failed first read without windows does not show the stale caption', () => {
+  const failed: AccountQuota = { ...quota('empty-fail', 'Claude', 0), status: 'unavailable', windows: [], error: 'quota read failed' };
+  component = mount(QuotaOverview, { target: document.body, props: { rows: [failed] } });
+  flushSync();
+  const row = document.querySelector('[data-account-id="empty-fail"]')!;
+  expect(row.querySelector('[data-testid=quota-headline]')!.textContent).toBe('Unavailable');
+  expect(row.querySelector('.caption.stale')).toBeNull();
+  expect(row.querySelector('.error')!.textContent).toBe('quota read failed');
+});

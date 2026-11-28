@@ -3,7 +3,7 @@ mod paths;
 mod local_paths;
 #[cfg(unix)]
 pub(crate) mod file_identity;
-pub(crate) use local_paths::require_local_path;
+pub(crate) use local_paths::require_client_path;
 pub(crate) use paths::default_data_dir;
 
 #[cfg(target_os = "macos")]
@@ -34,6 +34,8 @@ pub(crate) mod watch;
 pub(crate) mod dwm;
 #[cfg(windows)]
 pub(crate) mod windows;
+#[cfg(windows)]
+pub(crate) mod windows_installer;
 #[cfg(windows)]
 pub(crate) use windows::{alert, before_webview, foreground, idle_ms, memory_level, notify, notify_supported, prepare_command, suspend};
 #[cfg(not(windows))]

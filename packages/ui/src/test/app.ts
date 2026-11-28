@@ -8,18 +8,26 @@ import { BUILD_STORAGE_KEY, writeExperiments } from '../lib/experiments';
 import { closeTour } from '../lib/onboarding.svelte';
 import { work } from '../lib/work-prefs.svelte';
 import { rightPanel } from '../lib/right-panel.svelte';
+import { mochiLayout } from '../lib/mochi-layout.svelte';
 import { openUrl } from './opener';
+import { mockPhoneViewport } from './phone-width';
 
 let running: Record<string, unknown> | null = null;
 
 // The settings page scrolls to the card it was opened on; jsdom draws nothing to scroll.
 Element.prototype.scrollIntoView ??= vi.fn();
 
-export const test = fixtureTest.extend<{ app: void }>({
+export const test = fixtureTest.extend<{ app: void; viewport: ReturnType<typeof mockPhoneViewport> }>({
   // oxlint-disable-next-line no-empty-pattern -- Vitest reads fixture dependencies from this pattern
   app: async ({}, use) => {
     await mountOnFake();
     await use();
+  },
+  // oxlint-disable-next-line no-empty-pattern -- Vitest reads fixture dependencies from this pattern
+  viewport: async ({}, use) => {
+    const viewport = mockPhoneViewport();
+    try { await use(viewport); }
+    finally { viewport.restore(); }
   },
 });
 
@@ -35,6 +43,7 @@ afterEach(() => {
   rightPanel.maximized = false;
   window.localStorage.clear();
   work.load();
+  mochiLayout.load();
   delete window.__TAURI_INTERNALS__;
   openUrl.mockClear();
 });
@@ -148,8 +157,13 @@ export async function mountOnFake(search = '/?fake=1'): Promise<void> {
   // which is the point of it and not what these tests are about.
   closeTour();
   running = mount(App, { target });
-  // `.app.ready` is what the screen shows: outside the shell it also waits for the phone's navigation chunk (App.svelte).
-  await waitFor(() => store.booted && (store.openThread !== null || store.draft !== null) && document.querySelector('.app.ready') !== null);
+  // Connection and the phone header can be ready before the conversation views load.
+  await waitFor(() => {
+    const chat = target.querySelector('.thread-chat');
+    return store.booted && (store.openThread !== null || store.draft !== null)
+      && target.querySelector('.app.ready [data-testid=sidebar]') !== null
+      && chat !== null && chat.querySelector(':scope > [data-testid^="deferred-"]') === null;
+  });
 }
 
 /** The thread every workbench test works in, with an empty strip to start on. */
@@ -194,7 +208,7 @@ export async function loginLink(): Promise<HTMLAnchorElement> {
 
 /** The store is one module-level singleton: leave the next test on the chat. */
 export async function backToChat(): Promise<void> {
-  query<HTMLButtonElement>('[data-testid=view-threads]').click();
+  query<HTMLButtonElement>('[data-testid=view-threads], [data-testid=settings-back]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 }
 
@@ -223,6 +237,7 @@ export async function showMobileThreads(): Promise<void> {
   // jsdom does not implement dialog methods; the browser suite exercises the modal.
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function(this: HTMLDialogElement) { this.open = true; } });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function(this: HTMLDialogElement) { this.open = false; } });
+  await waitFor(() => document.querySelector('[data-testid=mobile-back], [data-testid=mobile-tabs]') !== null);
   // A conversation hides the bottom bar: Back leads to the list that has it.
   if (!document.querySelector('[data-testid=mobile-tabs]')) {
     query<HTMLButtonElement>('[data-testid=mobile-back]').click();
@@ -236,6 +251,7 @@ export async function showMobileThreads(): Promise<void> {
 export const OWNER_ONLY_IN_SETTINGS = [
   '[data-testid=settings-tab-accounts]',
   '[data-testid=settings-tab-plugins]',
+  '[data-testid=settings-tab-mcp]',
   '[data-testid=settings-tab-brain]',
   '[data-testid=group-add-device]'
 ];

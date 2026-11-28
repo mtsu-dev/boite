@@ -1,8 +1,9 @@
 import { pullRequestAddress, WATCH_DONE_HINT, type PullRequestWatch, type PullRequestWatchSeen, type ThreadId } from '@boite/contracts';
+import type { PrTriggerTransition } from './agents/triggers.ts';
 import type { Core } from './core.ts';
 import { messageOf, refused } from './errors.ts';
 import {
-  CLOSER_QUERY, DETAIL_QUERY, FINGERPRINT_QUERY, REMARK_PAGES, evaluate, initialMemory, mergeChanges, parseCloser, stillTrue, parseDetail, parseFingerprint, parseRemarks,
+  CLOSER_QUERY, CONTEXT_PAGE_QUERY, DETAIL_QUERY, FINGERPRINT_QUERY, REMARK_PAGES, evaluate, initialMemory, mergeChanges, mergeWatchChecks, parseCloser, parseContextPage, stillTrue, parseDetail, parseFingerprint, parseRemarks,
   rateLimited, remarkPath, wakeMessage, type Fingerprint, type Remark, type RemarkKind, type WatchChange, type WatchDetail, type WatchMemory,
 } from './pull-request-watch-read.ts';
 import { resendQuietResult } from './delegation/results.ts';
@@ -16,6 +17,8 @@ const MIN_PASS_GAP_MS = 1_000;
 const WATCH_LIMIT = 10;
 /** GitHub's `closedAt` counts whole seconds: a merge that close to a turn's edge is the agent's. */
 const CLOCK_SLACK_MS = 1_000;
+/** Maximum follow-up context pages read when a PR has over 200 check contexts. */
+const MAX_CONTEXT_PAGES = 5;
 
 export interface WatchTiming {
   /** Between two fingerprint reads of one pull request. */
@@ -249,19 +252,24 @@ export class PullRequestWatches {
         return 'OPEN';
       }
       // Rules alone expired: the checks already read are judged against them, with no detail read.
-      const read = statusMoved || remarksDue || !kept ? await this.#shared(memo, `detail ${record.url}`, () => this.#graphql(threadId, record, DETAIL_QUERY).then(parseDetail)) : kept;
+      let read = statusMoved || remarksDue || !kept ? await this.#shared(memo, `detail ${record.url}`, () => this.#graphql(threadId, record, DETAIL_QUERY).then(parseDetail)) : kept;
       // Merged or closed between the two reads: that is the news, not leaving the queue.
       if (read.state !== 'OPEN') {
         if (!baseline) await this.#end(threadId, record, runtime, memo, read.state);
         return read.state;
       }
-      const detail = withRequired(read, await this.#requiredOf(threadId, record, read.base));
+      if (read.contextsCursor) {
+        read = await this.#shared(memo, `detail-more ${record.url}`, () => this.#fillContexts(threadId, record, read));
+      }
+      const required = await this.#requiredOf(threadId, record, read.base);
+      const detail = withRequired(read, required);
       const remarks = remarksDue ? await this.#shared(memo, `remarks ${record.url}`, () => this.#remarks(threadId, record)) : null;
       // A stop or an unwatch that landed during the reads wins.
       if (this.#find(threadId, record.url) !== record) return 'OPEN';
       await this.core.linkedPullRequests.observe(threadId, record.url, 'OPEN', { head: read.branch ?? '', headRepository: read.headRepository ?? '' });
       if (this.#find(threadId, record.url) !== record) return 'OPEN';
       const { changes, next } = evaluate(record.memory, detail, remarks);
+      const triggerEvents = prTriggerTransitions(changes, detail, record.fingerprint, fingerprint);
       runtime.detail = read;
       runtime.rules = read.base ? this.#required.stamp(rulesKey(record, read.base)) : null;
       record.memory = next;
@@ -277,7 +285,7 @@ export class PullRequestWatches {
         // Read again when the burst settles, so what it brought goes out together.
         runtime.nextReadAt = record.pendingSince + this.#timing.coalesceMs;
       } else runtime.nextReadAt = now + this.#timing.intervalMs;
-      if (!baseline) { this.#save(threadId); this.#changed(threadId); }
+      if (!baseline) { this.#save(threadId); this.#changed(threadId); this.core.workforce.triggers.pullRequest(threadId, record.url, triggerEvents); }
       return 'OPEN';
     } catch (error) {
       if (this.#find(threadId, record.url) !== record) return null;
@@ -328,6 +336,7 @@ export class PullRequestWatches {
     }
     this.#save(threadId);
     this.#changed(threadId);
+    if (state === 'MERGED') this.core.workforce.triggers.pullRequest(threadId, record.url, [{ kind: 'merged', key: String(closer.at) }]);
   }
 
   /**
@@ -364,9 +373,26 @@ export class PullRequestWatches {
     return held;
   }
 
-  #graphql(threadId: ThreadId, record: WatchRecord, query: string): Promise<string> {
+  #graphql(threadId: ThreadId, record: WatchRecord, query: string, extra: string[] = []): Promise<string> {
     const [owner, name] = record.repository.split('/');
-    return this.gh(threadId, ['api', 'graphql', '--hostname', record.host, '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `number=${record.number}`]);
+    return this.gh(threadId, ['api', 'graphql', '--hostname', record.host, '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `number=${record.number}`, ...extra]);
+  }
+
+  /** Reads follow-up pages of statusCheckRollup contexts when >200 exist so middle-page failures, reruns and required checks are not missed. */
+  async #fillContexts(threadId: ThreadId, record: WatchRecord, read: WatchDetail): Promise<WatchDetail> {
+    let cursor: string | null = read.contextsCursor ?? null;
+    let checks = read.checks;
+    const needed = Math.max(0, (read.contextsTotal ?? 0) - 200);
+    let fetched = 0;
+    for (let page = 0; page < MAX_CONTEXT_PAGES && cursor && (!needed || fetched < needed); page++) {
+      const next = parseContextPage(await this.#graphql(threadId, record, CONTEXT_PAGE_QUERY, ['-f', `after=${cursor}`]));
+      if (next.head && read.head && next.head !== read.head) break;
+      checks = mergeWatchChecks(checks, next.checks);
+      fetched += next.count;
+      cursor = next.cursor;
+      if (next.count === 0) break;
+    }
+    return { ...read, checks, contextsCursor: undefined };
   }
 
   /** What the base branch requires, cached per repository and base: a failed read logs and keeps what was known, a rate limit throws. */
@@ -407,9 +433,19 @@ export class PullRequestWatches {
     // A merge or a close someone else made wakes the agent anyway: that turn asks about Done, so no second one does.
     const settled = due.some(record => record.pending.some(change => change.kind === 'closed')) ? this.core.mergedPrAsk.watchHint(thread) : null;
     const { text, label } = wakeMessage(due.map(record => ({ number: record.number, url: record.url, changes: record.pending })), this.core.delegation.delegated(threadId), settled ? WATCH_DONE_HINT : null);
+    const ended = due.filter(record => record.ended);
+    const remaining = records.filter(record => !ended.includes(record)).map(record => due.includes(record)
+      ? { ...record, pending: [], pendingSince: null } : record);
     try {
-      this.core.threads.startTurn(threadId, { prompt: text, display: label }, { kind: 'pull-request' });
-      if (settled) this.core.mergedPrAsk.asked(threadId, settled.urls);
+      this.core.threads.startTurn(threadId, { prompt: text, display: label }, { kind: 'pull-request' }, { persistAdmission: () => {
+        this.#save(threadId, remaining);
+        if (settled) this.core.mergedPrAsk.asked(threadId, settled.urls);
+        return () => {
+          for (const record of due) { record.pending = []; record.pendingSince = null; }
+          for (const record of ended) this.#remove(threadId, record.url);
+          if (ended.length) this.#changed(threadId);
+        };
+      } });
     } catch (error) {
       // Tried again after another interval, never in a tight loop.
       for (const record of due) record.pendingSince = now + this.#timing.intervalMs - this.#timing.coalesceMs;
@@ -417,11 +453,6 @@ export class PullRequestWatches {
       this.#save(threadId);
       return;
     }
-    for (const record of due) { record.pending = []; record.pendingSince = null; }
-    const ended = due.filter(record => record.ended);
-    for (const record of ended) this.#remove(threadId, record.url);
-    this.#save(threadId);
-    if (ended.length) this.#changed(threadId);
   }
 
   #summary(threadId: ThreadId, record: WatchRecord): PullRequestWatch {
@@ -441,9 +472,8 @@ export class PullRequestWatches {
     if (left.length) this.#records.set(threadId, left); else this.#records.delete(threadId);
   }
 
-  #save(threadId: ThreadId): void {
+  #save(threadId: ThreadId, records = this.#records.get(threadId)): void {
     if (this.core.journal.isClosed() || !this.core.journal.getThread(threadId)) return;
-    const records = this.#records.get(threadId);
     if (records?.length) this.core.journal.setSetting(PREFIX + threadId, records);
     else this.core.journal.deleteSetting(PREFIX + threadId);
   }
@@ -490,6 +520,7 @@ const rulesKey = (record: WatchRecord, base: string) => `${record.host} ${record
 function seenOf(detail: WatchDetail, memory: WatchMemory, now: number): PullRequestWatchSeen {
   return {
     checkedAt: now, head: detail.head.slice(0, 7), base: detail.base, conflicting: memory.conflicting, behind: memory.behind === true,
+    ...(detail.baseFailure ? { baseFailure: { ...detail.baseFailure } } : {}),
     queue: detail.queue === null ? null : { position: detail.queue },
     checks: { total: detail.checks.length, running: detail.checks.filter(check => check.status === 'pending').length, failed: detail.checks.filter(check => check.status === 'failed').length },
   };
@@ -499,4 +530,29 @@ function validRecord(value: unknown): value is WatchRecord {
   const record = value as WatchRecord | null;
   if (!record || typeof record !== 'object' || typeof record.url !== 'string' || typeof record.since !== 'number' || !record.memory || !Array.isArray(record.pending)) return false;
   try { pullRequestAddress(record.url); return true; } catch { return false; }
+}
+
+function prTriggerTransitions(changes: WatchChange[], detail: WatchDetail, previous: Fingerprint | null, current: Fingerprint): PrTriggerTransition[] {
+  const transitions: PrTriggerTransition[] = [];
+  for (const change of changes) {
+    if (change.kind === 'failed') {
+      const failing = new Set(change.checks.map(check => check.name));
+      for (const check of detail.checks) if (failing.has(check.name)) {
+        const runPart = check.context ? [] : [check.createdAt ?? check.started, check.finished];
+        transitions.push({ kind: 'ci_failed', key: JSON.stringify([detail.head, check.name, check.conclusion, check.url, ...runPart]) });
+      }
+    } else if (change.kind === 'base-failed') {
+      const { sha, name, conclusion, url } = change.check;
+      transitions.push({ kind: 'ci_failed', key: JSON.stringify([sha, name, conclusion, url, ...(detail.baseFailureAt ? [detail.baseFailureAt] : [])]) });
+    } else if (change.kind === 'conflict') {
+      transitions.push({ kind: 'conflict', key: JSON.stringify([detail.head, current.baseOid, detail.base]) });
+    }
+  }
+  if (previous?.reviewRequests) {
+    for (const id of current.reviewRequests ?? []) if (!previous.reviewRequests.includes(id)) transitions.push({ kind: 'review_requested', key: id });
+  }
+  if (previous?.changeReviews) {
+    for (const id of current.changeReviews ?? []) if (!previous.changeReviews.includes(id)) transitions.push({ kind: 'changes_requested', key: id });
+  }
+  return transitions;
 }

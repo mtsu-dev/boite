@@ -336,6 +336,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-updater",
  "tauri-winrt-notification",
+ "tokio",
  "webview2-com",
  "windows",
  "windows-core",

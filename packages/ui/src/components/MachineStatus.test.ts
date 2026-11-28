@@ -30,10 +30,21 @@ test('one connected machine says nothing; a filter brings back the button, its n
   mounted = mount(MachineStatus, { target: document.body, props: { store, filter: 'local' } });
   await settle();
   expect(document.querySelector('[data-testid=machine-status] .name')?.textContent).toBeTruthy();
-  document.querySelector<HTMLButtonElement>('[data-testid=machine-status]')!.click();
+  const trigger = document.querySelector<HTMLButtonElement>('[data-testid=machine-status]')!;
+  trigger.click();
   await settle();
-  const rows = [...document.querySelectorAll<HTMLElement>('[data-testid=machine-status-menu] [data-row]')].map(row => row.dataset.value);
-  expect(rows).toEqual(['manage']);
+  const menu = document.querySelector('[data-testid=machine-status-menu]');
+  expect(menu?.querySelectorAll('[role=menuitemradio]')).toHaveLength(0);
+  const manage = menu?.querySelector<HTMLButtonElement>('footer button');
+  expect(manage?.textContent).toBe('Manage machines');
+  menu?.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
+  expect(document.activeElement).toBe(manage);
+  const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+  manage?.dispatchEvent(enter);
+  expect(enter.defaultPrevented).toBe(false);
+  manage!.click(); await settle();
+  expect(store.page).toBe('settings');
+  expect(store.settingsTab).toBe('machines');
 });
 
 test('a machine out of reach reads one way, off or lost: the offline ring on the button and "Offline" after its name; none answering crosses the monitor', async () => {

@@ -1,12 +1,11 @@
 import { afterEach, expect, test } from 'bun:test';
-import { deviceAdmitInput, deviceHelloInput, RpcErrorCode, ungroupedInput, type PushPayload, type RpcEvents } from '@boite/contracts';
+import { deviceAdmitInput, deviceHelloInput, deviceRevokedInput, groupRelayUrl, RpcCloseCode, RpcErrorCode, ungroupedInput, type DeviceRevokedData, type PushPayload, type RpcEvents } from '@boite/contracts';
 import { createECDH, createPublicKey, generateKeyPairSync, randomBytes, sign, verify, type KeyObject } from 'node:crypto';
 import { connect, type CoreClient } from '../src/client.ts';
-import { appOrigin, isAllowedOrigin } from '../src/server.ts';
-import { APP_ORIGIN } from '@boite/contracts';
+import { isAllowedOrigin } from '../src/server.ts';
 import { mergeDeviceKeys } from '../src/group/device-keys.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
-import { thrown } from './settle.ts';
+import { rejection, thrown } from './settle.ts';
 
 const cores: TestCore[] = [];
 const clients: CoreClient[] = [];
@@ -94,14 +93,25 @@ test('a phone added on one member says hello on every member with one key, and o
   clients.push(await connect(a.url, '', { device: once }));
   await refused(a, connect(a.url, '', { device: once }), 'already used');
   await refused(a, open(a.url, { device: helloFor(phone, deviceId, id(a), Date.now() - 10 * 60_000) }), 'two minutes');
+  const viaB = await open(groupRelayUrl(b.url, id(a)), {
+    device: helloFor(phone, deviceId, id(a)),
+    relay: helloFor(phone, deviceId, id(b)),
+  });
+  const relayClose = rejection(viaB.next('question.asked', () => false));
   // The owner revokes it on b: a closes its socket and refuses its next hello.
   b.core.group.clients.revokeDevice(deviceId);
+  expect((await relayClose).reason).toMatchObject({ code: RpcCloseCode.DeviceRevoked });
   await waitFor(() => a.core.group.view('owner')?.devices.length === 0);
   await waitFor(() => a.core.journal.listSessions().length === 0);
   // The revocation closed the phone's sockets on both machines: let them finish before the next one opens.
   await settled(a, 0);
   await settled(b, 0);
-  await refused(a, open(a.url, { device: helloFor(phone, deviceId, id(a)) }), 'removed from the group');
+  const hello = helloFor(phone, deviceId, id(a)) as { nonce: string };
+  const { reason } = await rejection(open(a.url, { device: hello }));
+  const proof = (reason as { rpc: { data: DeviceRevokedData } }).rpc.data;
+  expect(proof).toMatchObject({ reason: 'device-revoked', publicKey: a.core.coordination.card().publicKey });
+  expect(verify(null, Buffer.from(deviceRevokedInput(id(a), hello.nonce, deviceId)), createPublicKey(proof.publicKey), Buffer.from(proof.sig, 'base64'))).toBe(true);
+  await settled(a, 0);
   await refused(b, open(b.url, { device: helloFor(phone, deviceId, id(b)) }), 'removed from the group');
   // A device a machine never heard of is told to come back, never that it was removed.
   const stranger = phoneKey();
@@ -136,6 +146,21 @@ test('a machine taken out of its group tells the phone so on its next hello, and
   expect(signed(randomBytes(16).toString('hex'))).toBe(false);
   // Its word was of itself: the member that took it out still lets the phone in.
   expect((await open(a.url, { device: helloFor(phone, deviceId, id(a)) })).principal).toBe('session');
+});
+
+test('a phone whose admitting machine left is refused without a revocation proof', async () => {
+  const [a, b] = await pair();
+  const phone = phoneKey();
+  const { url } = await b.core.group.clients.addDevice();
+  const grant = new URL(url).searchParams.get('grant')!;
+  const { device: deviceId } = await open(b.url, { grant, device: { publicKey: phone.publicKey, sig: phone.sign(deviceAdmitInput(grant, phone.publicKey)) } });
+  await waitFor(() => a.core.group.view('owner')?.devices.some(device => device.id === deviceId) === true);
+  await b.core.group.leave();
+  await waitFor(() => a.core.group.roster?.cores.some(core => core.coreId === id(b) && core.removed) === true);
+  const { reason } = await rejection(open(a.url, { device: helloFor(phone, deviceId!, id(a)) }));
+  const rpc = (reason as { rpc: { code: number; data?: unknown } }).rpc;
+  expect(rpc.code).toBe(RpcErrorCode.Unauthorized);
+  expect(rpc.data).toBeUndefined();
 });
 
 test('a phone paired the older way hands over its key and keeps both until revoked, and removing a machine keeps the phones it added', async () => {
@@ -197,6 +222,8 @@ test('a member trusts the origins the others are served from, learned from their
   expect(cross.device).toMatch(/^[0-9a-f]{64}$/);
   // An origin nobody of the group is served from stays out.
   await refused(b, connect(b.url, '', { headers: { origin: 'https://elsewhere.example' }, device: helloFor(phone, cross.device!, id(b)) }));
+  // The phone app's old public address is no longer served, so no core trusts it.
+  await refused(b, connect(b.url, '', { headers: { origin: 'https://boite.mtsu.dev' }, device: helloFor(phone, cross.device!, id(b)) }));
 });
 
 test('a device redeeming its grant again after a lost answer is answered until the grant expires, and a malformed key keeps its own refusal', async () => {
@@ -215,14 +242,6 @@ test('a device redeeming its grant again after a lost answer is answered until t
   const refusal = await connect(a.url, '', { grant, device: { publicKey: 'not-a-key', sig: 'x' } }).catch((error: { rpc?: { code: number; data?: { field?: string } } }) => error);
   await settled(a, before);
   expect((refusal as { rpc?: { code: number; data?: { field?: string } } }).rpc).toMatchObject({ code: -32602, data: { field: 'device.publicKey' } });
-});
-
-test('every core accepts the phone app\'s address, the published one or the one its start names, and refuses a misspelt one', () => {
-  expect(appOrigin({})).toBe(APP_ORIGIN);
-  expect(appOrigin({ BOITE_APP_ORIGIN: 'https://app.example/' })).toBe('https://app.example');
-  expect(appOrigin({ BOITE_APP_ORIGIN: 'HTTPS://APP.example:443' })).toBe('https://app.example');
-  expect(() => appOrigin({ BOITE_APP_ORIGIN: 'http://app.example' })).toThrow('BOITE_APP_ORIGIN');
-  expect(() => appOrigin({ BOITE_APP_ORIGIN: 'https://app.example/path' })).toThrow('BOITE_APP_ORIGIN');
 });
 
 test('a key handed over on two members keeps both older pairings, a removed key spends no link, and a device key gets no ticket', async () => {
@@ -244,9 +263,20 @@ test('a key handed over on two members keeps both older pairings, a removed key 
   await waitFor(() => (a.core.group.view('owner')?.devices.length ?? 1) === 0);
   // The removed key opens a new link b drew: refused, and the link still admits the next key.
   const link = new URL((await b.core.group.clients.addDevice()).url).searchParams.get('grant')!;
-  await refused(b, open(b.url, { grant: link, device: { publicKey: phone.publicKey, sig: phone.sign(deviceAdmitInput(link, phone.publicKey)) } }), 'removed from the group');
+  const nonce = randomBytes(16).toString('hex');
+  const sockets = b.server.connections();
+  const { reason } = await rejection(open(b.url, { grant: link, nonce, device: { publicKey: phone.publicKey, sig: phone.sign(deviceAdmitInput(link, phone.publicKey)) } }));
+  const refusal = (reason as { rpc: { code: number; data: DeviceRevokedData } }).rpc;
+  await settled(b, sockets);
+  expect(refusal).toMatchObject({ code: RpcErrorCode.Unauthorized, data: { reason: 'device-revoked', publicKey: b.core.coordination.card().publicKey } });
+  const proof = refusal.data;
+  const signed = (coreId: string, challenge: string, deviceId: string) => verify(null, Buffer.from(deviceRevokedInput(coreId, challenge, deviceId)), createPublicKey(proof.publicKey), Buffer.from(proof.sig, 'base64'));
+  expect(signed(id(b), nonce, admitted.device!)).toBe(true);
+  expect(signed(id(a), nonce, admitted.device!)).toBe(false);
+  expect(signed(id(b), randomBytes(16).toString('hex'), admitted.device!)).toBe(false);
+  expect(signed(id(b), nonce, 'f'.repeat(64))).toBe(false);
   const next = phoneKey();
-  const again = await open(b.url, { grant: link, device: { publicKey: next.publicKey, sig: next.sign(deviceAdmitInput(link, next.publicKey)) } });
+  const again = await open(b.url, { grant: link, nonce, device: { publicKey: next.publicKey, sig: next.sign(deviceAdmitInput(link, next.publicKey)) } });
   expect(again.device).toMatch(/^[0-9a-f]{64}$/);
   // An origin the roster could not read back is never written into it.
   a.core.group.servedFrom('null');

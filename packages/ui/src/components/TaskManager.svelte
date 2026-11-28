@@ -14,9 +14,10 @@
   import Menu from './Menu.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import StatusMark from './StatusMark.svelte';
+  import SettingsPageHeader from './SettingsPageHeader.svelte';
   import { threadTone } from '../lib/status-tone';
 
-  let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
+  let { store, onopenthread, section = false, showTitle = true }: { store: Store; onopenthread?: () => void; section?: boolean; showTitle?: boolean } = $props();
   // This computer first. The agents listed are those of the machine picked, at first
   // the one the page was opened for; another store prop forgets the choice.
   const machines = $derived([...workspace.machinesOr(store)].sort((a, b) => Number(isThisPC(b)) - Number(isThisPC(a))));
@@ -120,7 +121,7 @@
 </script>
 
 <div class="page task-manager" data-testid="task-manager">
-  <header><div><h1>{strings.taskManager.title}</h1><p class="hint">{strings.taskManager.scope}</p></div></header>
+  {#if showTitle}<header><SettingsPageHeader page="task-manager" title={strings.taskManager.title} description={strings.taskManager.scope} {section} /></header>{/if}
   <div class="overview card" data-testid="task-manager-overview">
     <div><span>{strings.taskManager.machines}</span><strong>{count(machines.length)}</strong><small>{strings.taskManager.online(online, machines.length)}</small></div>
     <div><span>{strings.taskManager.agents}</span><strong>{count(busy)}</strong></div>
@@ -195,7 +196,6 @@
 </div>
 
 <style>
-  header p { margin: 6px 0 0; }
   .overview { display: flex; align-items: center; gap: 24px; padding: 16px; margin-bottom: 16px; }
   /* The page's card rules read these as rows: they are one row, with no line over each figure. */
   .page.task-manager > .overview.card > * { border-top: 0; }

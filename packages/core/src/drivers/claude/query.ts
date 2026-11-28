@@ -1,5 +1,5 @@
-import type { EffortLevel, Options, PermissionMode as SdkPermissionMode, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ImageAttachment, PermissionMode } from '@boite/contracts';
+import type { Options, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { ImageAttachment } from '@boite/contracts';
 import type { SessionContext } from '../types.ts';
 import { fitImages } from './images.ts';
 import { CONTEXT_ENV, CONTEXT_GUIDES_ENV } from '../../context-mode.ts';
@@ -12,52 +12,13 @@ export const STDERR_MAX = 400;
  */
 export const ONE_SHOT_TITLE = 'Boite';
 
-/** The effort levels the SDK takes as an option; see `Options['effort']`. */
-const SDK_EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'];
-/** The one level the CLI has no option for: it is a word in the prompt. */
-export const PROMPT_EFFORT = 'ultrathink';
-
 export type QueryFn = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query;
 
 export interface ClaudeDeps {
-  /** Resolved on the first turn: importing the SDK costs about 69 MB of resident memory. */
+  /** Resolved on first use to keep the Claude SDK out of core startup. */
   loadQuery: () => Promise<QueryFn>;
   /** How long a turn waits for the CLI's `init` before the start counts as failed; `START_DEADLINE_MS` by default. */
   startDeadlineMs?: number;
-}
-
-/** The native settings a warm or running query can change without another prompt. */
-export interface LiveSetup {
-  model: string | null;
-  /**
-   * Null is the model's own default, and both cases land there: a thread with
-   * no effort, and `ultrathink`, which is a word in the prompt and no option at
-   * all. `applyFlagSettings` takes null as "clear it from the flag layer", so
-   * the drift back to the default is one call like any other.
-   */
-  effortLevel: EffortLevel | null;
-  fastMode: boolean;
-  /**
-   * What the CLI runs in: the mode Boite set, or one the CLI reported entering
-   * by itself (EnterPlanMode, or an ExitPlanMode it was refused), which can be
-   * one Boite has no name for.
-   */
-  permissionMode: Exclude<PermissionMode, 'yolo'> | SdkPermissionMode;
-  disableHooks: boolean;
-}
-
-/** What this turn asks the running query to be, whatever the last one asked for. */
-export function liveSetup(thread: { model: string | null; effort: string | null; permissionMode: PermissionMode; speed?: string | null; contextMode?: { hooks: boolean } | null }, protectedExecution = false): LiveSetup {
-  const effort = thread.effort;
-  return {
-    model: thread.model,
-    effortLevel: effort !== null && SDK_EFFORTS.includes(effort) ? (effort as EffortLevel) : null,
-    fastMode: thread.speed === 'fast',
-    permissionMode: thread.permissionMode === 'yolo' ? 'bypassPermissions' : thread.permissionMode,
-    // Only a context mode without hooks turns them off. YOLO keeps them: a hook
-    // that answers `ask` reaches `canUseTool`, which allows it in YOLO.
-    disableHooks: protectedExecution || thread.contextMode?.hooks === false,
-  };
 }
 
 function userMessage(uuid: string, text: string, images: ImageAttachment[] = []): SDKUserMessage {
@@ -138,6 +99,7 @@ export function sessionKey(ctx: SessionContext): string {
     cwd: ctx.thread.cwd,
     generation: ctx.thread.sessionGeneration ?? 0,
     resumeAt: ctx.resumeAt ?? null,
+    mcp: ctx.thread.contextMode?.mcp === false ? false : ctx.mcpRevision,
     accountId: ctx.account.id,
     env: ctx.accountEnv,
     protection: ctx.protectedExecution?.fingerprint ?? null,

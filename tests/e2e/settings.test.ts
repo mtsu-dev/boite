@@ -25,6 +25,16 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
+test('the install splash and prepaint page share the light palette background', async () => {
+  const palette = await page.evaluate<string>(`getComputedStyle(document.documentElement).getPropertyValue('--palette-light-default-background').trim()`);
+  expect(palette).toMatch(/^#[0-9a-f]{6}$/i);
+  const manifest = await fetch(`${uiUrl}/manifest.webmanifest`).then((response) => response.json());
+  expect(manifest.background_color).toBe(palette);
+  expect(manifest.theme_color).toBe(palette);
+  const html = await fetch(uiUrl).then((response) => response.text());
+  expect(html).toContain(`var(--color-background, ${palette})`);
+});
+
 test('model picker account tooltips keep emails private on desktop and phone', async () => {
   await page.navigate(`${uiUrl}/?fake=1&open=recent`);
   await page.waitFor(`document.querySelector('${id('composer-picker')}')`);
@@ -45,6 +55,30 @@ test('model picker account tooltips keep emails private on desktop and phone', a
   }
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
 }, 30_000);
+
+test('owner phone opens Plugins from the chat card and Providers from the composer', async () => {
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  try {
+    await page.navigate(`${uiUrl}/?fake=1&open=recent`);
+    await page.waitFor(`document.querySelector('${id('composer-input')}')`);
+    await page.evaluate(`import('/src/lib/workspace.svelte.ts').then(async ({workspace}) => {
+      const store = workspace.active;
+      await store.client.call('settings.request', { threadId: store.openThread.id, reason: 'Review installed plugins', page: 'plugins' });
+      await store.setProviderEnabled(store.openThread.providerId, false);
+    })`);
+    await page.waitFor(`document.querySelector('${id('setting-card')}') && document.querySelector('${id('composer-provider-off')}')`);
+    expect(await page.evaluate(`!!document.querySelector('button${id('setting-open')}')`)).toBe(true);
+    await page.click(id('setting-open'));
+    await page.waitFor(`document.querySelector('.mobile-settings ${id('plugins-page')}')`);
+    await page.evaluate(`import('/src/lib/workspace.svelte.ts').then(({workspace}) => workspace.select(workspace.active, workspace.active.openThread.id))`);
+    await page.click(`button${id('composer-provider-off')}`);
+    await page.waitFor(`document.querySelector('.mobile-settings ${id('accounts-page')}')`);
+  } finally {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await page.navigate(`${uiUrl}/?fake=1&open=recent`);
+    await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
+  }
+}, 60_000);
 
 test('provider settings show login controls, and quota monitoring lives on the Limits page', async () => {
   await page.click(id('nav-settings')); await page.click(id('settings-tab-accounts'));
@@ -129,7 +163,7 @@ test('Grain is visible above solid and acrylic surfaces and the settings fit a p
   await capture('grain-acrylic.png');
   expect(await page.evaluate(`getComputedStyle(document.body, '::after').pointerEvents`)).toBe('none');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.evaluate(`document.querySelector('${id('nav-settings')}').click()`);
+  await mobileAction(page, 'mobile-settings');
   await page.click(id('settings-tab-appearance'));
   await capture('providers-phone.png');
   expect(await page.evaluate(`document.querySelector('${id('settings')}').getBoundingClientRect().width`)).toBeLessThanOrEqual(390);
@@ -179,7 +213,8 @@ test('Short answers starts on and saves when flipped', async () => {
 test('the mochis are in the app rail on the desktop and in the phone bar, with no switch', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false });
   await page.waitFor(`!document.querySelector('${id('mobile-settings-detail')}') && !history.state?.boiteOverlay`);
-  // The agents fixture, so the rail has bots to draw.
+  // The agents fixture with Mochi layout on, so the rail has bots to draw.
+  await page.evaluate(`localStorage.setItem('boite.mochi-layout', '1')`);
   await page.navigate(`${uiUrl}/?fake=1&open=recent&agents=1`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
   // Bots are on in every build, with no switch: the Experiments page lists none for them.
@@ -198,6 +233,7 @@ test('the mochis are in the app rail on the desktop and in the phone bar, with n
   // The rail's Threads button leads back to the threads.
   await page.click(id('view-threads'));
   await page.waitFor(`!document.querySelector('${id('agents-page')}') && document.querySelector('${id('view-threads')}')?.getAttribute('aria-current') === 'page'`);
+  await page.evaluate(`localStorage.removeItem('boite.mochi-layout')`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await toMobileList(page);
   expect(await page.evaluate(`document.querySelector('${id('mobile-agents')}').closest('[data-testid=mobile-tabs]') !== null`)).toBe(true);

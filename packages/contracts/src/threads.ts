@@ -1,19 +1,25 @@
 import type { AgentTask, AgentTaskChange } from './agent-tasks';
+import type { WorkingChildren } from './activity';
 import type { ContextPreset, ContextRequest, ThreadContextMode } from './context-mode';
 import type { AgentLetter } from './coordination';
 import type { AccountId, MessageId, ProjectId, ProviderId, ThreadId, Timestamp, TurnId } from './ids';
 import type { AgentShape } from './imports';
+import type { JournalInspection, JournalInspectionCursor } from './journal-inspection';
 import type { Attachment, Message, MoveNotice, PendingMove, PreviewReference } from './messages';
+import type { ThreadMessageMatch } from './message-search';
 import type { OwnerThreadRequest } from './owner-thread';
 import type { PermissionRequest } from './permissions';
 import type { PluginActor } from './plugins';
-import type { ThreadCapabilities } from './providers';
+import type { ThreadControlsRpcMethods } from './thread-capabilities.ts';
 import type { PullRequestWatch } from './pull-requests';
 import type { BackgroundTask, BackgroundTaskObservation, BackgroundWait, QuestionRequest } from './questions';
 import type { MemoryEvent } from './scheduler';
 import type { DeletedThreadSummary } from './settings';
 import type { StreamChannel } from './stream-channels';
-import type { Turn } from './turns';
+import type { MessageSync } from './thread-sync';
+import type { ThreadRecovery, Turn } from './turns';
+
+export * from './journal-inspection';
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'yolo' | 'plan' | 'dontAsk';
 
@@ -124,29 +130,7 @@ export interface ThreadWorktreeRemoval {
   removedAt: Timestamp;
 }
 
-/** Provenance of a copied conversation; native history and seeded history remain distinct. */
-export const JOURNAL_INSPECTION_TABLES = ['threads', 'turns', 'messages', 'turn_requests', 'background_observations', 'coordination_letters'] as const;
-export type JournalInspectionTable = typeof JOURNAL_INSPECTION_TABLES[number];
-export interface JournalInspectionCursor { table: JournalInspectionTable; afterRowid: number }
-export interface JournalInspectionIssue {
-  table: JournalInspectionTable;
-  rowId: number;
-  code: 'missing-thread' | 'missing-turn' | 'turn-thread-mismatch' | 'terminal-streaming-message' | 'invalid-queue-hold'
-    | 'oversized-json' | 'malformed-json' | 'invalid-fork-origin' | 'fork-origin-owner-mismatch'
-    | 'invalid-background-observation' | 'background-owner-mismatch' | 'background-parent-mismatch'
-    | 'request-message-mismatch' | 'invalid-letter-owner';
-  field: string;
-  /** Fixed diagnostic expectation, never stored text, IDs, payloads or credentials. */
-  expected: string;
-}
-export interface JournalInspection {
-  issues: JournalInspectionIssue[];
-  checked: number;
-  cursor: JournalInspectionCursor | null;
-  /** Further rows remain. Concurrent pages do not form an atomic global integrity proof. */
-  truncated: boolean;
-}
-
+/** Provenance of a copied conversation. */
 export interface ForkOrigin {
   threadId: ThreadId;
   messageId: MessageId | null;
@@ -164,6 +148,8 @@ export interface ThreadSummary {
    * `thread.updated` carries it only when the hold changed. Absent on older cores.
    */
   contactHold?: { contacts: string[] } | null;
+  /** Tools are restricted by contact mail in this thread's history. The owner can clear this with `threads.trustContactHistory`. Absent on older cores. */
+  contactToolsHeld?: boolean;
   /** Date marked done, or automatically archived after a PR merge. Cleared on restore or manual archive. */
   doneAt?: Timestamp | null;
   /**
@@ -257,6 +243,8 @@ export interface ThreadSummary {
    * agents; missing on older cores.
    */
   backgroundWait?: BackgroundWait | null;
+  /** Last background interruption acknowledged in Activity. Null on a new interruption, missing on older cores. */
+  interruptionReadAt?: Timestamp | null;
   /**
    * A move asked for while the thread's turn ran, applied when that turn
    * ends (`threads.move`, `agent.move`). In memory only: null after a core
@@ -287,6 +275,8 @@ export interface ThreadSummary {
   openQuestions?: number;
   /** Unanswered child questions, including children on another machine. No question text; missing on older cores. */
   subagentQuestions?: { threadId: ThreadId; title: string; machine?: { coreId: string; name: string } }[];
+  /** Working or asking subagents on other machines. Null clears a previously reported wait. */
+  remoteSubagents?: WorkingChildren | null;
   unread: boolean;
   archived: boolean;
   /** Kept above the other threads of its project in the sidebar, whatever runs. */
@@ -319,6 +309,8 @@ export interface ThreadSummary {
    * missing on older cores.
    */
   retry?: ThreadRetry | null;
+  /** The interrupted turn the owner can resume without resending its request. */
+  recovery?: ThreadRecovery | null;
   /**
    * The wake the agent asked for with its ScheduleWakeup tool, which the core
    * keeps across restarts and opens as a turn when it is due (`ThreadWake`).
@@ -546,11 +538,6 @@ export interface Thread extends ThreadSummary {
   turns: Turn[];
 }
 
-export interface MessageSync {
-  from: MessageId;
-  hash: string;
-}
-
 /** An opt-in opening reads requests and changes this socket's subscription in the same RPC. */
 export interface ThreadSnapshot extends Thread {
   opened?: { permissions?: PermissionRequest[]; questions?: QuestionRequest[] };
@@ -600,7 +587,7 @@ export interface ListCursor {
  * archived. A held row in neither list is unchanged.
  */
 export type ThreadListChanges =
-  | { kind: 'full'; cursor: ListCursor; threads: ThreadSummary[] }
+  | { kind: 'full'; cursor: ListCursor; threads: ThreadSummary[]; next?: string }
   | { kind: 'changes'; cursor: ListCursor; threads: ThreadSummary[]; removed: ThreadId[] };
 
 /**
@@ -615,7 +602,12 @@ export interface ThreadStats {
   prompts: number;
 }
 
-export interface ThreadsRpcMethods {
+export interface ThreadsRpcMethods extends ThreadControlsRpcMethods {
+  'threads.search': {
+    /** `replacePending` replaces an unfinished search that set this option on the same connection. */
+    params: { query: string; limit?: number; includeArchived?: boolean; replacePending?: boolean };
+    result: { query: string; matches: ThreadMessageMatch[] };
+  };
   /** Owner-only, private bounded diagnostic history, including earlier runs. */
   'journal.inspect': { params: { cursor?: JournalInspectionCursor | null; limit?: number }; result: JournalInspection };
   /**
@@ -643,7 +635,7 @@ export interface ThreadsRpcMethods {
    * whole without `since`, else only what changed since that answer
    * (`features.listChanges`). See `ThreadListChanges`.
    */
-  'threads.listChanges': { params: { since?: ListCursor }; result: ThreadListChanges };
+  'threads.listChanges': { params: { since?: ListCursor; page?: true | string }; result: ThreadListChanges };
   /** Read the thread's own branch PR using the execution machine's GitHub CLI. Null when the thread has no branch. */
   /** `refresh`: a user asked, so what the core kept for this repository is read again, and a missing gh is tried again. */
   'threads.pullRequest': { params: { threadId: ThreadId; refresh?: boolean }; result: ThreadSummary['pullRequest'] };
@@ -699,8 +691,6 @@ export interface ThreadsRpcMethods {
   'threads.createFromPrompt': { params: OwnerThreadRequest; result: { thread: ThreadSummary; turn: Turn; project: string } };
   /** The system prompt, tools and parameters of a Claude thread's last request, read from its transcript. Refused on other providers. */
   'threads.agentShape': { params: { threadId: ThreadId }; result: AgentShape };
-  /** Supported operations and their current availability for this thread. */
-  'threads.capabilities': { params: { threadId: ThreadId }; result: ThreadCapabilities };
   /** What the whole conversation holds, past the pages a client loaded: its compactions and the prompts sent (`ThreadStats`). */
   'threads.stats': { params: { threadId: ThreadId }; result: ThreadStats };
   /**
@@ -716,10 +706,10 @@ export interface ThreadsRpcMethods {
    * with more than a page's count or serialized byte budget behind it, is
    * answered with the full page, without `messagesFrom`.
    *
-   * `around` is the message a reader was last looking at. When more than
-   * `limit` messages were written after it, the answer is the page centred on
-   * it, with `messagesAfter` set; otherwise it is the last page, which holds
-   * it. An `around` the thread does not hold gets the last page; `after` wins
+   * `around` is the message a reader was last looking at. The page always
+   * includes it, even when the byte budget leaves out the newer messages.
+   * `messagesAfter` is set if more messages follow the page. An `around`
+   * the thread does not hold gets the last page; `after` wins
    * over it. `compactImages` defers large images as `compactFiles` defers
    * files. Both need `features.readingPages`. `compactToolParts` leaves long
    * tool inputs and heavy documents on the core as well, and caps each message
@@ -734,7 +724,7 @@ export interface ThreadsRpcMethods {
    */
   'threads.get': {
     params: {
-      threadId: ThreadId; after?: MessageId; around?: MessageId; limit?: number; maxBytes?: number; compactTools?: boolean; compactFiles?: boolean; compactImages?: boolean; compactToolParts?: boolean;
+      threadId: ThreadId; after?: MessageId; around?: MessageId; limit?: number; maxBytes?: number; compactTools?: boolean; compactFiles?: boolean; compactImages?: boolean; compactToolParts?: boolean; omitThinking?: boolean; omitTools?: boolean | 'running';
       /** Request a resume proof, or reuse a proof previously supplied by this core. */
       sync?: true | MessageSync;
       /** Subscribe after a successful snapshot, optionally replacing the previous subscription and acknowledging unread content. */
@@ -749,6 +739,8 @@ export interface ThreadsRpcMethods {
       threadId: ThreadId;
       /** Select another account/provider for future turns in this conversation. */
       accountId?: AccountId;
+      /** The user skipped the history warning because the preview could resume a saved session. */
+      requireSavedSession?: true;
       expectedSelectionVersion?: number;
       title?: string;
       model?: string | null;
@@ -849,7 +841,8 @@ export interface ThreadsRpcMethods {
   'threads.restore': { params: { threadId: ThreadId }; result: ThreadSummary };
   /** Pin or unpin (`pinned: false`) a thread. An archived thread keeps its pin for when it comes back. */
   'threads.pin': { params: { threadId: ThreadId; pinned?: boolean }; result: ThreadSummary };
-  'threads.markRead': { params: { threadId: ThreadId }; result: { ok: true } };
+  /** Acknowledge unread messages, or just the background interruption with the given timestamp. */
+  'threads.markRead': { params: { threadId: ThreadId; interruptionAt?: Timestamp }; result: { ok: true } };
   /**
    * Owner only. Accept the contact mail outside a shared project that the
    * thread's history consumed (`Thread.contactHold`), so its turns and tools
@@ -889,6 +882,8 @@ export interface ThreadsRpcEvents {
    * as `thread.updated`.
    */
   'thread.load': { threadId: ThreadId; load: ThreadLoad };
+  /** One active turn's latest progress. Other clients receive a whole row. */
+  'thread.progress': { threadId: ThreadId; progress: ThreadProgress };
   'thread.removed': { threadId: ThreadId; /** It can come back (trash, removed project): its records stay. */ undoable?: boolean };
   /** The owner-only deletion list changed, including purge and removal with a project. */
   'thread.deletionsUpdated': Record<string, never>;

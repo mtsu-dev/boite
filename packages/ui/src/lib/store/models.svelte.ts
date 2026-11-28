@@ -1,5 +1,5 @@
-import { nativeModelId, type ModelFavorites, type ModelInfo, type ProviderId, type ProviderSummary } from '@boite/contracts';
-import { BUILT_IN_MODELS, DEFAULT_MODEL_NAMES, INITIAL_MODEL_DEFAULTS, writeModelDefaults, resolveModelDefault, fallbackModelDefault, type ModelDefault, type ModelDefaults } from '../model-defaults';
+import { nativeModelId, resolveModelSelection, type ModelFavorites, type ModelInfo, type ProviderId, type ProviderSummary } from '@boite/contracts';
+import { BUILT_IN_MODELS, DEFAULT_MODEL_NAMES, INITIAL_MODEL_DEFAULTS, writeModelDefaults, defaultEffortFor, resolveModelDefault, fallbackModelDefault, type ModelDefault, type ModelDefaults } from '../model-defaults';
 import { isNamedModel } from '../model-order';
 import { modelFavorites, resolveFavorites, type FavoritesTarget, type ResolvedFavorite } from '../model-favorites.svelte';
 import { defaultPrefs, writePrefs, type ComposerPrefs } from '../prefs';
@@ -16,7 +16,12 @@ import { SvelteMap } from 'svelte/reactivity';
  * and its effort scale from what another account of the same agent answered.
  */
 const seenModels = new SvelteMap<string, ModelInfo>();
-const seenKey = (providerId: string, model: string) => `${providerId}::${nativeModelId(model)}`;
+function providerNativeId(providerId: string, model: string): string {
+  if (providerId === 'claude' && model.startsWith('claude/claude-')) return nativeModelId(model);
+  if (providerId === 'codex' && model.startsWith('codex/')) return nativeModelId(model);
+  return model;
+}
+const seenKey = (providerId: string, model: string) => `${providerId}::${providerNativeId(providerId, model)}`;
 function remember(probed: Record<string, ModelInfo[]>): void {
   for (const [key, models] of Object.entries(probed)) {
     const providerId = key.slice(0, key.indexOf('::'));
@@ -24,6 +29,7 @@ function remember(probed: Record<string, ModelInfo[]>): void {
       const id = seenKey(providerId, model.id);
       const held = seenModels.get(id);
       if (held !== model && !(held && sameJson(model, held))) seenModels.set(id, model);
+      for (const alias of model.aliases ?? []) seenModels.set(seenKey(providerId, alias.id), model);
     }
   }
 }
@@ -108,10 +114,14 @@ export class Models {
    */
   toggleFavorite(providerId: string, accountId: string, model: ModelInfo): void {
     if (!this.ctx.store.owner) return;
-    const shown = this.favorites.find((f) => f.providerId === providerId && f.accountId === accountId && f.model.id === model.id);
+    const shown = this.favorites.find(f => f.providerId === providerId && f.accountId === accountId && f.model.id === model.id && (f.effort ?? model.effort?.default) === model.effort?.default);
     if (shown) { modelFavorites.toggle(null, shown.items); return; }
     const label = this.ctx.store.accountOf(accountId)?.label;
     modelFavorites.toggle({ providerId, model: { id: model.id, name: model.name }, ...(label ? { account: label } : {}) });
+  }
+
+  removeFavorite(favorite: ResolvedFavorite): void {
+    if (this.ctx.store.owner) modelFavorites.toggle(null, favorite.items);
   }
 
   /** This machine as the shared favorites reach it; registered while a client is attached. */
@@ -218,7 +228,7 @@ export class Models {
   modelOf(choice: Choice | null): ModelInfo | null {
     if (!choice) return null;
     const models = this.ctx.store.modelsOf(choice.providerId, choice.accountId);
-    const offered = choice.model ? models.find((m) => m.id === this.#listedAs(choice.model!, models)) : undefined;
+    const offered = this.#resolve(choice.providerId, models, choice.model, choice.effort)?.model;
     if (offered) return offered;
     const preferred = this.#configured(choice.providerId, choice.accountId) ?? INITIAL_MODEL_DEFAULTS[choice.providerId];
     // Display the configured target before probing, with the built-in effort
@@ -228,30 +238,35 @@ export class Models {
       // An account never read here does not refuse its model: its thread keeps the
       // name and effort scale it was started with, as any probe of that agent lists them.
       if (this.probedModels[probeKey(choice.providerId, choice.accountId)]) return null;
-      const named = DEFAULT_MODEL_NAMES[nativeModelId(choice.model)];
+      const named = DEFAULT_MODEL_NAMES[providerNativeId(choice.providerId, choice.model)];
       return seenModels.get(seenKey(choice.providerId, choice.model)) ?? (named ? { id: choice.model, name: named } : null);
     }
     const builtIn = BUILT_IN_MODELS[choice.providerId];
-    return builtIn?.id === nativeModelId(choice.model) ? builtIn : { id: choice.model, name: DEFAULT_MODEL_NAMES[choice.model] ?? choice.model };
+    return builtIn?.id === providerNativeId(choice.providerId, choice.model) ? builtIn : { id: choice.model, name: DEFAULT_MODEL_NAMES[choice.model] ?? choice.model };
   }
 
-  /**
-   * The id `models` gives `model`, or null when it is not listed. A gateway
-   * route named after the vendor (`claude/claude-opus-5-5`) is the same model
-   * as the native id the core lists in its place since it stopped listing both.
-   */
-  #listedAs(model: string, models: readonly ModelInfo[]): string | null {
-    if (models.some((m) => m.id === model)) return model;
-    const native = nativeModelId(model);
-    return models.find((m) => nativeModelId(m.id) === native)?.id ?? null;
+  #resolve(providerId: string, models: readonly ModelInfo[], id: string | null, effort?: string | null) {
+    const resolved = resolveModelSelection(models, id, effort);
+    if (resolved || id === null) return resolved;
+    const native = providerNativeId(providerId, id);
+    const model = models.find(row => providerNativeId(providerId, row.id) === native);
+    return model ? { model, effort: effort ?? null, alias: undefined } : undefined;
+  }
+
+  /** Resolve a persisted alias without rewriting the thread that holds it. */
+  resolvedChoice(choice: Choice): Choice {
+    const selected = this.#resolve(choice.providerId, this.modelsOf(choice.providerId, choice.accountId), choice.model, choice.effort);
+    return selected ? { ...choice, model: selected.model.id, effort: selected.effort } : choice;
   }
 
   /** The configured default, under the id this account's catalog lists it as. */
   #configured(providerId: string, accountId?: string | null): ModelDefault | undefined {
     const configured = this.modelDefaults[providerId];
     if (!configured || !accountId) return configured;
-    const listed = this.#listedAs(configured.model, this.ctx.store.modelsOf(providerId, accountId));
-    return listed && listed !== configured.model ? { ...configured, model: listed } : configured;
+    const selected = this.#resolve(providerId, this.modelsOf(providerId, accountId), configured.model, configured.effort);
+    if (!selected) return configured;
+    const effort = selected.model.effort ? defaultEffortFor(selected.model, selected.effort, selected.alias?.effort) : selected.effort;
+    return { model: selected.model.id, effort };
   }
 
   /**
@@ -272,11 +287,11 @@ export class Models {
     pending.request = (async () => {
       await s.probeModels(providerId, accountId);
       if (client !== this.ctx.client || epoch !== this.probeEpoch) return;
-      const listed = s.modelsOf(providerId, accountId).find(entry => entry.id === model);
+      const listed = resolveModelSelection(s.modelsOf(providerId, accountId), model)?.model;
       if (!listed || listed.effort !== undefined || this.effortAttempts.has(key)) return;
       this.effortAttempts.add(key);
       try {
-        const { models } = await client.call('providers.probe', { providerId, accountId, model });
+        const { models } = await client.call('providers.probe', { providerId, accountId, model: listed.id });
         if (client !== this.ctx.client || epoch !== this.probeEpoch) return;
         this.probedModels = { ...this.probedModels, [probeKey(providerId, accountId)]: models };
         this.confirmed.add(probeKey(providerId, accountId));
@@ -296,7 +311,7 @@ export class Models {
    */
   catalogHas(providerId: ProviderId, accountId: string, model: string): boolean {
     const key = probeKey(providerId, accountId);
-    return this.confirmed.has(key) && (this.probedModels[key]?.some((entry) => entry.id === model) ?? false);
+    return this.confirmed.has(key) && resolveModelSelection(this.probedModels[key] ?? [], model) !== undefined;
   }
 
   /** Every list the client holds came from another connection or a reloaded core. */
@@ -387,7 +402,7 @@ export class Models {
   composerChoice(choice: Choice): Choice {
     const s = this.ctx.store;
     const offered = s.modelOf(choice);
-    if (choice.model && isNamedModel(offered ?? { id: choice.model, name: choice.model })) return choice;
+    if (choice.model && isNamedModel(offered ?? { id: choice.model, name: choice.model })) return this.resolvedChoice(choice);
     const provider = s.providerOf(choice.providerId);
     if (!provider) return choice;
     const model = s.defaultModelOf(provider, choice.accountId);
@@ -398,19 +413,22 @@ export class Models {
     const s = this.ctx.store;
     const offered = s.modelsOf(providerId, accountId);
     const own = this.#configured(providerId, accountId);
+    const selected = this.#resolve(providerId, offered, model);
+    if (selected?.effort) return selected.effort;
     const configured = own ?? INITIAL_MODEL_DEFAULTS[providerId];
     if (configured?.model === model && (!offered.some((entry) => entry.id === model) ||
       (s.providerOf(providerId)?.protocol === 'claude-sdk' && !this.probedModels[probeKey(providerId, accountId)]))) return configured.effort;
     const preferred = own
       ? resolveModelDefault(providerId, offered, { ...this.modelDefaults, [providerId]: own }) : fallbackModelDefault(providerId, offered);
-    return preferred?.model === model ? preferred.effort : offered.find((m) => m.id === model)?.effort?.default ?? null;
+    return preferred?.model === model ? preferred.effort : selected?.model.effort?.default ?? null;
   }
 
   setModelDefault(providerId: string, accountId: string, model: string, effort: string | null): void {
-    const offered = this.ctx.store.modelsOf(providerId, accountId).find((m) => m.id === model);
-    if (!offered || !isNamedModel(offered)) return;
-    const validEffort = offered.effort?.levels.some((level) => level.id === effort) ? effort : offered.effort?.default ?? null;
-    this.modelDefaults = { ...this.modelDefaults, [providerId]: { model, effort: validEffort } };
+    const selected = this.#resolve(providerId, this.modelsOf(providerId, accountId), model, effort);
+    if (!selected || !isNamedModel(selected.model)) return;
+    const offered = selected.model;
+    const validEffort = defaultEffortFor(offered, selected.effort, selected.alias?.effort);
+    this.modelDefaults = { ...this.modelDefaults, [providerId]: { model: offered.id, effort: validEffort } };
     writeModelDefaults(this.modelDefaults);
   }
 
@@ -441,7 +459,7 @@ export class Models {
       permissionMode: this.prefs.permissionMode,
       model,
       effort,
-      speed: s.modelsOf(provider.id, account.id).find(m => m.id === model)?.speeds?.some(option => option.id === this.prefs.speed) ? this.prefs.speed : null
+      speed: resolveModelSelection(s.modelsOf(provider.id, account.id), model)?.model.speeds?.some(option => option.id === this.prefs.speed) ? this.prefs.speed : null
     };
   }
 
@@ -497,8 +515,8 @@ export class Models {
    */
   #offered(choice: Choice, catalog?: ModelInfo[]): Choice {
     // A choice saved under a vendor's route is that same model under the id the catalog lists.
-    const listed = choice.model ? this.#listedAs(choice.model, catalog ?? this.ctx.store.modelsOf(choice.providerId, choice.accountId)) : null;
-    if (listed && listed !== choice.model) return { ...choice, model: listed };
+    const selected = this.#resolve(choice.providerId, catalog ?? this.modelsOf(choice.providerId, choice.accountId), choice.model, choice.effort);
+    if (selected && selected.model.id !== choice.model) return { ...choice, model: selected.model.id, effort: selected.effort };
     if (this.modelDefaults[choice.providerId] || choice.model !== INITIAL_MODEL_DEFAULTS[choice.providerId]?.model) return choice;
     const offered = catalog ?? this.probedModels[probeKey(choice.providerId, choice.accountId)];
     if (!offered || offered.some((model) => model.id === choice.model)) return choice;
@@ -514,7 +532,7 @@ export class Models {
     // The core listed this model on this connection: it accepts it without a
     // second read, which would wait behind a refresh still running.
     const known = this.catalogHas(choice.providerId, choice.accountId, choice.model) &&
-      (provider.protocol !== 'acp' || choice.effort === null || s.modelsOf(provider.id, choice.accountId).find((m) => m.id === choice.model)?.effort !== undefined);
+      (provider.protocol !== 'acp' || choice.effort === null || this.#resolve(provider.id, s.modelsOf(provider.id, choice.accountId), choice.model)?.model.effort !== undefined);
     if (!known && ['claude-sdk', 'acp', 'codex-appserver', 'muse', 'pi'].includes(provider.protocol)) {
       const client = this.ctx.client;
       if (!client) return null;
@@ -534,14 +552,14 @@ export class Models {
         const current = client === this.ctx.client && epoch === this.probeEpoch;
         // An effort probe can fail for a model the catalog already lists. The
         // draft still starts. Any other probe failure still stops it.
-        const known = s.modelsOf(provider.id, choice.accountId).some((model) => model.id === choice.model);
-        if (current && provider.protocol === 'acp' && choice.effort !== null && known) return choice;
+        const known = this.#resolve(provider.id, s.modelsOf(provider.id, choice.accountId), choice.model);
+        if (current && provider.protocol === 'acp' && choice.effort !== null && known) return this.resolvedChoice(choice);
         if (current && !options.background) this.ctx.fail(error);
         return null;
       }
     }
     const offered = s.modelsOf(provider.id, choice.accountId);
-    if (!offered.some((model) => model.id === choice.model)) {
+    if (!this.#resolve(provider.id, offered, choice.model)) {
       // Only the built-in default moves to what the account offers. A default
       // the user configured, or a model he picked, is refused instead.
       const moved = this.#offered(choice, offered);
@@ -549,7 +567,7 @@ export class Models {
       if (!options.background) s.error = fill(strings.settings.modelDefaultUnavailable, { model: choice.model, provider: provider.name });
       return null;
     }
-    return choice;
+    return this.resolvedChoice(choice);
   }
 
   /** What was probed for one account, dropped: the account itself changed. */

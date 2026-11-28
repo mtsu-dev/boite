@@ -1,3 +1,4 @@
+import { antigravityCatalog } from '../src/drivers/acp/antigravity-catalog.ts';
 /**
  * Antigravity's half of the ACP driver, on a fake that speaks the real
  * protocol: every account isolated, the seed file and the browser no-op written
@@ -7,18 +8,21 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, test } from 'bun:test';
-import type { Attachment, Settings, ThreadId } from '@boite/contracts';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
+import type { Attachment, Settings, ThreadId, ThreadRetry } from '@boite/contracts';
 import { readAntigravityQuota, type Fetch } from '../src/antigravity-quota.ts';
 import type { CoreClient } from '../src/client.ts';
 import { probeTimeoutMs } from '../src/drivers/acp/probe.ts';
+import { forgetProbes } from '../src/drivers/index.ts';
 import { antigravityCertificates, antigravitySubagentBatch } from '../src/drivers/antigravity.ts';
 import { shareProfile, variableHome } from '../src/profile-share.ts';
 import { profileFor } from '../src/providers/resolve.ts';
 import { saveCatalog } from '../src/providers/saved-catalogs.ts';
 import { LAUNCH_TEMP_DIR } from '../src/drivers/launch-temp.ts';
+import { CAPACITY_RETRY } from '../src/threads/turn-attempts.ts';
+import * as fsRetry from '../src/fs-retry.ts';
 import { startTestCore, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -31,10 +35,42 @@ const SEED_BODY = '{"auth":{"type":"oauth-personal"}}';
 let harness: TestCore | null = null;
 let logFile = '';
 
+/**
+ * A sign-in's launch folder whose removal a test holds until it releases it:
+ * removing an unpacked agent takes seconds on a real machine, and a removal
+ * that deleted the account around it left the account's directory behind.
+ */
+interface HeldScratch {
+  started: ReturnType<typeof Promise.withResolvers<void>>;
+  release: ReturnType<typeof Promise.withResolvers<void>>;
+  done: boolean;
+}
+let heldScratch: HeldScratch | null = null;
+const realRemoveDir = fsRetry.removeDir;
+mock.module('../src/fs-retry.ts', () => ({
+  removeDir: async (path: string, log?: (message: string) => void, attempts?: number, delayMs?: number): Promise<boolean> => {
+    const held = heldScratch;
+    if (held === null || !path.includes(`${sep}${LAUNCH_TEMP_DIR}${sep}run-`)) return realRemoveDir(path, log, attempts, delayMs);
+    held.started.resolve();
+    await held.release.promise;
+    const removed = await realRemoveDir(path, log, attempts, delayMs);
+    held.done = true;
+    return removed;
+  },
+}));
+
+function holdScratch(): HeldScratch {
+  heldScratch = { started: Promise.withResolvers(), release: Promise.withResolvers(), done: false };
+  return heldScratch;
+}
+
 afterEach(async () => {
+  heldScratch?.release.resolve();
+  heldScratch = null;
   const open = harness;
   harness = null;
   delete process.env['AGY_FAKE_LOG'];
+  delete process.env['AGY_FAKE_CATALOG'];
   delete process.env['GEMINI_API_KEY'];
   if (open !== null) await open.stop();
 });
@@ -47,6 +83,15 @@ async function startCore(settings?: Partial<Settings>): Promise<CoreClient> {
   // The variable a user set for their own Gemini login: the descriptor unsets it.
   process.env['GEMINI_API_KEY'] = 'the-users-own-key';
   return started.connect();
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function fakeLog(): string {
@@ -140,6 +185,52 @@ async function runTurn(client: CoreClient, threadId: ThreadId, prompt: string, a
   await client.call('turns.start', { threadId, prompt, attachments });
   expect((await finished).error).toBeNull();
 }
+
+test.each([
+  ['scenario:transient-error', 0, ['tool', 'error', 'text']],
+  ['scenario:swarm-error', 5, ['tool', 'text', 'error', 'text']],
+] as const)('Antigravity retries a temporary account failure from %s in the same session', async (prompt, warmProcessMinutes, partTypes) => {
+  const delays = CAPACITY_RETRY.delaysMs;
+  CAPACITY_RETRY.delaysMs = [40, 40, 40];
+  try {
+    const client = await startCore({ warmProcessMinutes });
+    const { threadId } = await agyThread(client);
+    const retries: ThreadRetry[] = [];
+    client.on('thread.updated', thread => { if (thread.id === threadId && thread.retry) retries.push(thread.retry); });
+    const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20_000);
+    const turn = await client.call('turns.start', { threadId, prompt });
+    expect(await finished).toMatchObject({ id: turn.id, status: 'done', error: null });
+    const thread = await client.call('threads.get', { threadId });
+    expect(retries).toContainEqual(expect.objectContaining({ kind: 'capacity', turnId: turn.id, attempt: 1 }));
+    expect(thread.turns.map(turn => turn.id)).toEqual([turn.id]);
+    const parts = thread.messages.filter(message => message.role === 'assistant').flatMap(message => message.parts);
+    expect(parts.map(part => part.type)).toEqual([...partTypes]);
+    expect(parts.at(-2)).toMatchObject({ message: expect.stringContaining('temporarily unavailable') });
+    expect(parts.at(-1)).toMatchObject({ text: 'pong' });
+    const prompts = fakeLog().match(/^prompt:.*$/gm) ?? [];
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toBe(prompts[1]!);
+  } finally {
+    CAPACITY_RETRY.delaysMs = delays;
+  }
+}, 20_000);
+
+test.each([
+  ['scenario:other-session-error', 'done', null],
+  ['scenario:quoted-error', 'done', null],
+  ['scenario:max-tokens', 'error', 'the agent stopped: max_tokens'],
+] as const)('Antigravity keeps the prompt outcome for %s', async (prompt, status, error) => {
+  const client = await startCore();
+  const { threadId } = await agyThread(client);
+  const finished = client.next('turn.finished', turn => turn.threadId === threadId);
+  await client.call('turns.start', { threadId, prompt });
+  expect(await finished).toMatchObject({ status, error });
+  expect(fakeLog().match(/^prompt:/gm)).toHaveLength(1);
+  const thread = await client.call('threads.get', { threadId });
+  const text = thread.messages.filter(message => message.role === 'assistant').flatMap(message => message.parts)
+    .find(part => part.type === 'text');
+  expect(text).toMatchObject({ text: expect.stringContaining('temporarily unavailable') });
+});
 
 /** Douane, at a loopback address nothing answers: these tests start no turn through it. */
 const DOUANE = { enabled: true, kind: 'douane' as const, baseUrl: 'http://127.0.0.1:9/v1', dashboardUrl: 'http://127.0.0.1:9/admin/' };
@@ -239,6 +330,54 @@ describe('antigravity', () => {
     expect(existsSync(account.isolationDir)).toBe(false);
     expect(await client.call('accounts.logins', {})).toEqual([]);
   });
+
+  test('removing an account waits for the launch folder its cancelled sign-in is still removing', async () => {
+    const client = await startCore();
+    const account = await agyAccount(client);
+    await client.call('accounts.login', { accountId: account.id });
+    await waitFor(() => fakeLog().includes('callback:'), 20_000);
+    const held = holdScratch();
+    let doneWhenRemoved = null as boolean | null;
+    const removing = client.call('accounts.remove', { accountId: account.id }).then(() => {
+      doneWhenRemoved = held.done;
+    });
+    await held.started.promise;
+    // Released once the removal answered, or after a second it spent waiting.
+    await Promise.race([removing, Bun.sleep(1000)]);
+    held.release.resolve();
+    await removing;
+    expect(doneWhenRemoved).toBe(true);
+    expect(existsSync(account.isolationDir)).toBe(false);
+  }, 40_000);
+
+  test('a sign-in answers before its launch folder is gone', async () => {
+    const client = await startCore();
+    const account = await agyAccount(client);
+    const states: string[] = [];
+    let announced = false;
+    client.on('account.login', (event) => {
+      if (event.accountId !== account.id) return;
+      states.push(event.state);
+      if (event.url !== null) announced = true;
+    });
+    await client.call('accounts.login', { accountId: account.id });
+    // The core takes a redirect only once it has the link the agent printed.
+    await waitFor(() => announced && fakeLog().includes('callback:'), 20_000);
+    const callback = fakeLog()
+      .split('\n')
+      .find((line) => line.startsWith('callback:'))
+      ?.slice('callback:'.length);
+    const held = holdScratch();
+    await client.call('accounts.loginInput', { accountId: account.id, text: callback ?? '' });
+    await held.started.promise;
+    await waitFor(() => states.includes('done') || states.includes('failed'), 20_000);
+    expect(states.at(-1)).toBe('done');
+    expect(held.done).toBe(false);
+    held.release.resolve();
+    await client.call('accounts.remove', { accountId: account.id });
+    expect(held.done).toBe(true);
+    expect(existsSync(account.isolationDir)).toBe(false);
+  }, 40_000);
   test('every account is isolated, and the seed file and the browser no-op are written before any spawn', async () => {
     const client = await startCore();
     const account = await agyAccount(client);
@@ -414,14 +553,14 @@ describe('antigravity', () => {
     await waitFor(() => !existsSync(temp), 10_000);
   }, 30000);
 
-  test('a thread saved on a pre-1.4 model id runs, and no session lets the agent write its workflow skill', async () => {
+  test.each([[null, 'low'], ['medium', 'medium']] as const)('a thread saved on a pre-1.4 model ID and effort %s runs without the workflow tool', async (saved, expected) => {
     const client = await startCore();
-    // Threads and bots made before 1.4 hold `gemini-3.8-flash-low`, which the
-    // model option no longer lists; the agent still takes it.
-    const { threadId } = await agyThread(client, 'gemini-3.8-flash-low');
+    const { threadId } = await agyThread(client);
+    const core = harness!.core;
+    core.journal.putThread({ ...core.threads.require(threadId), model: 'gemini-3.8-flash-low', effort: saved });
     await runTurn(client, threadId, 'ping');
     const log = fakeLog().split('\n');
-    expect(log).toContain('set:model=gemini-3.8-flash-low');
+    expect(log).toContain(`set:thinking_level=${expected}`);
     expect(log).toContain('client:zed');
     const metas = log.filter((line) => line.startsWith('meta:'));
     expect(metas.length).toBeGreaterThan(0);
@@ -452,12 +591,12 @@ describe('antigravity', () => {
     expect(antigravitySubagentBatch('t:2', 'done', 'Launch readers')).toEqual({ id: 't:2', status: 'running', task: 'Launch readers' });
   }, 30000);
 
-  test('a command that outlived its turn is background work that keeps the process, and Stop ends both', async () => {
+  test.each(['command', 'command-late-kind', 'command-late-input'])('a command that outlived its turn keeps the process, and Stop ends both (%s)', async (scenario) => {
     // No warm process: only the running command keeps it.
     const client = await startCore({ warmProcessMinutes: 0 });
     const { threadId } = await agyThread(client);
     const background = client.next('thread.background', (event) => event.threadId === threadId && event.tasks.length > 0, 20_000);
-    await runTurn(client, threadId, 'build it scenario:command');
+    await runTurn(client, threadId, `build it scenario:${scenario}`);
     const [command] = (await background).tasks;
     expect(command).toMatchObject({ kind: 'shell', description: 'sleep 600' });
     expect(fakeLog().split('\n').filter((line) => line === 'initialize')).toHaveLength(1);
@@ -476,12 +615,62 @@ describe('antigravity', () => {
     expect(fakeLog().split('\n').filter((line) => line === 'initialize').length).toBeGreaterThan(1);
   }, 40000);
 
-  test('a command that ends after its turn leaves the background list on its own', async () => {
+  test('a pending command that never started does not leave the finished turn in background', async () => {
+    const client = await startCore({ warmProcessMinutes: 0 });
+    const { threadId } = await agyThread(client);
+    await runTurn(client, threadId, 'build it scenario:command-pending');
+    expect((await client.call('threads.get', { threadId })).backgroundHistory ?? []).toEqual([]);
+    expect((await client.call('turns.stop', { threadId })).stopped).toBe(false);
+  }, 30000);
+
+  test('a swarm worker that outlives the prompt keeps the turn open until the agent answers its report', async () => {
+    // No warm process: before, the turn ended with the prompt and its process went with the worker.
+    const client = await startCore({ warmProcessMinutes: 0 });
+    const { threadId } = await agyThread(client);
+    await runTurn(client, threadId, 'investigate scenario:swarm');
+    expect(fakeLog().split('\n')).toEqual(expect.arrayContaining(['worker reported', 'synthesized']));
+    const parts = (await client.call('threads.get', { threadId })).messages.at(-1)?.parts ?? [];
+    expect(parts.filter((part) => part.type === 'text').map((part) => part.text).join('')).toContain('synthesis: the disk filled up');
+  }, 30000);
+
+  test('a permission the woken reply asks keeps the turn open past the answer', async () => {
+    const client = await startCore({ warmProcessMinutes: 0 });
+    const { threadId } = await agyThread(client);
+    // Answered after the quiet that ends a held turn; the reply follows 2 s later.
+    client.on('permission.requested', (request) => {
+      setTimeout(() => void client.call('permissions.answer', { requestId: request.id, decision: 'allow' }), 4_000);
+    });
+    await runTurn(client, threadId, 'investigate scenario:swarm-ask');
+    expect(fakeLog().split('\n')).toEqual(expect.arrayContaining(['permission answered', 'synthesized']));
+    const parts = (await client.call('threads.get', { threadId })).messages.at(-1)?.parts ?? [];
+    const text = parts.filter((part) => part.type === 'text').map((part) => part.text).join('');
+    expect(text).toContain('temporarily unavailable');
+    expect(text).toContain('synthesis: the disk filled up');
+    expect(fakeLog().match(/^prompt:/gm)).toHaveLength(1);
+  }, 30000);
+
+  test('Stop ends a turn held for a swarm worker, and the process with it', async () => {
+    const client = await startCore();
+    const { threadId } = await agyThread(client);
+    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 20_000);
+    await client.call('turns.start', { threadId, prompt: 'investigate scenario:swarm-stuck' });
+    await waitFor(() => fakeLog().includes('prompt:'), 10_000);
+    // Past the prompt's answer, the turn still runs: its worker never reports.
+    await Bun.sleep(1_500);
+    expect((await client.call('turns.stop', { threadId })).stopped).toBe(true);
+    expect((await finished).status).toBe('stopped');
+    // The worker ran inside the agent's process: Stop closed it.
+    const pid = Number(fakeLog().split('\n').find((line) => line.startsWith('pid:'))?.slice('pid:'.length));
+    expect(Number.isInteger(pid) && pid > 0).toBe(true);
+    await waitFor(() => !alive(pid), 10_000);
+  }, 30000);
+
+  test.each(['short-command', 'short-command-other-kind'])('a command that ends after its turn leaves the background list on its own (%s)', async (scenario) => {
     const client = await startCore();
     const { threadId } = await agyThread(client);
     const background = client.next('thread.background', (event) => event.threadId === threadId && event.tasks.length > 0, 20_000);
     const cleared = client.next('thread.background', (event) => event.threadId === threadId && event.tasks.length === 0, 20_000);
-    await runTurn(client, threadId, 'build it scenario:short-command');
+    await runTurn(client, threadId, `build it scenario:${scenario}`);
     await background;
     await cleared;
     const history = (await client.call('threads.get', { threadId })).backgroundHistory ?? [];
@@ -576,4 +765,239 @@ test('a council member named by its family resolves over a list an earlier core 
   const council = await client.call('council.start', { threadId, request: 'Review the plan.', models: ['agy-fake/gemini-3.8-flash', 'echo/echo'] });
   expect(council.members[0]).toMatchObject({ providerId: 'agy-fake', model: 'gemini-3.8-flash', effort: 'high', readOnly: 'approvals' });
   expect(council.warnings).toContain(`${council.members[0]!.name} has no xhigh effort, so it runs at high.`);
+});
+
+test('a saved Antigravity variant catalog resolves an old model choice with its effort', async () => {
+  const client = await startCore();
+  const { accountId } = await agyThread(client);
+  const families = [
+    ['gemini-4-hydrogen', 'Gemini 4 Hydrogen (Preview)'],
+    ['gemini-4-argon', 'Gemini 4 Argon'],
+    ['gemini-3.8-flash', 'Gemini 3.8 Flash'],
+    ['claude-opus-5-5', 'Claude Opus 5.5'],
+    ['claude-sonnet-5-5', 'Claude Sonnet 5.5'],
+  ] as const;
+  saveCatalog(harness!.core, 'agy-fake', accountId, {
+    models: [
+      { id: 'gemini-3.5-flash-low', name: 'Gemini 3.5 Flash (Low)', default: true },
+      { id: 'gemini-3.5-flash-extra-low', name: 'Gemini 3.5 Flash' },
+      { id: 'gpt-oss-120b-medium', name: 'GPT-OSS' },
+      { id: 'gemini-3-flash-agent', name: 'Gemini 3 Flash Agent' },
+      ...families.flatMap(([id, name]) => [
+        { id: `${id}-minimal`, name: `${name} (Minimal)` },
+        { id: `${id}-high`, name: `${name} (High)` },
+        { id: `${id}-max`, name: `${name} (Max)` },
+      ]),
+    ],
+    probedAt: Date.now(),
+  });
+  const { models } = await client.call('providers.probe', { providerId: 'agy-fake', accountId });
+  expect(models.map(row => row.id)).toEqual(['gemini-3.5-flash', 'gpt-oss-120b-medium', 'gemini-3-flash-agent', ...families.map(([id]) => id)]);
+  expect(models[0]).toMatchObject({
+    name: 'Gemini 3.5 Flash', default: true,
+    aliases: [{ id: 'gemini-3.5-flash-low', effort: 'low' }, { id: 'gemini-3.5-flash-extra-low', effort: 'extra-low' }],
+    effort: { default: 'extra-low', levels: [{ id: 'extra-low' }, { id: 'low' }] },
+  });
+  expect(models[1]?.effort).toBeUndefined();
+  expect(models[2]?.effort).toBeUndefined();
+  expect(models.slice(3)).toMatchObject(families.map(([id, name]) => ({
+    id, name, effort: { default: 'high', levels: [{ id: 'minimal' }, { id: 'high' }, { id: 'max' }] },
+  })));
+});
+
+test('a thread started by an agent inherits a saved Antigravity alias from a cold catalog', async () => {
+  const client = await startCore();
+  const { accountId, threadId } = await agyThread(client);
+  const core = harness!.core;
+  const parent = core.threads.require(threadId);
+  core.journal.putThread({ ...parent, model: 'gemini-3.8-flash-low' });
+  forgetProbes({ accountId });
+  const spawned = await client.call('agent.spawn', {
+    threadId, project: parent.projectId!, prompt: 'Continue on the old choice', requestId: 'antigravity-alias',
+  });
+  expect(spawned.thread).toMatchObject({ model: 'gemini-3.8-flash', effort: 'low' });
+});
+
+test.each(['option', 'option:base', 'list'])('Antigravity folded settings select exact wire IDs via %s', async mode => {
+  const client = await startCore({ warmProcessMinutes: 5 });
+  process.env['AGY_FAKE_CATALOG'] = mode;
+  const { accountId, threadId } = await agyThread(client);
+  const { models } = await client.call('providers.probe', { providerId: 'agy-fake', accountId, refresh: true });
+  expect(models.filter(row => row.id !== 'default').map(row => row.id)).toEqual(['gemini-4-neon', 'gpt-oss-120b-medium', 'gemini-3.5-flash']);
+  expect(models.find(row => row.id === 'gemini-4-neon')).toMatchObject({
+    name: mode === 'option:base' ? 'Gemini 4 Neon Preview' : 'Gemini 4 Neon',
+    default: true, effort: { default: mode === 'option:base' ? 'xhigh' : 'medium', levels: [{ id: 'low' }, { id: 'medium' }, { id: 'xhigh' }] },
+  });
+  const selected = await client.call('threads.update', { threadId, model: 'gemini-4-neon-xhigh' });
+  expect(selected).toMatchObject({ model: 'gemini-4-neon', effort: 'xhigh' });
+  await runTurn(client, threadId, 'first');
+  await client.call('threads.update', { threadId, effort: 'medium' });
+  await runTurn(client, threadId, 'second');
+  await client.call('threads.update', { threadId, model: 'default' });
+  await runTurn(client, threadId, 'account default');
+  const wire = mode === 'list' ? 'listed-model:' : 'set:model=';
+  const calls = fakeLog().trim().split('\n').filter(line => line.startsWith(wire) || line.startsWith('prompt:'));
+  const prompt = calls[1]!;
+  expect(calls).toEqual([
+    wire + 'gemini-4-neon-xhigh', prompt, wire + 'gemini-4-neon-medium', prompt, wire + 'gemini-4-neon-low', prompt,
+  ]);
+  expect(prompt).toStartWith('prompt:');
+});
+
+test.each(['option', 'option:no-controls', 'list'])('Antigravity cold resume restores the account model via %s', async mode => {
+  const client = await startCore({ warmProcessMinutes: 0 });
+  process.env['AGY_FAKE_CATALOG'] = mode;
+  const { accountId, threadId } = await agyThread(client, 'gemini-4-neon-xhigh');
+  await runTurn(client, threadId, 'first');
+  const temp = loggedEnv('TEMP')!;
+  await waitFor(() => !existsSync(temp), 10_000);
+  forgetProbes({ accountId });
+  await client.call('threads.update', { threadId, model: 'default' });
+  await runTurn(client, threadId, 'back to default');
+  const wire = mode === 'list' ? 'listed-model:' : 'set:model=';
+  expect(fakeLog().trim().split('\n').filter(line => line.startsWith('load:') || line.startsWith(wire))).toEqual([
+    wire + 'gemini-4-neon-xhigh', 'load:gemini-4-neon-xhigh', wire + 'gemini-4-neon-low',
+  ]);
+});
+
+test.each([
+  ['option:removed', 'offers no xhigh effort'],
+  ['missing', 'offers no model gemini-4-neon'],
+])('Antigravity refuses a saved selection on cold resume without a matching wire choice (%s)', async (catalog, error) => {
+  const client = await startCore({ warmProcessMinutes: 0 });
+  process.env['AGY_FAKE_CATALOG'] = 'option';
+  const { accountId, threadId } = await agyThread(client, 'gemini-4-neon-xhigh');
+  await runTurn(client, threadId, 'first');
+  const temp = loggedEnv('TEMP')!;
+  await waitFor(() => !existsSync(temp), 10_000);
+  forgetProbes({ accountId });
+  process.env['AGY_FAKE_CATALOG'] = catalog;
+  const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20_000);
+  await client.call('turns.start', { threadId, prompt: 'must not reach the agent' });
+  expect((await finished).error).toContain(error);
+  expect(fakeLog().match(/^prompt:/gm)).toHaveLength(1);
+});
+
+test('Antigravity keeps the saved effort when only its wire variant and the base remain', async () => {
+  const client = await startCore({ warmProcessMinutes: 0 });
+  process.env['AGY_FAKE_CATALOG'] = 'option';
+  const { accountId, threadId } = await agyThread(client, 'gemini-4-neon-medium');
+  await runTurn(client, threadId, 'first');
+  const temp = loggedEnv('TEMP')!;
+  await waitFor(() => !existsSync(temp), 10_000);
+  await client.call('threads.update', { threadId, effort: 'xhigh' });
+  forgetProbes({ accountId });
+  process.env['AGY_FAKE_CATALOG'] = 'option:last-variant';
+  await runTurn(client, threadId, 'resume');
+  expect(fakeLog().trim().split('\n').filter(line => line.startsWith('set:model=') || line.startsWith('load:'))).toEqual([
+    'set:model=gemini-4-neon-medium', 'load:gemini-4-neon-medium', 'set:model=gemini-4-neon-xhigh',
+  ]);
+});
+
+test('cold Antigravity discovery resolves old IDs for a model other than the current family', async () => {
+  const client = await startCore();
+  process.env['AGY_FAKE_CATALOG'] = 'family-history';
+  const { accountId, threadId } = await agyThread(client);
+  const parent = harness!.core.threads.require(threadId);
+  const { models } = await client.call('providers.probe', { providerId: 'agy-fake', accountId });
+  expect(models.find(model => model.default)?.id).toBe('gemini-3.8-flash');
+  expect(models.find(model => model.id === 'gemini-4-neon')?.aliases).toEqual([
+    { id: 'gemini-4-neon-low', effort: 'low' }, { id: 'gemini-4-neon-xhigh', effort: 'xhigh' },
+  ]);
+  const route = { projectId: parent.projectId!, providerId: parent.providerId, accountId, model: 'gemini-4-neon-xhigh' };
+  expect(await thrown(client.call('threads.create', { ...route, effort: 'medium' }))).toThrow('the model does not offer this reasoning effort');
+  const thread = await client.call('threads.create', route);
+  expect(thread).toMatchObject({ model: 'gemini-4-neon', effort: 'xhigh' });
+  await client.call('threads.subscribe', { threadId: thread.id });
+  await runTurn(client, thread.id, 'use the old effort');
+  expect(fakeLog()).toContain('set:model=gemini-4-neon\nset:thinking_level=xhigh\n');
+  await client.call('delegation.configure', { threadId, config: { enabled: true, paused: false, profiles: [] } });
+  expect((await client.call('delegation.spawn', {
+    threadId, model: route.model, task: 'Delegate on the old model', requestId: 'old-id',
+  })).thread).toMatchObject({ model: 'gemini-4-neon', effort: 'xhigh' });
+});
+
+test('Antigravity selects the base to check a historical effort missing from the wire variants', async () => {
+  const client = await startCore();
+  process.env['AGY_FAKE_CATALOG'] = 'mixed';
+  const { accountId, threadId } = await agyThread(client);
+  await client.call('providers.probe', { providerId: 'agy-fake', accountId });
+  const selected = await client.call('threads.update', { threadId, model: 'gemini-4-neon-xhigh' });
+  expect(selected).toMatchObject({ model: 'gemini-4-neon', effort: 'xhigh' });
+  await runTurn(client, threadId, 'use the native effort');
+  expect(fakeLog()).toMatch(/set:model=gemini-4-neon\nset:thinking_level=xhigh\nprompt:/);
+});
+
+test('local delegation keeps the effort encoded in an allowed legacy model', async () => {
+  const client = await startCore();
+  process.env['AGY_FAKE_CATALOG'] = 'option';
+  const { threadId } = await agyThread(client, 'gemini-4-neon-low');
+  const core = harness!.core;
+  const thread = core.threads.require(threadId);
+  core.journal.putThread({ ...thread, model: 'gemini-4-neon-low', effort: null });
+  await client.call('delegation.configure', { threadId, config: { enabled: true, paused: false, profiles: [], anyModel: false } });
+  expect(await thrown(client.call('delegation.spawn', {
+    threadId, model: 'gemini-4-neon-xhigh', task: 'Outside the allowed effort', requestId: 'wrong-level',
+  }))).toThrow('limited subagents');
+  expect(await thrown(client.call('delegation.spawn', {
+    threadId, model: 'gemini-4-neon', effort: 'xhigh', task: 'Explicit override', requestId: 'wrong-override',
+  }))).toThrow('limited subagents');
+  expect(await thrown(client.call('delegation.spawn', {
+    threadId, effort: 'xhigh', task: 'Override without a model', requestId: 'override-without-model',
+  }))).toThrow('limited subagents');
+  expect((await client.call('delegation.spawn', {
+    threadId, model: 'gemini-4-neon', task: 'Within the allowed effort', requestId: 'right-level',
+  })).thread).toMatchObject({ model: 'gemini-4-neon', effort: 'low' });
+});
+
+test('a mochi created on a legacy Antigravity model keeps its level unless explicitly overridden', async () => {
+  const client = await startCore({ agentBotCreation: 'free' });
+  process.env['AGY_FAKE_CATALOG'] = 'option';
+  const { threadId, accountId } = await agyThread(client, 'gemini-4-neon-low');
+  await client.call('providers.probe', { providerId: 'agy-fake', accountId });
+  for (const [name, effort] of [['Alias', undefined], ['Explicit', 'low']] as const) {
+    const result = await client.call('agents.create', { threadId, name, model: 'gemini-4-neon-xhigh', effort });
+    expect(result).toMatchObject({ agent: { selection: { model: 'gemini-4-neon', effort: effort ?? 'xhigh' } } });
+  }
+});
+
+test.each([null, 'low'])('Antigravity with a single remaining variant and saved effort %s', async effort => {
+  const client = await startCore({ warmProcessMinutes: 0 });
+  process.env['AGY_FAKE_CATALOG'] = 'option';
+  const { accountId, threadId } = await agyThread(client, 'gemini-4-neon-low');
+  await runTurn(client, threadId, 'first');
+  await waitFor(() => !existsSync(loggedEnv('TEMP')!), 10_000);
+  await client.call('threads.update', { threadId, effort });
+  forgetProbes({ accountId });
+  process.env['AGY_FAKE_CATALOG'] = 'option:only-variant';
+  const finished = client.next('turn.finished', turn => turn.threadId === threadId, 20_000);
+  await client.call('turns.start', { threadId, prompt: 'continue' });
+  const result = await finished;
+  if (effort === null) {
+    expect(result.error).toBeNull();
+    expect(fakeLog()).toContain('set:model=gemini-4-neon-xhigh');
+    expect(fakeLog().match(/^prompt:/gm)).toHaveLength(2);
+  } else {
+    expect(result.error).toContain('offers no low effort');
+    expect(fakeLog().match(/^prompt:/gm)).toHaveLength(1);
+  }
+});
+
+test('antigravityCatalog merges a primary variant and a historical alias when the base has no native scale yet', () => {
+  const models = antigravityCatalog(
+    [
+      { id: 'gemini-4-neon', name: 'Gemini 4 Neon' },
+      { id: 'gemini-4-neon-low', name: 'Gemini 4 Neon (Low)' },
+    ],
+    [
+      { id: 'gemini-4-neon-xhigh', name: 'Gemini 4 Neon (XHigh)' },
+    ],
+  );
+  expect(models).toHaveLength(1);
+  expect(models[0]).toMatchObject({
+    id: 'gemini-4-neon',
+    name: 'Gemini 4 Neon',
+    effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'xhigh', label: 'Extra high' }] },
+    aliases: [{ id: 'gemini-4-neon-low', effort: 'low' }, { id: 'gemini-4-neon-xhigh', effort: 'xhigh' }],
+  });
 });

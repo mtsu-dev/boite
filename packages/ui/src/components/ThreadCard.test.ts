@@ -41,6 +41,36 @@ async function show(project: Store['projects'][number], thread: ThreadSummary, e
   await settle();
 }
 
+test('a thread row keeps background wait on one line with a pulsing mark and elapsed clock, no wait line below', async () => {
+  const { project, thread } = await connectBranched();
+  store.pendingQuestions = [];
+  const since = Date.now() - 60_000;
+  await show(project, { ...thread, status: 'idle', openQuestions: 0, backgroundWait: { state: 'waiting', for: 'release build', since, until: null } });
+  expect(document.querySelector('[data-testid=thread-wait]')).toBeNull();
+  const state = document.querySelector<HTMLElement>('[data-testid=thread-row] [data-testid=thread-state]');
+  expect(state?.dataset.state).toBe('background');
+  expect(state?.querySelector('.work-ring')).toBeNull();
+  expect(state?.querySelector('.bg-dot.pulse')).not.toBeNull();
+  expect(state?.querySelector('[data-testid=thread-elapsed]')?.textContent).toMatch(/^1m \d\ds$/);
+  expect(state?.getAttribute('title')).toContain('Waiting on release build');
+});
+
+test('a parent row shows its pulsing subagent chip and elapsed clock on line one, with no wait line below', async () => {
+  const { project, thread } = await connectBranched();
+  store.pendingQuestions = [];
+  const parent = { ...thread, status: 'idle' as const, openQuestions: 0, backgroundWork: null, backgroundWait: null };
+  store.threads = [...store.threads, { ...parent, id: 'active-child', parentThreadId: parent.id, status: 'running', runningSince: Date.now() - 60_000 }];
+  await show(project, parent);
+  expect(document.querySelector('[data-testid=thread-wait]')).toBeNull();
+  const state = document.querySelector<HTMLElement>('[data-testid=thread-row] [data-testid=thread-state]');
+  expect(state?.dataset.state).toBe('delegating');
+  expect(state?.querySelector('.work-ring')).toBeNull();
+  expect(state?.querySelector('[data-testid=thread-elapsed]')?.textContent).toMatch(/^1m \d\ds$/);
+  const chip = state?.querySelector<HTMLElement>('[data-testid=thread-subagents]');
+  expect(chip?.dataset.count).toBe('1');
+  expect(chip?.classList.contains('pulse')).toBe(true);
+});
+
 test('child question links stay out of sidebar thread rows', async () => {
   await connect();
   const thread = store.threads.find(row => !row.parentThreadId && row.projectId)!;

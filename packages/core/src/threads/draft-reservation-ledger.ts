@@ -13,6 +13,7 @@ export interface DraftOwnership {
   project: Project;
   path: string;
   branch: string | null;
+  base?: string;
   kind: 'draft' | 'incognito' | 'worktree';
 }
 
@@ -43,7 +44,7 @@ export class DraftReservationLedger {
       // Keep both its folder and durable ownership until its actual exit is recorded.
       await this.core.procs.waitForExit(ownership.threadId);
     } catch (error) {
-      this.core.log('warn', `draft cleanup retained for ${ownership.path}: ${logMessageOf(error)}`);
+      this.core.log('warn', `draft cleanup retained for ${ownership.path}: ${logMessageOf(error)}`, { threadId: ownership.threadId });
       return false;
     }
     if (this.core.journal.getThread(ownership.threadId)) {
@@ -54,13 +55,13 @@ export class DraftReservationLedger {
     if (!this.list().some(item => item.threadId === ownership.threadId && item.path === ownership.path)) return true;
     try {
       const removed = ownership.kind === 'worktree' && ownership.branch
-        ? await this.core.worktrees.remove(ownership.threadId, ownership.project, { path: ownership.path, branch: ownership.branch }, DRAFT_CLEANUP_TIMEOUT_MS)
+        ? await this.core.worktrees.remove(ownership.threadId, ownership.project, { path: ownership.path, branch: ownership.branch, base: ownership.base }, DRAFT_CLEANUP_TIMEOUT_MS)
         : await withVacantCheckout(this.core, ownership.project, ownership.path,
           () => removeDir(ownership.path, message => this.core.log('warn', message)));
       if (removed) this.forget(ownership.threadId);
       return removed;
     } catch (error) {
-      this.core.log('warn', `draft cleanup retained for ${ownership.path}: ${logMessageOf(error)}`);
+      this.core.log('warn', `draft cleanup retained for ${ownership.path}: ${logMessageOf(error)}`, { threadId: ownership.threadId });
       return false;
     }
   }

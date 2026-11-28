@@ -1,4 +1,4 @@
-import { expect, vi } from 'vitest';
+import { beforeAll, expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { confirm } from '../lib/confirm.svelte';
 import { store } from '../lib/store.svelte';
@@ -7,6 +7,11 @@ import { OWNER_ONLY_COMMANDS, OWNER_ONLY_IN_ADVANCED, OWNER_ONLY_IN_SETTINGS, me
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
+// The app fetches Settings at idle. Compile its lazy subtree before timing the
+// access and navigation scenarios so a cold Vitest worker cannot delay the page.
+beforeAll(async () => {
+  await import('../components/SettingsShell.svelte');
+}, 120_000);
 
 async function openDisplayMenu(): Promise<void> {
   query<HTMLButtonElement>('[data-testid=grouping-options]').click();
@@ -53,7 +58,7 @@ test('a dialog waiting for an answer holds the window chords', async ({ app: _ap
  * be offered them, once as the desktop, which must still have every one.
  */
 
-test('a paired device is offered none of the affordances the core refuses it', async () => {
+test('a paired device is offered none of the affordances the core refuses it', async ({ viewport }) => {
   await mountOnFake('/?fake=1&principal=session');
   expect(store.principal).toBe('session');
   expect(store.owner).toBe(false);
@@ -78,15 +83,21 @@ test('a paired device is offered none of the affordances the core refuses it', a
   // A paired device's project menu: no Remove, and no transcript import behind it.
   query('[data-testid=project-row]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
-  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'archived', 'manage']);
+  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'manage']);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archive-project]') !== null);
   expect(menuValues()).toEqual(['back', 'secrets', 'archive-project']);
   press('Escape');
   await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
-  // The phone's own header manages no project at all.
+  // Mobile navigation loads only once the window is narrow.
+  expect(document.querySelector('[data-testid=mobile-header]')).toBeNull();
+  viewport.resize(true);
   await showMobileThreads();
+  expect(document.querySelector('[data-testid=mobile-header]')).not.toBeNull();
+  // The phone's own header manages no project at all.
   expect(document.querySelector('[data-testid=mobile-project-actions]')).toBeNull();
+  viewport.resize(false);
+  await waitFor(() => document.querySelector('[data-testid=mobile-header]') === null);
 
   store.showSettings('machines');
   await waitFor(() => document.querySelector('[data-testid=machines-page]') !== null);
@@ -99,7 +110,8 @@ test('a paired device is offered none of the affordances the core refuses it', a
   expect(store.error).toBeNull();
 });
 
-test('the desktop still has every one of them', async ({ app: _app }) => {
+test('the desktop still has every one of them', async ({ viewport }) => {
+  await mountOnFake();
   expect(store.principal).toBe('owner');
   expect(store.owner).toBe(true);
 
@@ -115,7 +127,7 @@ test('the desktop still has every one of them', async ({ app: _app }) => {
 
   query('[data-testid=project-row]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
-  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'archived', 'manage']);
+  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'manage']);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archive-project]') !== null);
   expect(menuValues()).toEqual(['back', 'import', 'worktree-default', 'worktrees', 'auto-archive-merged-pr', 'auto-remove-worktrees', 'windows', 'refresh-icon', 'secrets', 'archive-project', 'remove']);
@@ -162,12 +174,18 @@ test('the desktop still has every one of them', async ({ app: _app }) => {
   expect(preference.getAttribute('aria-checked')).toBe('false');
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=back]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=new]') !== null);
-  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'archived', 'manage']);
+  expect(menuValues()).toEqual(['new', 'copy', 'rename', 'manage']);
   press('Escape');
   await waitFor(() => document.querySelector('[data-testid=context-menu]') === null);
-  // The phone's own header manages no project at all.
+  // Mobile navigation loads only once the window is narrow.
+  expect(document.querySelector('[data-testid=mobile-header]')).toBeNull();
+  viewport.resize(true);
   await showMobileThreads();
+  expect(document.querySelector('[data-testid=mobile-header]')).not.toBeNull();
+  // The phone's own header manages no project at all.
   expect(document.querySelector('[data-testid=mobile-project-actions]')).toBeNull();
+  viewport.resize(false);
+  await waitFor(() => document.querySelector('[data-testid=mobile-header]') === null);
 
   store.showSettings('machines');
   await waitFor(() => document.querySelector('[data-testid=group-add-device]') !== null);
@@ -249,6 +267,29 @@ test("a mouse's back and forward buttons walk the threads, settings tabs and mac
   await store.open(first);
   flushSync();
   await side(3, () => store.page === 'chat' && store.openThread?.id === 't-scheduler');
+  await workspace.select(store, first);
+});
+
+test('the list head walks the views with its arrows, and Projects and Recent sit in the Filter menu', async () => {
+  await mountOnFake('/?fake=1');
+  const back = () => query('[data-testid=history-back]') as HTMLButtonElement;
+  const forward = () => query('[data-testid=history-forward]') as HTMLButtonElement;
+  const first = store.openThread!.id;
+  await store.open('t-scheduler');
+  flushSync();
+  await waitFor(() => !back().disabled && forward().disabled);
+  back().click();
+  await waitFor(() => store.openThread?.id === first && !forward().disabled);
+  forward().click();
+  await waitFor(() => store.openThread?.id === 't-scheduler' && forward().disabled);
+
+  expect(document.querySelector('.list-head [role=radio]')).toBeNull();
+  query('[data-testid=grouping-options]').click();
+  await waitFor(() => document.querySelector('[data-testid=view-switch] [data-value="view:recent"]') !== null);
+  query('[data-testid=view-switch] [data-value="view:recent"]').click();
+  await waitFor(() => workspace.view === 'recent');
+  query('[data-testid=view-switch] [data-value="view:projects"]').click();
+  await waitFor(() => workspace.view === 'projects');
   await workspace.select(store, first);
 });
 

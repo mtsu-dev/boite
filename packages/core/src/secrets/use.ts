@@ -6,8 +6,9 @@
 import { closeSync, constants, existsSync, fchmodSync, fstatSync, ftruncateSync, lstatSync, openSync, readFileSync, realpathSync, statSync, writeSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { SecretExecUse, SecretUseResult, SecretWriteUse, ThreadId } from '@boite/contracts';
+import { RpcErrorCode } from '@boite/contracts';
 import type { Core } from '../core.ts';
-import { refused } from '../errors.ts';
+import { RpcFailure, refused } from '../errors.ts';
 import { git } from '../git/read.ts';
 import type { Connection } from '../router.ts';
 
@@ -16,6 +17,12 @@ const RUN_TIMEOUT_MS = 10 * 60_000;
 const RUN_MAX_TIMEOUT_MS = 60 * 60_000;
 const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
 const encoder = new TextEncoder();
+
+export class SecretLauncherVersionRefusal extends RpcFailure {
+  constructor(component: 'os' | 'osd', diagnostic: string) {
+    super(RpcErrorCode.Refused, `BoiteOS version mismatch: update ${component} and retry with the same ref (${diagnostic.trim()})`);
+  }
+}
 
 function inside(root: string, path: string): boolean {
   const rel = relative(root, path);
@@ -138,14 +145,18 @@ async function capped(stream: ReadableStream<Uint8Array>): Promise<{ bytes: Uint
   return { bytes, truncated };
 }
 
-/**
- * `run` puts the value in the child's env var `as`; `pipe` writes it on the
- * child's stdin. The child is the thread's, through `procs.spawnPiped`, and is
- * stopped at its deadline or when the caller's socket closes.
- */
-export async function execSecret(core: Core, threadId: ThreadId, cwd: string, use: SecretExecUse, value: Uint8Array, mask: (text: string) => string, connection: Connection | undefined): Promise<SecretUseResult> {
+interface PreparedSecretExec extends Omit<SecretExecUse, 'env'> {
+  env: Record<string, string | undefined>;
+  timeoutMs: number;
+  threadCwd: string;
+}
+
+export function prepareSecretExec(cwd: string, use: SecretExecUse): PreparedSecretExec {
   if (typeof use.command !== 'string' || use.command.trim().length === 0) throw refused('command: expected the program to run', { field: 'command', expected: 'a program name or path' });
   if (!Array.isArray(use.args) || use.args.some(arg => typeof arg !== 'string')) throw refused('args: expected a list of strings', { field: 'args', expected: 'string[]' });
+  if (use.checkArgs !== undefined && (use.action !== 'pipe' || !Array.isArray(use.checkArgs) || use.checkArgs.some(arg => typeof arg !== 'string'))) {
+    throw refused('checkArgs: expected a list of strings for a pipe recipient check', { field: 'checkArgs', expected: 'string[] on pipe' });
+  }
   if (use.action === 'run' && (typeof use.as !== 'string' || !VARIABLE.test(use.as))) throw refused('as: expected an env variable name, letters, digits and _', { field: 'as', expected: VARIABLE.source });
   const timeoutMs = use.timeoutMs === undefined ? RUN_TIMEOUT_MS : use.timeoutMs;
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > RUN_MAX_TIMEOUT_MS) throw refused(`timeoutMs: expected 1000 to ${RUN_MAX_TIMEOUT_MS}`, { field: 'timeoutMs', expected: `1000..${RUN_MAX_TIMEOUT_MS}` });
@@ -157,30 +168,57 @@ export async function execSecret(core: Core, threadId: ThreadId, cwd: string, us
   try { real = realpathSync(workdir); } catch { throw refused(`cwd: ${use.cwd} does not exist`, { field: 'cwd', expected: `a folder inside ${root}` }); }
   if (real !== root && !inside(root, real)) throw refused(`cwd: ${use.cwd} is outside the conversation's folder`, { field: 'cwd', expected: `a folder inside ${root}` });
   const base = use.env !== undefined && typeof use.env === 'object' ? use.env : process.env;
-  const env: Record<string, string | undefined> = { ...base };
-  // The env var takes a JS string for the length of the spawn: Bun hands the child a copy and this one is dropped.
-  if (use.action === 'run') env[use.as!] = new TextDecoder().decode(value);
-  const spawned = core.procs.spawnPiped(threadId, use.command, use.args, { cwd: real, env, agentRoot: false });
-  delete env[use.as ?? ''];
+  return { ...use, cwd: real, threadCwd: root, timeoutMs, env: { ...base } };
+}
+
+export async function checkSecretRecipient(core: Core, threadId: ThreadId, use: PreparedSecretExec, mask: (text: string) => string, connection: Connection | undefined): Promise<void> {
+  const checked = await execSecret(core, threadId, { ...use, args: use.checkArgs! }, undefined, mask, connection);
+  if (checked.timedOut || checked.exitCode !== 0) {
+    const reason = checked.timedOut ? 'timed out' : checked.exitCode === null ? 'was stopped' : `exited with code ${checked.exitCode}`;
+    throw refused(`recipient check ${reason}; fix its configuration and retry with the same ref`, { field: 'checkArgs', expected: 'a recipient check that exits successfully' });
+  }
+}
+
+/** With no value, the same launcher checks the pipe recipient with empty stdin. */
+export async function execSecret(core: Core, threadId: ThreadId, use: PreparedSecretExec, value: Uint8Array | undefined, mask: (text: string) => string, connection: Connection | undefined): Promise<Extract<SecretUseResult, { action: 'run' | 'pipe' }>> {
+  const recipient = use.action === 'pipe'
+    ? core.procs.platform.secretPipeRecipient?.(use.command, use.args, use.env, use.threadCwd)
+    : undefined;
+  const { command, args } = recipient ?? use;
+  const env = { ...(recipient?.env ?? use.env) };
+  // Bun takes its own copy at spawn. Drop the transient JS string even if spawn throws.
+  if (use.action === 'run' && value !== undefined) env[use.as!] = new TextDecoder().decode(value);
+  let spawned;
+  try { spawned = core.procs.spawnPiped(threadId, command, args, { cwd: use.cwd, env, agentRoot: false, extraPipes: recipient?.versionRefusal ? 1 : 0 }); }
+  finally { if (use.action === 'run') delete env[use.as!]; }
   let timedOut = false;
   const stop = (): void => { try { spawned.stop(); } catch { /* already gone */ } };
-  const timer = setTimeout(() => { timedOut = true; stop(); }, timeoutMs);
+  const timer = setTimeout(() => { timedOut = true; stop(); }, use.timeoutMs);
   const detach = connection?.onClose?.(stop);
+  const reportFd = recipient?.versionRefusal ? spawned.proc.stdio[3] : null;
   try {
     const stdin = spawned.proc.stdin;
-    if (use.action === 'pipe') stdin.write(value);
-    await stdin.end();
+    let inputError: unknown;
+    try {
+      if (use.action === 'pipe' && value !== undefined) stdin.write(value);
+      await stdin.end();
+    } catch (error) { inputError = error; }
     const [stdout, stderr, exitCode] = await Promise.all([capped(spawned.proc.stdout), capped(spawned.proc.stderr), spawned.exited]);
     const decoder = new TextDecoder();
+    const rawStderr = decoder.decode(stderr.bytes);
     const result = {
       action: use.action, exitCode, timedOut,
-      stdout: mask(decoder.decode(stdout.bytes)), stderr: mask(decoder.decode(stderr.bytes)),
+      stdout: mask(decoder.decode(stdout.bytes)), stderr: mask(rawStderr),
       truncated: stdout.truncated || stderr.truncated,
     };
     stdout.bytes.fill(0);
     stderr.bytes.fill(0);
+    const refusal = reportFd != null && recipient?.versionRefusal?.(reportFd, exitCode, rawStderr);
+    if (refusal) throw new SecretLauncherVersionRefusal(refusal, result.stderr);
+    if (inputError !== undefined) throw inputError;
     return result;
   } finally {
+    if (reportFd != null) closeSync(reportFd);
     clearTimeout(timer);
     detach?.();
   }

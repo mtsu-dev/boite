@@ -19,6 +19,20 @@ export interface TransportOptions {
    * further, so no single message can keep a thread from opening.
    */
   compactToolParts?: boolean;
+  /**
+   * Keep complete prose and thinking text even when `compactToolParts` defers
+   * heavy tool parts, instead of cutting text at `MESSAGE_SENT_MAX_BYTES`. The
+   * frame limit (`RPC_MAX_FRAME_BYTES`) still applies.
+   */
+  fullText?: boolean;
+  /** Strip thinking text so unchecked reasoning does not consume the frame budget. */
+  omitThinking?: boolean;
+  /**
+   * Drop tool parts (`true`) or only running tool calls (`'running'`) before
+   * measuring page/frame budgets, so an active tool output cannot block a read
+   * that excludes it.
+   */
+  omitTools?: boolean | 'running';
 }
 
 /**
@@ -32,7 +46,22 @@ export const MESSAGE_SENT_MAX_BYTES = 8 * 1024 * 1024;
 
 /** Whether the options defer anything at all. */
 function compacts(options: TransportOptions): boolean {
-  return !!(options.compactTools || options.compactFiles || options.compactImages || options.compactToolParts);
+  return !!(options.compactTools || options.compactFiles || options.compactImages || options.compactToolParts || options.omitThinking || options.omitTools);
+}
+
+function omitThinkingParts(message: Message): Message {
+  let changed = false;
+  const parts = message.parts.map(part => {
+    if (part.type !== 'thinking' || !part.text) return part;
+    changed = true;
+    return { ...part, text: '', omitted: (part.omitted ?? 0) + part.text.length };
+  });
+  return changed ? { ...message, parts } : message;
+}
+
+function omitToolParts(message: Message, mode: true | 'running'): Message {
+  const parts = message.parts.filter(part => part.type !== 'tool' || (mode === 'running' && part.status !== 'running'));
+  return parts.length === message.parts.length ? message : { ...message, parts };
 }
 
 function toolParts(message: Message, options: { inputs: boolean; strict: boolean; folded: true }): Message {
@@ -47,9 +76,11 @@ function toolParts(message: Message, options: { inputs: boolean; strict: boolean
 }
 
 function project(message: Message, options: TransportOptions, strict: boolean, previews?: ImagePreviews): Message {
+  const withoutThinking = options.omitThinking ? omitThinkingParts(message) : message;
+  const base = options.omitTools ? omitToolParts(withoutThinking, options.omitTools) : withoutThinking;
   // A page is history: its cards are drawn folded.
   const tools = options.compactTools || options.compactToolParts
-    ? toolParts(message, { inputs: !!options.compactToolParts, strict, folded: true }) : message;
+    ? toolParts(base, { inputs: !!options.compactToolParts, strict, folded: true }) : base;
   const files = options.compactFiles ? previewFileData([tools], previews)[0]! : tools;
   return options.compactImages ? previewImageData([files], strict ? 0 : undefined, previews)[0]! : files;
 }
@@ -128,6 +159,7 @@ export function projectMessage(message: Message, options: TransportOptions, prev
   const lightBytes = heavyBytes(light, max);
   if (lightBytes < max) return light;
   const strict = project(message, options, true, previews);
+  if (options.fullText) return strict;
   const strictBytes = strict === light ? lightBytes : heavyBytes(strict, max);
   return strictBytes < max ? strict : cutTexts(strict, strictBytes, max);
 }

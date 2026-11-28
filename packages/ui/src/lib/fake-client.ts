@@ -19,6 +19,7 @@ import {
   StreamGate,
   accessRefusal,
   checkRpcParams,
+  contactToolMethod,
   type CoreInfo,
   type CoreLogContext,
   type ExperimentId,
@@ -36,6 +37,7 @@ import {
   type RpcResult,
   type ThreadId,
   type ThreadRetry,
+  type ThreadRecovery,
   type ThreadWorktreeRemoval,
   type TeamPostRef,
 } from '@boite/contracts';
@@ -43,11 +45,12 @@ import { RpcFailure, type CallOptions, type ClientState, type EventHandler, type
 import { closedFailure } from './rpc-error';
 import { accountMethods } from './fake-client/accounts';
 import { activityMethods, pauseActivity } from './fake-client/activity';
+import { mcpMethods } from './fake-client/mcp';
 import { brainMethods } from './fake-client/brain';
 import { FakeContext, type FakeClientOptions, type FakeMethods } from './fake-client/context';
 import { hookMethods, recordHookRun } from './fake-client/hooks';
 import { logMethods, seedDiagnostics } from './fake-client/logs';
-import { coordinationMethods, registerCore, trusts, unregisterCore } from './fake-client/coordination';
+import { assertFakeContactTool, coordinationMethods, registerCore, trusts, unregisterCore } from './fake-client/coordination';
 import { delegationMethods, seedDelegationDemo } from './fake-client/delegation';
 import { seedBoardDemo } from './fake-client/board-demo';
 import { seedSubagentsDemo } from './fake-client/subagents-demo';
@@ -86,11 +89,12 @@ import { devicesMethods } from './fake-client/devices';
 import { seedWindowsDemo, windowsMethods } from './fake-client/windows';
 import { desktopMethods } from './fake-client/desktop';
 import { pullRequestMethods } from './fake-client/pull-requests';
+import { transcriptMethods } from './fake-client/transcripts';
 import { worktreeMethods } from './fake-client/worktrees';
 import { serverUpdateMethods } from './fake-client/server-update';
 import { planRetry, retryMethods, seedRetry } from './fake-client/retry';
 import { closeSideQuestions } from './fake-client/side-questions';
-import { holdAfterRestart } from './fake-client/recovery';
+import { holdAfterRestart, offerRecovery } from './fake-client/recovery';
 import { journalInspectionMethods } from './fake-client/journal-inspection';
 import { forkReturnMethods } from './fake-client/fork-return';
 import { startLoad } from './fake-client/load';
@@ -133,7 +137,7 @@ export class FakeClient implements ObservableClient {
     this.#ctx = ctx;
     this.#methods = this.#answer(ctx);
     this.#missing = new Set(options.missing ?? []);
-    ctx.core.features = { ...ctx.core.features, composerPersistence: !this.#missing.has('composer.list'), listChanges: !this.#missing.has('threads.listChanges'), streamChannels: true, browserStream: !this.#missing.has('browser.remoteStream') };
+    ctx.core.features = { ...ctx.core.features, composerPersistence: !this.#missing.has('composer.list'), composerPages: !this.#missing.has('composer.listPage') && !this.#missing.has('composer.get'), listChanges: !this.#missing.has('threads.listChanges'), messageSearch: !this.#missing.has('threads.search'), streamChannels: true, browserStream: !this.#missing.has('browser.remoteStream') };
     this.#agentSettings = agentSettingMethods(ctx);
     registerCore(ctx);
     seed(ctx);
@@ -244,6 +248,9 @@ export class FakeClient implements ObservableClient {
   planRetry(threadId: ThreadId, retry: ThreadRetry) {
     planRetry(this.#ctx, threadId, retry);
   }
+  offerRecovery(threadId: ThreadId, recovery: ThreadRecovery) {
+    offerRecovery(this.#ctx, threadId, recovery);
+  }
 
 
   /**
@@ -353,6 +360,8 @@ export class FakeClient implements ObservableClient {
     ctx.workflows.close();
     for (const url of ctx.artifactUrls) URL.revokeObjectURL(url);
     ctx.artifactUrls.clear();
+    ctx.imagePreviews.clear();
+    ctx.attachmentUrls.clear();
     ctx.bus.setState('closed');
     this.#dropPending('client closed');
   }
@@ -426,6 +435,9 @@ export class FakeClient implements ObservableClient {
     params = checked.params as RpcParams<M>;
     // The admin policy's gate runs before the method, as the core's router does.
     policyGate(this.#ctx, method, params);
+    if (bus.principal === 'agent' && this.#ctx.agentThreadId && contactToolMethod(method)) {
+      assertFakeContactTool(this.#ctx, this.#ctx.agentThreadId, method);
+    }
     const result = await bus.hold(this.#dispatch(method, params)) as RpcResult<M>;
     if (this.#ctx.rttMs > 0) {
       // An answer still on its way back when the socket changed never arrives.
@@ -654,6 +666,7 @@ export class FakeClient implements ObservableClient {
         return { core: ctx.core, principal: ctx.bus.principal };
       },
       ...brainMethods(ctx),
+      ...mcpMethods(ctx),
       ...composerMethods(ctx, () => methods),
       ...logMethods(ctx),
       ...serverUpdateMethods(ctx),
@@ -702,6 +715,7 @@ export class FakeClient implements ObservableClient {
       ...windowsMethods(ctx),
       ...desktopMethods(ctx),
       ...pullRequestMethods(ctx),
+      ...transcriptMethods(ctx),
       ...worktreeMethods(ctx),
       // The one owner connection is this client: the event comes back to it, as the core's reaches each owner.
       'ui.reveal': async (params) => {

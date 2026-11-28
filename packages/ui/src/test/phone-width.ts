@@ -1,11 +1,20 @@
-/**
- * A phone-width window until the returned function puts the window back: only
- * the layout query, `(max-width: 720px)`, answers yes.
- */
-export function phoneWidth(): () => void {
+/** Mock the layout media query, with the same change notification as resizing a browser. */
+export function mockPhoneViewport(narrow = false) {
   const original = window.matchMedia;
-  window.matchMedia = ((media: string) => Object.assign(new EventTarget(), {
-    media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {}
-  })) as unknown as typeof window.matchMedia;
-  return () => { window.matchMedia = original; };
+  const layout = Object.assign(new EventTarget(), {
+    media: '(max-width: 720px)', matches: narrow, onchange: null, addListener() {}, removeListener() {}
+  });
+  window.matchMedia = (media) => media === layout.media ? layout : original(media);
+  return {
+    resize(phone: boolean) {
+      layout.matches = phone;
+      layout.dispatchEvent(new Event('change'));
+    },
+    restore() { window.matchMedia = original; }
+  };
+}
+
+/** A phone-width window until the returned function puts it back. */
+export function phoneWidth(): () => void {
+  return mockPhoneViewport(true).restore;
 }

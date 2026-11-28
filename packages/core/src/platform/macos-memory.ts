@@ -1,5 +1,6 @@
 import { dlopen, FFIType, ptr } from 'bun:ffi';
 import type { ProcessSample } from './types.ts';
+import { captureSignals } from './posix-kill.ts';
 
 function loadProc() {
   return dlopen('/usr/lib/libproc.dylib', {
@@ -90,7 +91,7 @@ export class MacMemory {
     private readonly read: (pid: number) => number | null = readMemory,
     private readonly children: (pid: number) => number[] = macChildPids,
     private readonly identify: (pid: number) => MacIdentity | null = readIdentity,
-    private readonly signal: (pid: number) => void = pid => { process.kill(pid, 'SIGKILL'); },
+    private readonly signal: (pid: number, name: NodeJS.Signals) => void = (pid, name) => { process.kill(pid, name); },
   ) {}
 
   add(threadId: string, pid: number): void {
@@ -128,11 +129,11 @@ export class MacMemory {
   }
 
   /** Refuse stale samples, reused PIDs and processes outside this thread's current tree. */
-  killTree(pid: number, threadId: string, startedAt?: number | null): boolean {
+  captureTree(pid: number, threadId: string, startedAt?: number | null) {
     const expected = this.roots.get(threadId)?.get(pid) ?? this.sampled.get(threadId)?.get(pid);
-    if (expected == null || (startedAt !== undefined && (startedAt === null || Number(expected / 1000n) !== startedAt))) return false;
+    if (expected == null || (startedAt !== undefined && (startedAt === null || Number(expected / 1000n) !== startedAt))) return null;
     const tree = this.tree(threadId);
-    if (tree.get(pid)?.birth !== expected) return false;
+    if (tree.get(pid)?.birth !== expected) return null;
     const victims = new Set([pid]);
     const children = new Map<number, number[]>();
     for (const [child, identity] of tree) {
@@ -141,13 +142,12 @@ export class MacMemory {
       children.set(identity.parentPid, siblings);
     }
     for (const member of victims) for (const child of children.get(member) ?? []) victims.add(child);
-    // Stop leaves first before they can be reparented.
-    let stopped = false;
-    for (const member of [...victims].reverse()) {
-      if (this.identify(member)?.birth !== tree.get(member)?.birth) continue;
-      try { this.signal(member); if (member === pid) stopped = true; } catch { /* Already gone or inaccessible. */ }
-    }
-    return stopped;
+    const births = new Map([...victims].map(member => [member, tree.get(member)!.birth]));
+    return captureSignals([...births].reverse(), member => this.identify(member)?.birth ?? null, this.signal);
+  }
+
+  killTree(pid: number, threadId: string, startedAt?: number | null): boolean {
+    return this.captureTree(pid, threadId, startedAt)?.('SIGKILL').includes(pid) ?? false;
   }
 
   sample(threadId: string): ProcessSample | null {

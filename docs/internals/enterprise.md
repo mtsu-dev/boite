@@ -29,7 +29,9 @@ when its inode, size or modification time changed) and on every client read
 of the policy. An edit applies without a restart: settings it locks change at
 once, providers it blocks show as off, and clients receive `policy.changed`.
 Two exceptions need a restart: `network.lan` decides the listening address at
-startup, and `network.contacts` closes Tailscale Funnel routes at startup. A
+startup, and `network.contacts` closes Tailscale Funnel routes at startup. The owner's
+own `contacts` setting ([contacts](contacts.md#the-owners-switch)) refuses the
+same calls without the policy. A
 grouped core's extra LAN listeners follow `network.lan` without one, at the
 group's next check (15 seconds at most).
 
@@ -49,10 +51,11 @@ Windows registry policies are not read yet; the file is the only source.
 | `quotaReads` | `false` | No quota read sends an account's token to its provider. Limits rows read "disabled" with the reason; quota resets are refused. |
 | `plugins.install` | `false` | No plugin install, reinstall or update, from the catalog or from a Git URL. Installed plugins keep running. |
 | `plugins.recommended` | `false` | The recommended plugins' Git sources are never fetched for update checks. |
-| `issueReports` | `false` | Report an issue is refused; nothing goes to GitHub. |
+| `issueReports` | `false` | Report an issue is refused; nothing goes to GitHub. The owner can still export anonymized logs from the selected core. |
 | `dictation` | `"local"`, `"off"` | `local` refuses cloud transcription engines and the cloud fallback. `off` refuses dictation and its downloads. |
 | `previews.remoteResources` | `false` | Agent-made HTML previews and views may load only their own files: a content security policy blocks remote scripts, images, styles, fonts and requests. |
 | `agentBrowser` | `false`, or `{ "searchUrl": "https://...{query}..." }` | `false` refuses every agent browser command, from an agent, the CLI or the panel. `searchUrl` is the address used for text typed in the browser's address bar that is not a URL; it must be https and contain `{query}`. |
+| `mcp` | `false` | Blocks tests and revokes access to [Boite-managed MCP servers](mcp.md). It applies to the registry, not a provider's own configuration. |
 | `agentDesktop` | `false` | Refuses the agents' [virtual desktop](desktop.md): starting one, running a program on it and the agent-desktop download. Its status and stop stay open. |
 | `network.lan` | `false` | The core listens on loopback only, whatever the setting or `--lan`/`--host` say, and a grouped core opens no listener on its private LAN addresses. An explicit loopback `--host` is kept. |
 | `network.tailscaleServe` | `false` | Serving the core over Tailscale HTTPS is refused. |

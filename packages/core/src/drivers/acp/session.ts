@@ -1,55 +1,52 @@
 import { logMessageOf } from '../../log-errors.ts';
-import { Readable, Writable } from 'node:stream';
-import { randomBytes } from 'node:crypto';
 import type {
   ClientConnection,
   ClientContext,
-  LoadSessionResponse,
   PromptResponse,
   SessionConfigOption,
   SessionNotification,
 } from '@agentclientprotocol/sdk/unstable';
-import type { OsProfile, PermissionMode, ProviderDescriptor, ProviderId, ModelInfo } from '@boite/contracts';
-import { messageOf, unavailable } from '../../errors.ts';
+import type { PermissionMode, ProviderId, ModelInfo } from '@boite/contracts';
+import { messageOf } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
-import { agentEnv, profileFor, resolveLaunch } from '../../providers/resolve.ts';
-import { launchTemp } from '../launch-temp.ts';
-import { grokLaunchArgs } from '../grok.ts';
+import { profileFor } from '../../providers/resolve.ts';
 import { stderrLines } from '../lines.ts';
 import { exitSentence, exitWithin } from '../exit.ts';
 import { IdleTimer } from '../idle-timer.ts';
+import { SessionTurns } from '../session-turns.ts';
 import type { LiveTurnSettings, ProbeContext, ProbeFilter, SessionContext } from '../types.ts';
 import { OpenCommands } from './commands.ts';
+import { readDetachedWork, readPendingReply } from './detached.ts';
 import { ModelRefused, SessionControls } from './controls.ts';
-import { failureText, loadRefusal, LoadRefused, rpcReason, rpcRefusal } from './load.ts';
+import { failureText, LoadRefused, rpcReason, rpcRefusal } from './load.ts';
 import { AGENT_OWN_MODEL, agentModelsOf } from './models.ts';
-import { acpClientInfo, acpSessionMeta, canDeleteSessions, CLIENT_NAME, discardSession, EXIT_GRACE_MS, isGrok, isHermes, STDERR_MAX, type AcpDeps, type Timer } from './protocol.ts';
-import { jsonLinesOnly } from './stdout.ts';
+import { EXIT_GRACE_MS, isGrok, STDERR_MAX, type AcpDeps, type Timer } from './protocol.ts';
 import { commandsOf, imageBlocksOf, usdCostOf, type AcpTurn } from './turn.ts';
-import { answerPermission, drawUpdate, sessionNotificationOf } from './updates.ts';
-import { errorCodeOf, noteReady } from '../driver-log.ts';
+import { drawUpdate } from './updates.ts';
+import { noteReady } from '../driver-log.ts';
 import { SessionRetention } from '../session-retention.ts';
 import { releaseChild } from '../session-close.ts';
 import { OpenCodeConnection } from './opencode-connection.ts';
-import { OPENCODE_V2, openCodeServerReachable, withOpenCodeCompactionBuffer } from '../../providers/opencode.ts';
+import { OPENCODE_V2 } from '../../providers/opencode.ts';
 import { noteCompactionModel, wantedCompactionBuffer, type CompactionCaches } from './opencode-compaction.ts';
-import {protectedAcp} from './protected.ts';
+import type { protectedAcp } from './protected.ts';
+import { discoveredControls, newConversation, probeControls } from './control-probe.ts';
+import { acpMcpServers, loadConversation } from './conversation.ts';
+import { sessionMcp } from '../mcp.ts';
+import { connectTransport, initializeTransport, spawnTransport } from './transport.ts';
+import { isAntigravity } from '../antigravity.ts';
 
 /** A glog line at info severity: `I0921 09:51:32.917720 10292 main.py:80] ...`. */
 const GLOG_INFO = /^I\d{4} \d{2}:\d{2}:\d{2}\.\d+\s/;
 /** How long an agent gets to answer `session/cancel` before its process is closed. */
 const STOP_GRACE_MS = 3_000;
-
 /**
- * The argv a turn spawns with: the descriptor's `launch.args` as they are, plus
- * the thread's permission mode spliced in for an agent whose mode is a command
- * line option rather than a `session/set_mode`. A probe has no thread and no
- * mode, so it launches the declared line untouched.
+ * A turn held for Antigravity's detached children reads the agent's records
+ * this often, and ends once they all reported, no reply is owed and the
+ * session said nothing for `DETACHED_QUIET_MS`.
  */
-function launchArgs(profile: OsProfile | undefined, prefix: string[], provider: ProviderDescriptor, mode: PermissionMode): string[] {
-  const declared = profile?.launch?.args ?? [];
-  return [...prefix, ...(isGrok(provider) ? grokLaunchArgs(declared, mode) : declared)];
-}
+const DETACHED_POLL_MS = 1_000;
+const DETACHED_QUIET_MS = 3_000;
 
 /**
  * What the driver learns about agents across their processes, for the life of
@@ -125,12 +122,21 @@ export class AcpSession {
   #active: AcpTurn | null = null;
   /** Armed by a stop on a prompt in flight: an agent that ignores the cancel is closed. */
   #stopTimer: Timer | null = null;
-  #queue: Promise<void> = Promise.resolve();
+  readonly #turns = new SessionTurns<AcpTurn>(turn => this.#runTurn(turn), (turn, error) => {
+    if (turn.isStopped) turn.stopNow();
+    else turn.fail(messageOf(error));
+    this.#endTurn(turn, true);
+  });
   /** Antigravity's shell commands, the ones that outlived their turn included. */
   readonly #commands = new OpenCommands();
+  /** Antigravity's `GEMINI_HOME` for this process, where it records its children. */
+  #geminiHome: string | null = null;
+  /** The turn kept open after its prompt for the children it launched. */
+  #holding: AcpTurn | null = null;
+  /** When this session last sent an update, to tell a reply that ended from one still streaming. */
+  #lastUpdateAt = 0;
   /** Grok answered `_x.ai/interject` with an error once: this process has no mid-turn input. */
   #interjectRefused = false;
-  #running = 0;
   #closing = false;
   #ended = false;
   #catalogValid = true;
@@ -139,6 +145,7 @@ export class AcpSession {
   #warmMs: number;
   readonly #deps: AcpDeps;
   readonly #memory: AcpMemory;
+  #mcp: ReturnType<typeof sessionMcp> = null;
   readonly #onEnded: (session: AcpSession) => void;
   readonly #onOptions: (options: SessionConfigOption[], ownModel?: string | null) => void;
 
@@ -195,25 +202,19 @@ export class AcpSession {
    */
   async #applyControls(ctx: SessionContext): Promise<void> {
     const agent = this.#agent;
-    if (agent !== null && !isGrok(ctx.provider) && ctx.thread.model === AGENT_OWN_MODEL
-      && (this.#controls.hasModels() || this.#loaded) && !this.#controls.hasModelOption() && !this.#controls.knowsOwnListedModel() && !this.#ownModelAsked) {
+    const antigravity = isAntigravity(ctx.provider);
+    const takesOwnModel = !this.#controls.hasModelOption() || antigravity;
+    const wantsOwnModel = ctx.thread.model === AGENT_OWN_MODEL || (antigravity && ctx.thread.model === null);
+    if (agent !== null && !isGrok(ctx.provider) && wantsOwnModel
+      && (this.#controls.hasModels() || this.#loaded) && takesOwnModel && !this.#controls.knowsOwnModel() && !this.#ownModelAsked) {
       this.#ownModelAsked = true;
       // Only a lookup: a refusal leaves the session where it is, and the next
       // process asks again.
-      const discovered = await agent.request('session/new', { cwd: ctx.thread.cwd, mcpServers: [], ...this.#sessionMeta }).catch((error: unknown) => {
+      await this.#probeControls(ctx, agent).catch((error: unknown) => {
         ctx.log('warn', `acp: ${ctx.provider.id} refused the session that reads its own model: ${messageOf(error)}`);
-        return null;
       });
-      if (discovered !== null) {
-        const listed = agentModelsOf(discovered);
-        this.#controls.seedOwnListedModel(listed?.currentModelId ?? null);
-        this.#controls.seedListedModels(listed);
-        this.#onOptions(discovered.configOptions ?? [], listed?.currentModelId ?? null);
-        await discardSession(agent, this.#canDelete, discovered.sessionId);
-      }
     }
-    await this.#controls.applyModel(ctx);
-    await this.#controls.applyConfig(ctx);
+    await this.#controls.applySelection(ctx);
     await this.#controls.applyMode(ctx);
   }
 
@@ -249,7 +250,7 @@ export class AcpSession {
   }
 
   busy(): boolean {
-    return this.#running > 0;
+    return this.#turns.busy;
   }
 
   /**
@@ -274,17 +275,8 @@ export class AcpSession {
   attach(turn: AcpTurn, warmMs: number): void {
     this.#warmMs = warmMs;
     this.#retention.beginTurn();
-    this.#running += 1;
     this.#idle.clear();
-    this.#queue = this.#queue.then(async () => {
-      try {
-        await this.#runTurn(turn);
-      } catch (error) {
-        if (turn.isStopped) turn.stopNow();
-        else turn.fail(messageOf(error));
-        this.#endTurn(turn, true);
-      }
-    });
+    this.#turns.enqueue(turn);
   }
 
   /**
@@ -300,7 +292,8 @@ export class AcpSession {
     turn.markStopped();
     // Not begun: `runTurn` settles it the moment the queue reaches it.
     if (this.#active !== turn) return;
-    if (this.#current !== turn) {
+    // No prompt to cancel: the children it waits for end with the process.
+    if (this.#current !== turn || this.#holding === turn) {
       this.#drop();
       return;
     }
@@ -340,9 +333,9 @@ export class AcpSession {
     return this.#connection instanceof OpenCodeConnection;
   }
 
-  async steerOpenCode(turn: AcpTurn, text: string, attachments: import('@boite/contracts').ImageAttachment[] = [], onAccepted?: () => void): Promise<boolean> {
+  async steerOpenCode(turn: AcpTurn, text: string, attachments: import('@boite/contracts').ImageAttachment[] = [], onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     if (this.#current !== turn || turn.isStopped || !(this.#connection instanceof OpenCodeConnection)) return false;
-    return this.#connection.steer([{ type: 'text', text }, ...imageBlocksOf(attachments)], onAccepted);
+    return this.#connection.steer([{ type: 'text', text }, ...imageBlocksOf(attachments)], onAccepted, signal);
   }
 
   #cancel(): void {
@@ -390,28 +383,7 @@ export class AcpSession {
 
   async #runTurn(turn: AcpTurn): Promise<void> {
     this.#active = turn;
-    if (turn.isStopped) {
-      turn.stopNow();
-      this.#endTurn(turn, false);
-      return;
-    }
-    this.#ctx = turn.ctx;
-    try {
-      turn.ctx.protectedExecution?.check();
-      await this.#start(turn.ctx);
-    } catch (error) {
-      if (turn.isStopped) {
-        turn.stopNow();
-      } else if (error instanceof LoadRefused && error.lost) {
-        turn.loseSession(error.message);
-      } else if (error instanceof LoadRefused || error instanceof ModelRefused) {
-        turn.fail(error.message);
-      } else {
-        await this.#fail(turn, error);
-      }
-      this.#endTurn(turn, true);
-      return;
-    }
+    if (this.#stopBeforePrompt(turn, false) || !(await this.#startTurn(turn))) return;
 
     const agent = this.#agent;
     const sessionId = this.#sessionId;
@@ -421,25 +393,9 @@ export class AcpSession {
       this.#endTurn(turn, true);
       return;
     }
-    let prompt = turn.ctx.prompt;
-    let attachments = turn.ctx.attachments;
-    // The agent could not resume the thread's session and this process opened
-    // a new one: the prompt carries the conversation so far, as it does after
-    // a session the agent lost.
-    if (this.#replaces !== null && this.#replaces === turn.ctx.sessionId) {
-      this.#replaces = null;
-      try {
-        const carried = turn.ctx.continuation?.();
-        if (carried !== undefined) {
-          prompt = carried.prompt;
-          attachments = carried.attachments;
-        }
-      } catch (error) {
-        turn.fail(messageOf(error));
-        this.#endTurn(turn, true);
-        return;
-      }
-    }
+    const input = this.#replaces !== null && this.#replaces === turn.ctx.sessionId ? await this.#carryPrompt(turn) : turn.ctx;
+    if (input === null || this.#stopBeforePrompt(turn)) return;
+    const { prompt, attachments } = input;
 
     if (attachments.length > 0 && !this.#imagesSupported) {
       turn.fail(`${turn.ctx.provider.name} takes no images`);
@@ -463,7 +419,13 @@ export class AcpSession {
       this.#endTurn(turn, turn.isStopped);
       return;
     }
-    const judged = this.#costBaseline(turn);
+    let judged = false;
+    const connection = this.#connection;
+    if (connection instanceof OpenCodeConnection) {
+      // A failed read at the end of the previous turn leaves the native total unknown.
+      turn.costBefore = connection.sessionCost ?? await connection.readSessionCost(turn);
+    } else judged = this.#costBaseline(turn);
+    if (this.#stopBeforePrompt(turn)) return;
     this.#current = turn;
     let response: PromptResponse;
     try {
@@ -478,6 +440,8 @@ export class AcpSession {
       // more without a word on the wire, which must not read as a start.
       else turn.ctx.reportProgress?.('waiting');
       response = await pending;
+      if (this.#canLoad) turn.ctx.sessionAccepted?.(sessionId);
+      if (turn.antigravity && response.stopReason === 'end_turn' && !turn.isStopped && !turn.hasExecutionError) await this.#holdForDetached(turn, sessionId);
     } catch (error) {
       this.#current = null;
       if (turn.isStopped) {
@@ -490,17 +454,57 @@ export class AcpSession {
       return;
     }
     this.#current = null;
+    // A stop or the process's end settled the turn while it waited for its children.
+    if (turn.settled) {
+      this.#endTurn(turn, true);
+      return;
+    }
     // The turn may have moved the thread to another model.
     this.#noteCompactionWindow(turn.ctx);
     turn.finish(response);
     // A resumed session whose first total came in below what the session
     // already cost: this agent counts each process from zero.
     const total = turn.costUsdEquivalent;
-    if (judged && total !== null && total < turn.costBefore && !this.#memory.costPerProcess.has(turn.ctx.provider.id)) {
+    if (judged && total !== null && turn.costBefore !== null && total < turn.costBefore && !this.#memory.costPerProcess.has(turn.ctx.provider.id)) {
       this.#memory.costPerProcess.add(turn.ctx.provider.id);
       turn.ctx.log('info', `acp: ${turn.ctx.provider.id} reports a resumed session's cost from zero; its cold turns are charged their whole total`);
     }
     this.#endTurn(turn, turn.isStopped);
+  }
+
+  #stopBeforePrompt(turn: AcpTurn, drop = true): boolean {
+    if (!turn.isStopped) return false;
+    turn.stopNow();
+    this.#endTurn(turn, drop);
+    return true;
+  }
+
+  async #startTurn(turn: AcpTurn): Promise<boolean> {
+    this.#ctx = turn.ctx;
+    try {
+      turn.ctx.protectedExecution?.check();
+      await this.#start(turn.ctx);
+      return true;
+    } catch (error) {
+      if (this.#stopBeforePrompt(turn)) return false;
+      if (error instanceof LoadRefused && error.lost) turn.loseSession(error.message);
+      else if (error instanceof LoadRefused || error instanceof ModelRefused) turn.fail(error.message);
+      else await this.#fail(turn, error);
+      this.#endTurn(turn, true);
+      return false;
+    }
+  }
+
+  /** A new conversation replacing a lost session carries the history with its prompt. */
+  async #carryPrompt(turn: AcpTurn): Promise<Pick<AcpTurn['ctx'], 'prompt' | 'attachments'> | null> {
+    this.#replaces = null;
+    try { return await turn.ctx.continuation?.() ?? turn.ctx; }
+    catch (error) {
+      if (this.#stopBeforePrompt(turn)) return null;
+      turn.fail(messageOf(error));
+      this.#endTurn(turn, true);
+      return null;
+    }
   }
 
   /**
@@ -508,8 +512,7 @@ export class AcpSession {
    * total is measured from. A total this process already reported is exact. A
    * session it created starts at zero. A session it loaded and that has said
    * nothing yet starts where the journal left it, since the protocol defines
-   * the cost as the session's and OpenCode computes it from the session's
-   * stored messages; an agent seen to count from zero again starts at zero.
+   * the cost as the session's. An agent seen to count from zero starts at zero.
    * True when the turn's reading has to tell which of the two the agent does.
    */
   #costBaseline(turn: AcpTurn): boolean {
@@ -525,6 +528,49 @@ export class AcpSession {
     return turn.costBefore > 0;
   }
 
+  /**
+   * Antigravity ended the prompt while children it launched still work
+   * (`detached.ts`). The turn stays open, so Stop is there and the idle window
+   * does not close the process under them, and stays the current one, so the
+   * reply the agent starts on its own once they report is drawn into it. It
+   * ends once every child reported, the agent owes no reply, no tool that
+   * reply started still runs, nothing waits for the user and the session
+   * went quiet; a stop or the process's end settles it instead.
+   */
+  async #holdForDetached(turn: AcpTurn, sessionId: string): Promise<void> {
+    const home = this.#geminiHome;
+    if (home === null) return;
+    // Before any await: a tool the reply starts while the records are read is the reply's.
+    const prompted = turn.toolCallIds();
+    const first = await readDetachedWork(home, sessionId, prompted).catch(() => null);
+    if (first === null || first.launched === 0) return;
+    turn.ctx.log('info', `acp: the prompt ended with ${first.atWork} of the ${first.launched} children it launched at work; the turn waits for their reports and the agent's reply`);
+    this.#holding = turn;
+    // The quiet counts from the last update or the last poll that found work.
+    let busyAt = Date.now();
+    try {
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, DETACHED_POLL_MS));
+        if (this.#ended || turn.settled || turn.isStopped) return;
+        const work = await readDetachedWork(home, sessionId, turn.toolCallIds()).catch(() => null);
+        if (this.#ended || turn.settled || turn.isStopped) return;
+        // A wake can leave its transcript pending after an execution error.
+        // Other work still holds the reply open until it finishes.
+        const busy = (work !== null && work.atWork > 0)
+          || turn.awaitingUser
+          || turn.hasRunningTool(prompted)
+          || (!turn.hasExecutionError && await readPendingReply(home, sessionId).catch(() => false));
+        if (busy) {
+          busyAt = Date.now();
+          continue;
+        }
+        if (Date.now() - Math.max(this.#lastUpdateAt, busyAt) >= DETACHED_QUIET_MS) return;
+      }
+    } finally {
+      this.#holding = null;
+    }
+  }
+
   #endTurn(turn: AcpTurn, drop: boolean): void {
     if (this.#stopTimer !== null) {
       clearTimeout(this.#stopTimer);
@@ -536,12 +582,12 @@ export class AcpSession {
     const outlived = !drop && !this.#closing && turn.antigravity && this.#commands.promote(turn.ctx);
     const dropping = drop || this.#closing || (!outlived && this.#retention.idleMs(this.#warmMs) <= 0);
     turn.settle();
-    this.#running = Math.max(0, this.#running - 1);
+    this.#turns.end();
     if (dropping) {
       this.#drop();
       return;
     }
-    if (this.#running === 0 && !this.#retention.viewed) this.#armIdle();
+    if (!this.busy() && !this.#retention.viewed) this.#armIdle();
   }
 
   #start(ctx: SessionContext): Promise<void> {
@@ -565,139 +611,34 @@ export class AcpSession {
 
   async #open(ctx: SessionContext): Promise<void> {
     const sdk = await this.#deps.loadSdk();
-    // A stop while the SDK loaded: nothing may be spawned for a session that is over.
     if (this.#ended) throw Object.assign(new Error('the acp session was closed before it started'), { abandoned: true });
-    const profile = profileFor(ctx.provider);
-    const launch = resolveLaunch(profile);
-    if (launch === null) {
-      throw unavailable(`no ${ctx.provider.id} executable on this machine`, { providerId: ctx.provider.id });
-    }
-
-    this.#protection = protectedAcp(ctx, () => this.#current, profile?.launch?.args ?? []);
-    const temp = launchTemp(ctx.provider, ctx.account.isolationDir);
-    let child: SpawnedChild;
-    // OpenCode 2 runs its own server, unless the core cannot reach its port:
-    // then it speaks ACP like version 1, without mid-turn steering.
-    const native = ctx.provider.id === OPENCODE_V2 && openCodeServerReachable(launch.executable, this.#deps.agentShim);
-    if (ctx.provider.id === OPENCODE_V2 && !native) ctx.log('info', `acp: ${launch.executable} runs OpenCode 2 in a sandbox the core cannot connect to; it speaks ACP on its stdio`);
-    const password = native ? randomBytes(32).toString('base64url') : null;
-    const args = launchArgs(profile, launch.prefix, ctx.provider, ctx.thread.permissionMode);
-    // Preserve executable wrappers and fixture prefixes, replace only the ACP
-    // subcommand. The native server's stdin is its ownership lease.
-    const nativeArgs = [...launch.prefix, ...(profile?.launch?.args ?? ['acp']).filter(arg => arg !== 'acp'), 'serve', '--stdio', '--port', '0'];
-    // OpenCode 2 compacts at the thread's limit once a process has read the
-    // model's window; until then it keeps its own ceiling.
-    const buffer = native ? wantedCompactionBuffer(this.#memory, ctx) : null;
-    const accountEnv = withOpenCodeCompactionBuffer(ctx.accountEnv, buffer);
-    try {
-      child = ctx.spawnChild(launch.executable, native ? nativeArgs : args, {
-        cwd: this.#protection?.cwd ?? ctx.thread.cwd,
-        env: { ...agentEnv(ctx.provider, temp === null ? accountEnv : { ...accountEnv, ...temp.env }), ...this.#protection?.env, ...(password === null ? {} : { OPENCODE_PASSWORD: password }) },
-      });
-    } catch (error) {
-      void temp?.dispose();
-      throw error;
-    }
-    // The directory the agent unpacked into goes with its last process.
-    if (temp !== null) {
-      const dispose = (): void => void temp.dispose((message) => ctx.log('warn', `acp session: ${message}`));
-      child.once('close', dispose);
-      child.once('error', dispose);
-    }
+    const current = () => this.#current;
+    this.#mcp = sessionMcp(ctx);
+    const transport = spawnTransport(ctx, this.#deps, this.#memory, current, this.#mcp);
+    const child = transport.child;
+    this.#geminiHome = isAntigravity(ctx.provider) ? transport.env['GEMINI_HOME'] ?? null : null;
     this.#child = child;
     this.#killTree = ctx.killTree ?? null;
-    if (native) this.#compactionBuffer = buffer;
+    this.#protection = transport.protection;
+    if (transport.native) this.#compactionBuffer = transport.buffer;
     this.#watch(child, ctx);
 
-    const stream = native ? null : sdk.ndJsonStream(
-      Writable.toWeb(child.stdin) as unknown as WritableStream<Uint8Array>,
-      jsonLinesOnly(Readable.toWeb(child.stdout) as unknown as ReadableStream<Uint8Array>, (line) => {
-        ctx.log('warn', `acp agent: ${line.slice(0, STDERR_MAX)}`, { kind: 'provider-output', event: 'provider.output' });
-      }),
-    );
-    const connection = native
-      ? await OpenCodeConnection.open(child, password!, ctx.thread.cwd, params => this.#onUpdate(params), () => this.#current)
-      : sdk
-      .client({ name: CLIENT_NAME })
-      // Checked by hand rather than by the SDK's schema, which also parses
-      // every update once more on its own (see `sessionNotificationOf`).
-      .onNotification('session/update', sessionNotificationOf, ({ params }) => {
-        if (params !== null) this.#onUpdate(params);
-      })
-      .onRequest('session/request_permission', ({ params }) => this.#protection ? Promise.resolve({outcome: {outcome: 'cancelled' as const}}) : answerPermission(this.#current, params))
-      .connect(stream!);
+    const connection = await connectTransport(ctx, sdk, transport, params => this.#onUpdate(params), current);
     this.#connection = connection;
     this.#agent = connection.agent;
+    const init = await initializeTransport(ctx, sdk, connection, transport.protection);
+    this.#sessionMeta = init.meta;
+    this.#canLoad = init.canLoad;
+    this.#canDelete = init.canDelete;
+    this.#imagesSupported = init.imagesSupported;
+    if (!transport.native && !init.canMcpHttp) { this.#mcp?.release(); this.#mcp = null; }
+    await this.#openConversation(ctx, connection.agent, child, !transport.native && init.canMcpHttp);
+  }
 
-    // No fs, no terminal: an agent that calls one anyway gets a
-    // method-not-found from the SDK, which is the loud refusal we want.
-    const init = await connection.agent.request('initialize', {
-      protocolVersion: sdk.PROTOCOL_VERSION,
-      clientCapabilities: {},
-      clientInfo: acpClientInfo(ctx.provider),
-    });
-    this.#sessionMeta = acpSessionMeta(ctx.provider, init);
-    this.#canLoad = !this.#protection && init.agentCapabilities?.loadSession === true;
-    if (this.#protection && (init.agentInfo?.name !== 'OpenCode' || init.agentInfo?.version !== '1.19.3')) throw new Error(`execution.acp.agentInfo: expected verified OpenCode 1.19.3, received ${init.agentInfo?.name} ${init.agentInfo?.version}`);
-    this.#canDelete = canDeleteSessions(init);
-    this.#imagesSupported = init.agentCapabilities?.promptCapabilities?.image === true;
-    // The agent binary fills these: only text and numbers reach the log.
-    const scalar = (value: unknown): string | null => typeof value === 'string' ? value : typeof value === 'number' ? String(value) : null;
-    const agentName = scalar(init.agentInfo?.name), agentVersion = scalar(init.agentInfo?.version), protocol = scalar(init.protocolVersion);
-    ctx.diagnostic?.('info', `${ctx.provider.id} answered initialize as ${agentName ?? 'an unnamed agent'} ${agentVersion ?? ''}, ACP protocol ${protocol ?? 'unknown'}`.replace(/ {2,}/g, ' '), {
-      event: 'driver.initialized', data: { agent: agentName, version: agentVersion, protocol, loadSession: this.#canLoad },
-    });
-
+  async #openConversation(ctx: SessionContext, agent: ClientContext, child: SpawnedChild, useMcp: boolean): Promise<void> {
+    const servers = useMcp ? acpMcpServers(this.#mcp) : [];
     if (ctx.sessionId !== null && this.#canLoad) {
-      // Every `session/update` of a load is history replay: `current` is null,
-      // so the update handler drops them, all but a running cost.
-      const refusedKey = `${ctx.provider.id}\0${ctx.sessionId}`;
-      let loaded: LoadSessionResponse;
-      try {
-        loaded = await connection.agent.request('session/load', {
-          sessionId: ctx.sessionId,
-          cwd: ctx.thread.cwd,
-          mcpServers: [],
-          ...this.#sessionMeta,
-        });
-      } catch (error) {
-        // Only an answer from a live agent says anything about the session; a
-        // dead pipe is the process's failure.
-        if (!rpcRefusal(error) || this.#ended || child.exitCode !== null) throw error;
-        const reason = rpcReason(error);
-        ctx.log('warn', `acp: ${ctx.provider.id} refused to load the session ${ctx.sessionId}: ${reason}`);
-        const kind = loadRefusal(error, reason);
-        ctx.diagnostic?.('warn', `session/load refused with code ${errorCodeOf((error as { code?: unknown }).code) ?? 'unknown'}, read as ${kind}`, { event: 'driver.session.load-refused', data: { code: errorCodeOf((error as { code?: unknown }).code), kind } });
-        if (kind === 'gone' || (kind === 'unsure' && this.#memory.refusedLoads.has(refusedKey))) {
-          // Pruned, migrated, another project: retrying the same id would fail
-          // every turn of the thread from now on.
-          this.#memory.refusedLoads.delete(refusedKey);
-          throw new LoadRefused(
-            `${ctx.provider.name} no longer has this conversation (${reason}). Send the message again: Boite starts a new session that carries the conversation so far.`,
-            true,
-          );
-        }
-        if (kind === 'unsure') this.#memory.refusedLoads.add(refusedKey);
-        // Signed out, or a failure on the agent's side: the session may well
-        // still be there, and the next turn loads it again.
-        throw new LoadRefused(
-          `${ctx.provider.name} could not open this conversation (${reason}). The session is kept: send the message again to retry.`,
-          false,
-        );
-      }
-      if (isHermes(ctx.provider) && (loaded === null || loaded.modes === undefined || loaded.modes === null)) {
-        // Hermes answers an id it does not have with an empty result instead
-        // of an error, and a prompt on it then stops as a refusal. Each session
-        // it does have comes back with its modes, so their absence is the "no".
-        this.#memory.refusedLoads.delete(refusedKey);
-        ctx.log('warn', `acp: ${ctx.provider.id} answered session/load ${ctx.sessionId} with no session`);
-        ctx.diagnostic?.('warn', 'session/load answered with no session, read as gone', { event: 'driver.session.load-refused', data: { code: null, kind: 'gone' } });
-        throw new LoadRefused(
-          `${ctx.provider.name} no longer has this conversation (it answered the load with no session). Send the message again: Boite starts a new session that carries the conversation so far.`,
-          true,
-        );
-      }
-      this.#memory.refusedLoads.delete(refusedKey);
+      const loaded = await loadConversation(ctx, ctx.sessionId, agent, child, this.#sessionMeta, this.#memory.refusedLoads, () => this.#ended, servers);
       this.#sessionId = ctx.sessionId;
       this.#loaded = true;
       this.#controls.noteSession(loaded.modes, loaded.configOptions ?? null, loaded, false);
@@ -709,12 +650,7 @@ export class AcpSession {
       // still has to be looked for.
       if (!isGrok(ctx.provider) && !this.#controls.hasOptions()
         && (ctx.thread.effort !== null || (ctx.thread.model !== AGENT_OWN_MODEL && !this.#controls.hasModels()))) {
-        const discovered = await connection.agent.request('session/new', { cwd: ctx.thread.cwd, mcpServers: [], ...this.#sessionMeta });
-        const discoveredModels = agentModelsOf(discovered);
-        this.seedConfig(discovered.configOptions ?? [], discoveredModels?.currentModelId ?? null);
-        this.#controls.seedListedModels(discoveredModels);
-        this.#onOptions(discovered.configOptions ?? [], discoveredModels?.currentModelId ?? null);
-        await discardSession(connection.agent, this.#canDelete, discovered.sessionId);
+        await this.#probeControls(ctx, agent);
       }
       return;
     }
@@ -726,15 +662,20 @@ export class AcpSession {
       this.#replaces = ctx.sessionId;
     }
 
-    const created = await connection.agent.request('session/new', {
-      cwd: this.#protection?.cwd ?? ctx.thread.cwd,
-      mcpServers: [],
-      ...this.#sessionMeta,
-    });
+    const created = await newConversation(agent, this.#protection?.cwd ?? ctx.thread.cwd, this.#sessionMeta, servers);
     this.#sessionId = created.sessionId;
     this.#controls.noteSession(created.modes, created.configOptions ?? null, created, true);
     this.#controls.noteOwnModel(created.configOptions ?? null);
     this.#onOptions(created.configOptions ?? [], agentModelsOf(created)?.currentModelId ?? null);
+  }
+
+  #probeControls(ctx: SessionContext, agent: ClientContext): Promise<void> {
+    return probeControls(agent, ctx.thread.cwd, this.#sessionMeta, this.#canDelete, created => {
+      const { options, listed } = discoveredControls(created);
+      this.seedConfig(options, listed?.currentModelId ?? null);
+      this.#controls.seedListedModels(listed);
+      this.#onOptions(options, listed?.currentModelId ?? null);
+    });
   }
 
   #watch(child: SpawnedChild, ctx: SessionContext): void {
@@ -789,6 +730,7 @@ export class AcpSession {
       else current.fail(reason, diagnostic);
       current.settle();
     }
+    this.#mcp?.release();
     this.#protection?.close(this.#exited ?? Promise.resolve());
     this.#protection = null;
     this.#idle.clear();
@@ -818,6 +760,7 @@ export class AcpSession {
 
   #onUpdate(params: SessionNotification): void {
     const update = params.update;
+    if (this.#sessionId !== null && params.sessionId === this.#sessionId) this.#lastUpdateAt = Date.now();
     // Not gated on `current`: this one arrives between turns as often as
     // during one, right after `session/new` or `session/load`.
     if (update.sessionUpdate === 'available_commands_update') {
@@ -859,7 +802,11 @@ export class AcpSession {
     }
     const turn = this.#current;
     if (turn === null) return;
-    drawUpdate(turn, update);
+    if (this.#canLoad && this.#sessionId !== null && params.sessionId === this.#sessionId
+      && (update.sessionUpdate === 'agent_message_chunk' || update.sessionUpdate === 'agent_thought_chunk' || update.sessionUpdate === 'tool_call')) {
+      turn.ctx.sessionAccepted?.(this.#sessionId);
+    }
+    drawUpdate(turn, update, params.sessionId);
   }
 }
 
@@ -874,6 +821,7 @@ export class AcpSession {
  */
 export function sessionKey(ctx: SessionContext): string {
   return JSON.stringify({
+    mcp: ctx.thread.contextMode?.mcp === false ? false : ctx.mcpRevision,
     protection: ctx.protectedExecution?.fingerprint ?? null,
     permissionMode: isGrok(ctx.provider) ? ctx.thread.permissionMode : null,
     cwd: ctx.thread.cwd,

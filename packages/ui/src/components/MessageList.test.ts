@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, onTestFinished, vi } from 'vitest';
 import { test } from '../test/fake-client';
 import { flushSync, mount, unmount } from 'svelte';
-import { DEFAULT_DELEGATION_CONFIG, type AgentLetter, type Message, type MessagePart } from '@boite/contracts';
+import { DEFAULT_DELEGATION_CONFIG, type AgentLetter, type Message, type MessagePart, type Turn } from '@boite/contracts';
 import { strings } from '../lib/strings';
 import MessageList from './MessageList.svelte';
 import JumpLatest from './JumpLatest.svelte';
@@ -15,6 +15,8 @@ import { workspace } from '../lib/workspace.svelte';
 import { RightPanelStore } from '../lib/right-panel.svelte';
 import AgentMessagesSurface from './AgentMessagesSurface.svelte';
 import { AgentsView, openAgent } from '../lib/agents.svelte';
+import * as messageOrder from '../lib/message-order';
+import { TimelineRows } from '../lib/timeline-rows';
 
 /**
  * jsdom has no layout, so the three numbers the window is computed from are
@@ -261,25 +263,36 @@ test('system coordination messages show their display text outside the user bubb
   expect(document.querySelector('.bubble')).toBeNull();
 });
 
-// The thread's closing line was drawn under a new-conversation marker, cutting the turn the marker follows.
-test('a new conversation that ends the thread comes after its closing line, and a later turn takes the line back to the foot', async () => {
-  stubLayout(400);
-  const message = (id: string, turnId: string, role: Message['role'], parts: MessagePart[]): Message => ({ id, threadId: 't-short', turnId, role, state: 'complete', createdAt: 1, parts });
-  const asked = message('m-ask', 'turn-a', 'user', [{ type: 'text', text: 'Check the welcome screen' }]);
-  const answer = message('m-answer', 'turn-a', 'assistant', [{ type: 'text', text: 'It fits in three lines.' }]);
-  const fresh = message('m-fresh', 'turn-a', 'system', [{ type: 'text', text: 'New conversation', newConversation: { by: 'user' } }]);
-  const order = () => [...document.querySelectorAll('[data-testid=timeline] :is(article[data-role=assistant], [data-testid=thread-closing], [data-testid=new-conversation-marker])')]
-    .map(el => el.matches('article') ? 'answer' : el.matches('[data-testid=thread-closing]') ? 'closing' : 'marker');
-  const owner = { ...store, providerOf: () => undefined, messagesAfter: null, loadingNewer: false } as unknown as Store;
-  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: 't-short', messages: [asked, answer, fresh], closing: 'Done · Worked for 2m 00s' } });
+// A finished thread drew its summary line and a second "Done · Worked for" line under it: one footer now, the resting turn's own line.
+test('a finished thread ends on one footer, its last turn\'s summary at rest, a new conversation after it included', async ({ createStore }) => {
+  const { store: owner, client } = createStore({ delayMs: 0 });
+  owner.attach(client); await owner.connect(); await owner.open('t-trace');
+  const thread = owner.openThread!;
+  const done = (id: string, at: number) => ({ ...thread.turns[0]!, id, startedAt: at, finishedAt: at + 120_000, status: 'done' as const });
+  thread.turns = [done('turn-a', 1), done('turn-b', 200_000)];
+  thread.memoryEvents = [];
+  const message = (id: string, turnId: string, role: Message['role'], parts: MessagePart[]): Message => ({ id, threadId: thread.id, turnId, role, state: 'complete', createdAt: 1, parts });
+  thread.messages = [
+    message('m-ask', 'turn-a', 'user', [{ type: 'text', text: 'Check the welcome screen' }]),
+    message('m-answer', 'turn-a', 'assistant', [{ type: 'text', text: 'It fits in three lines.' }]),
+    message('m-next', 'turn-b', 'user', [{ type: 'text', text: 'Now the review' }]),
+    message('m-read', 'turn-b', 'assistant', [{ type: 'text', text: 'Read [the guide](https://example.com/guide).' }]),
+    message('m-reply', 'turn-b', 'assistant', [{ type: 'text', text: 'Reviewed.' }]),
+    message('m-fresh', 'turn-b', 'system', [{ type: 'text', text: 'New conversation', newConversation: { by: 'user' } }]),
+  ];
+  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: thread.id, messages: thread.messages, resting: 'turn-b' } });
   flushSync();
-  expect(order()).toEqual(['answer', 'closing', 'marker']);
-  await unmount(running!); running = null;
-  // Once the new conversation has a turn of its own, the line is that turn's again, under it.
-  const next = [asked, answer, fresh, message('m-next', 'turn-b', 'user', [{ type: 'text', text: 'Now the review' }]), message('m-reply', 'turn-b', 'assistant', [{ type: 'text', text: 'Reviewed.' }])];
-  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: 't-short', messages: next, closing: 'Done · Worked for 1m 00s' } });
-  flushSync();
-  expect(order()).toEqual(['answer', 'marker', 'answer', 'closing']);
+  const footers = [...document.querySelectorAll<HTMLElement>('[data-testid=turn-summary]')];
+  expect(footers.map(footer => [footer.closest('article')?.getAttribute('data-turn'), footer.classList.contains('resting')])).toEqual([['turn-a', false], ['turn-b', true]]);
+  expect(footers[1]!.querySelector('[data-testid=turn-elapsed]')?.textContent).toBe('Worked for 2m 00s');
+  expect([...document.querySelectorAll('[data-testid=timeline] *')].filter(node => node.children.length === 0 && /Worked for/.test(node.textContent ?? ''))).toHaveLength(2);
+  expect(document.querySelector('[data-testid=new-conversation-marker]')).not.toBeNull();
+  // The keyboard on a link in the turn's first block brings the footer of its last block up, as the pointer does.
+  const link = document.querySelector<HTMLElement>('[data-mid="m-read"] a')!;
+  link.focus(); flushSync();
+  expect(footers[1]!.classList.contains('pointed')).toBe(true);
+  link.blur(); flushSync();
+  expect(footers[1]!.classList.contains('pointed')).toBe(false);
 });
 
 test('cache pings are one quiet line between the turns they sit in, with no answer, summary or bubble', () => {
@@ -1014,6 +1027,61 @@ test('a saved message anchor is rendered even when the old scroll offset points 
   expect(document.querySelector<HTMLElement>('[data-testid=timeline]')!.scrollTop).toBe(250 * ESTIMATE);
 });
 
+test('reopening an unchanged reading window reuses its slot totals and turn order', async ({ ready }) => {
+  const { store: live } = await ready({ delayMs: 0, long: true });
+  await live.open('t-long');
+  const { messages, messagesSync } = live.openThread!;
+  expect(messagesSync).toBeDefined();
+  stubLayout(messages.length * ESTIMATE);
+  const mountList = () => mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages } });
+  running = mountList();
+  await settle();
+  await unmount(running);
+  const previous = windowStats.slots;
+  const reads = vi.spyOn(messageOrder, 'firstAssistantByTurn');
+  const rebuilt = vi.spyOn(messageOrder, 'readingOrder');
+  onTestFinished(() => { reads.mockRestore(); });
+  onTestFinished(() => { rebuilt.mockRestore(); });
+  running = mountList();
+  flushSync();
+  expect(windowStats.slots - previous).toBe(0);
+  expect(reads).not.toHaveBeenCalled();
+  expect(rebuilt).not.toHaveBeenCalled();
+  delete live.openThread!.messagesSync;
+  flushSync();
+  expect(reads).toHaveBeenCalledOnce();
+});
+
+test('returning to a loaded thread does not rebuild its timeline rows', async ({ ready }) => {
+  const { store: live } = await ready({ delayMs: 0, long: true });
+  await live.open('t-long');
+  for (let page = 0; page < 3; page++) await live.loadOlder();
+  const loaded = live.openThread!.messages;
+  expect(loaded).toHaveLength(400);
+  stubLayout(loaded.length * ESTIMATE);
+  live.readingPositions.set('t-long', { top: 0, pinned: false, heights: new Map() });
+  const mountList = () => mount(MessageList, {
+    target: document.body,
+    props: { store: live, threadId: 't-long', get messages() { return live.openThread!.messages; } },
+  });
+  running = mountList();
+  await settle();
+  const first = shownIds()[0];
+  await unmount(running);
+  running = null;
+  await live.open('t-bench');
+  const slots = windowStats.slots;
+  const build = vi.spyOn(TimelineRows.prototype, 'build');
+  onTestFinished(() => { build.mockRestore(); });
+  await live.open('t-long');
+  expect(live.openThread!.messages).toBe(loaded);
+  running = mountList();
+  await settle();
+  expect(shownIds()[0]).toBe(first);
+  expect(build).not.toHaveBeenCalled();
+  expect(windowStats.slots - slots).toBe(0);
+});
+
 test('Ctrl+F counts matches in messages the window has not drawn, walks to them, and Escape closes it', async ({ ready }) => {
   window.localStorage.clear();
   // jsdom measures no range; the bar only reads one to decide whether to scroll.
@@ -1684,7 +1752,7 @@ test('a phone keeps the buttons under the last prompt and answer, shows another 
   expect(earlier.hasAttribute('data-revealed')).toBe(false);
 });
 
-test('a prompt queued behind a finished turn keeps the buttons of the answer before it on a phone', async ({ ready }) => {
+test.for(['queued', 'running', 'error', 'stopped'] as const)('an unanswered %s prompt behind a finished turn keeps the buttons of the answer before it on a phone', async (status, { ready }) => {
   window.localStorage.clear();
   vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), { media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {} }));
   onTestFinished(() => { vi.unstubAllGlobals(); });
@@ -1693,15 +1761,267 @@ test('a prompt queued behind a finished turn keeps the buttons of the answer bef
   const thread = live.openThread!;
   const messages = thread.messages;
   const answer = messages.findLast((message) => message.role === 'assistant')!;
-  // Its turn is queued and nothing answers it yet: the newest turn has no answer row.
-  thread.turns.push({ id: 'turn-queued', threadId: 't-long', status: 'queued', queuedAt: Date.now(), startedAt: null, finishedAt: null, usage: null, error: null });
-  messages.push({ id: 'm-queued', threadId: 't-long', turnId: 'turn-queued', role: 'user', parts: [{ type: 'text', text: 'and then?' }], state: 'complete', createdAt: Date.now() });
+  // Its turn has not answered yet: the newest turn has no answer row.
+  thread.turns.push({ id: `turn-${status}`, threadId: 't-long', status, queuedAt: Date.now(), startedAt: status === 'queued' ? null : Date.now(), finishedAt: status === 'error' || status === 'stopped' ? Date.now() : null, usage: null, error: status === 'error' ? 'rate limit' : null });
+  messages.push({ id: `m-${status}`, threadId: 't-long', turnId: `turn-${status}`, role: 'user', parts: [{ type: 'text', text: 'and then?' }], state: 'complete', createdAt: Date.now() });
   stubLayout(messages.length * ESTIMATE);
   running = mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages } });
   await settle();
 
-  expect(document.querySelector('[data-mid="m-queued"]')?.closest('article')?.hasAttribute('data-latest')).toBe(true);
+  expect(document.querySelector(`[data-mid="m-${status}"]`)?.closest('article')?.hasAttribute('data-latest')).toBe(true);
   expect(document.querySelector(`[data-mid="${answer.id}"]`)?.closest('article')?.hasAttribute('data-latest')).toBe(true);
+  expect(document.querySelector(`[data-mid="${answer.id}"]`)?.closest('article')?.querySelector('[data-testid=message-actions]')).not.toBeNull();
+});
+
+// A reply the timeline hides was the phone's last answer: the real answer above it lost its buttons and its footer.
+const HIDDEN_AFTER: Array<[string, { quiet?: true; execution: object }, string, Message['parts']]> = [
+  ['a cache ping', { execution: { operation: 'keepalive' } }, 'Reply with the single word ok.', [{ type: 'text', text: 'ok' }]],
+  ['a folded quiet wake', { quiet: true, execution: { operation: 'event', opensRequest: true } }, 'A pull request changed.', [{ type: 'text', text: '[quiet] nothing new' }]],
+  ['an automatic compaction', { execution: { operation: 'compact', automatic: true } }, 'Compacting the conversation.', [{ type: 'compaction', trigger: 'auto', preTokens: 51_100, postTokens: 10_800 }]],
+];
+test.for(HIDDEN_AFTER)('%s after the last answer leaves that answer\'s buttons and resting line on a phone', async ([, turn, opening, parts], { ready }) => {
+  window.localStorage.clear();
+  vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), { media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {} }));
+  onTestFinished(() => { vi.unstubAllGlobals(); });
+  const { store: live } = await ready({ delayMs: 0, long: true });
+  await live.open('t-long');
+  const thread = live.openThread!;
+  const messages = thread.messages;
+  const answer = messages.findLast((message) => message.role === 'assistant')!;
+  const answered = thread.turns.find((current) => current.id === answer.turnId)!;
+  Object.assign(answered, { status: 'done', finishedAt: answered.finishedAt ?? answered.startedAt });
+  const at = Date.now();
+  thread.turns.push({ id: 'turn-hidden', threadId: 't-long', status: 'done', queuedAt: at, startedAt: at, finishedAt: at + 1, usage: null, error: null, ...turn, execution: { providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, ...turn.execution } } as Turn);
+  messages.push(
+    { id: 'm-hidden-open', threadId: 't-long', turnId: 'turn-hidden', role: 'system', parts: [{ type: 'text', text: opening }], state: 'complete', createdAt: at },
+    { id: 'm-hidden', threadId: 't-long', turnId: 'turn-hidden', role: 'assistant', parts, state: 'complete', createdAt: at + 1 });
+  stubLayout(messages.length * ESTIMATE);
+  running = mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages, resting: answered.id } });
+  await settle();
+
+  expect(document.querySelector('[data-mid="m-hidden"]')).toBeNull();
+  const row = document.querySelector(`[data-mid="${answer.id}"]`)?.closest('article');
+  expect(row?.hasAttribute('data-latest')).toBe(true);
+  expect(row?.querySelector('[data-testid=turn-summary]')?.classList.contains('resting')).toBe(true);
+});
+
+test('a tool-only wake on a phone keeps its resting line and buttons on the same row', async ({ ready }) => {
+  window.localStorage.clear();
+  vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), { media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {} }));
+  onTestFinished(() => { vi.unstubAllGlobals(); });
+  const { store: live } = await ready({ delayMs: 0, agentsDemo: true });
+  const view = AgentsView.of(live);
+  await view.refresh();
+  const mira = view.snapshot!.profiles.find(p => p.name === 'Mira')!;
+  await openAgent(live, mira.id);
+  const thread = live.openThread!;
+  const answer = thread.messages.findLast((message) => message.role === 'assistant')!;
+  const at = Date.now();
+  thread.turns.push({
+    id: 'turn-tool-wake', threadId: thread.id, status: 'done', queuedAt: at, startedAt: at, finishedAt: at + 5_000, usage: null, error: null,
+    execution: { providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, operation: 'routine', opensRequest: true },
+  } as Turn);
+  thread.messages.push(
+    { id: 'm-wake-open', threadId: thread.id, turnId: 'turn-tool-wake', role: 'system', state: 'complete', createdAt: at, parts: [{ type: 'text', text: 'Routine check' }] },
+    { id: 'm-wake-tool', threadId: thread.id, turnId: 'turn-tool-wake', role: 'assistant', state: 'complete', createdAt: at + 1, parts: [{ type: 'tool', toolId: 't-1', name: 'Bash', input: { command: 'ls' }, output: 'ok', status: 'done' }] },
+  );
+  stubLayout(thread.messages.length * ESTIMATE);
+  running = mount(MessageList, { target: document.body, props: { store: live, threadId: thread.id, messages: thread.messages, resting: 'turn-tool-wake' } });
+  await settle();
+
+  const wakeRow = document.querySelector<HTMLElement>('article[data-turn="turn-tool-wake"]');
+  const priorRow = document.querySelector<HTMLElement>(`[data-mid="${answer.id}"]`)?.closest('article');
+  expect(wakeRow?.hasAttribute('data-latest')).toBe(true);
+  expect(wakeRow?.querySelector('[data-testid=turn-summary]')?.classList.contains('resting')).toBe(true);
+  expect(wakeRow?.querySelector('[data-testid=message-actions]')).not.toBeNull();
+  expect(priorRow?.hasAttribute('data-latest')).toBe(false);
+});
+
+test('at phone width, keyboard focus inside an earlier unmarked answer mounts its summary, pointer focus does not, and unmount clears it', async ({ createStore }) => {
+  window.localStorage.clear();
+  vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), { media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {} }));
+  onTestFinished(() => { vi.unstubAllGlobals(); });
+  const { store: owner, client } = createStore({ delayMs: 0 });
+  owner.attach(client); await owner.connect(); await owner.open('t-trace');
+  const thread = owner.openThread!;
+  const done = (id: string, at: number) => ({ ...thread.turns[0]!, id, startedAt: at, finishedAt: at + 60_000, status: 'done' as const });
+  thread.turns = [done('turn-a', 1), done('turn-b', 100_000)];
+  thread.memoryEvents = [];
+  const msg = (id: string, turnId: string, role: Message['role'], text: string): Message => ({ id, threadId: thread.id, turnId, role, state: 'complete', createdAt: 1, parts: [{ type: 'text', text }] });
+  thread.messages = [
+    msg('m-u1', 'turn-a', 'user', 'First question'),
+    msg('m-a1', 'turn-a', 'assistant', 'See [earlier doc](https://example.com/a).'),
+    msg('m-a2', 'turn-a', 'assistant', 'Done with first.'),
+    msg('m-u2', 'turn-b', 'user', 'Second question'),
+    msg('m-b1', 'turn-b', 'assistant', 'Latest answer.'),
+  ];
+  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: thread.id, messages: thread.messages, resting: 'turn-b' } });
+  flushSync();
+
+  const summaryOf = (turnId: string) => document.querySelector<HTMLElement>(`article[data-turn="${turnId}"] [data-testid=turn-summary]`);
+  const link = document.querySelector<HTMLElement>('[data-mid="m-a1"] a')!;
+  // A pointer tap on a link in an earlier answer does not mount its summary.
+  document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  link.focus(); flushSync();
+  expect(summaryOf('turn-a')).toBeNull();
+
+  // Switching to keyboard on the already-focused link (no new focusin) reveals its summary,
+  // and clicking while it stays focused clears it again.
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  flushSync();
+  expect(summaryOf('turn-a')).not.toBeNull();
+  expect(summaryOf('turn-a')?.classList.contains('pointed')).toBe(true);
+  expect(document.querySelector('[data-mid="m-a2"]')?.closest('article')?.hasAttribute('data-revealed')).toBe(true);
+  // Pressing Copy inside a keyboard-revealed narrow summary hands off to tap-reveal instead of unmounting before click.
+  const copy = summaryOf('turn-a')!.querySelector<HTMLButtonElement>('[data-testid=message-copy]')!;
+  copy.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  flushSync();
+  expect(summaryOf('turn-a')).not.toBeNull();
+  expect(copy.isConnected).toBe(true);
+  // Clicking outside the summary closes it again.
+  document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  flushSync();
+  expect(summaryOf('turn-a')).toBeNull();
+
+  // Keyboard navigation mounts the summary and sets data-revealed.
+  link.blur(); flushSync();
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  link.focus(); flushSync();
+  expect(summaryOf('turn-a')).not.toBeNull();
+  expect(summaryOf('turn-a')?.classList.contains('pointed')).toBe(true);
+  expect(document.querySelector('[data-mid="m-a2"]')?.closest('article')?.hasAttribute('data-revealed')).toBe(true);
+
+  // Focusing outside the timeline after an in-place unmount (without focusout) still clears focus state.
+  const outside = document.createElement('button');
+  document.body.appendChild(outside);
+  onTestFinished(() => outside.remove());
+  link.remove();
+  outside.focus(); flushSync();
+  expect(summaryOf('turn-a')).toBeNull();
+
+  // Removing a whole focused row during a render update also clears focus state.
+  thread.messages.splice(1, 0, msg('m-a1b', 'turn-a', 'assistant', 'See [second link](https://example.com/b).'));
+  flushSync();
+  const second = document.querySelector<HTMLElement>('[data-mid="m-a1b"] a')!;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  second.focus(); flushSync();
+  expect(summaryOf('turn-a')).not.toBeNull();
+  thread.messages.splice(1, 1);
+  flushSync();
+  expect(document.querySelector('[data-mid="m-a1b"]')).toBeNull();
+  expect(summaryOf('turn-a')).toBeNull();
+});
+
+test('on a phone, a turn whose summary sits under a steering prompt keeps its buttons reachable by tap, keyboard and when a newer prompt is unanswered', async ({ createStore }) => {
+  window.localStorage.clear();
+  vi.stubGlobal('matchMedia', (media: string) => Object.assign(new EventTarget(), { media, matches: media.includes('max-width: 720px'), onchange: null, addListener() {}, removeListener() {} }));
+  onTestFinished(() => { vi.unstubAllGlobals(); });
+  const { store: owner, client } = createStore({ delayMs: 0 });
+  owner.attach(client); await owner.connect(); await owner.open('t-trace');
+  const thread = owner.openThread!;
+  const base = thread.turns[0]!;
+  thread.turns = [
+    { ...base, id: 'turn-early-steered', startedAt: 1, finishedAt: 30_000, status: 'done' as const },
+    { ...base, id: 'turn-steered', startedAt: 40_000, finishedAt: 60_000, status: 'done' as const },
+    { ...base, id: 'turn-next', startedAt: 100_000, finishedAt: null, status: 'running' as const },
+  ];
+  thread.memoryEvents = [];
+  const msg = (id: string, turnId: string, role: Message['role'], text: string, extra: Message['parts'] = []): Message => ({ id, threadId: thread.id, turnId, role, state: 'complete', createdAt: 1, parts: [{ type: 'text', text }, ...extra] });
+  thread.messages = [
+    msg('m-e0', 'turn-early-steered', 'user', 'Earlier task'),
+    msg('m-e1', 'turn-early-steered', 'assistant', 'See [early link](https://example.com/early).'),
+    msg('m-e2', 'turn-early-steered', 'user', 'Steer early', [{ type: 'file', mimeType: 'text/plain', data: 'aGVsbG8=', name: 'note.txt' }]),
+    msg('m-u1', 'turn-steered', 'user', 'Start task'),
+    msg('m-a1', 'turn-steered', 'assistant', 'Working on it.'),
+    msg('m-steer', 'turn-steered', 'user', 'Actually skip step 2'),
+    msg('m-u2', 'turn-next', 'user', 'Next question'),
+  ];
+  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: thread.id, messages: thread.messages, resting: null } });
+  flushSync();
+
+  const steerArticle = document.querySelector<HTMLElement>('[data-mid="m-steer"]')?.closest('article');
+  const summary = steerArticle?.querySelector<HTMLElement>('[data-testid=turn-summary]');
+  expect(steerArticle?.hasAttribute('data-latest')).toBe(false);
+  expect(summary).not.toBeNull();
+  expect(summary?.hasAttribute('data-tucked')).toBe(false);
+  expect(summary?.querySelector('[data-testid=message-actions]')).not.toBeNull();
+
+  // Earlier steered turn: Tab from the assistant link to Copy inside the steering row's summary keeps the summary mounted.
+  const earlySummary = () => document.querySelector<HTMLElement>('[data-mid="m-e2"]')?.closest('article')?.querySelector<HTMLElement>('[data-testid=turn-summary]');
+  expect(earlySummary()).toBeNull();
+  const earlyLink = document.querySelector<HTMLElement>('[data-mid="m-e1"] a')!;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  earlyLink.focus(); flushSync();
+  const earlyCopy = earlySummary()?.querySelector<HTMLButtonElement>('[data-testid=message-copy]');
+  expect(earlyCopy).not.toBeNull();
+  earlyCopy!.focus(); flushSync();
+  expect(earlySummary()).not.toBeNull();
+  expect(earlyCopy!.isConnected).toBe(true);
+  earlyCopy!.blur(); flushSync();
+  expect(earlySummary()).toBeNull();
+
+  // Tapping the earlier steered answer and then pressing Copy under its steering prompt keeps it open across pointerdown and click.
+  document.querySelector<HTMLElement>('[data-mid="m-e1"]')!.click(); flushSync();
+  const tappedCopy = earlySummary()?.querySelector<HTMLButtonElement>('[data-testid=message-copy]');
+  expect(tappedCopy).not.toBeNull();
+  tappedCopy!.dispatchEvent(new Event('pointerdown', { bubbles: true })); flushSync();
+  expect(tappedCopy!.isConnected).toBe(true);
+  tappedCopy!.click(); flushSync();
+  expect(earlySummary()).not.toBeNull();
+  // Tapping outside closes it.
+  document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })); flushSync();
+  expect(earlySummary()).toBeNull();
+
+  // Tapping the earlier steering prompt itself and then pressing "i" inside its summary keeps the summary open and opens the tip.
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+  const earlySteer = document.querySelector<HTMLElement>('[data-mid="m-e2"]')!;
+  earlySteer.click(); flushSync();
+  const earlyDetails = earlySummary()?.querySelector<HTMLButtonElement>('[data-testid=turn-details]');
+  expect(earlyDetails).not.toBeNull();
+  earlyDetails!.dispatchEvent(new Event('pointerdown', { bubbles: true })); flushSync();
+  expect(earlyDetails!.isConnected).toBe(true);
+  earlyDetails!.click(); flushSync();
+  expect(earlySummary()).not.toBeNull();
+  expect(earlyDetails!.getAttribute('aria-expanded')).toBe('true');
+  document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })); flushSync();
+  expect(earlySummary()).toBeNull();
+
+  // Keyboard focus on a visible attachment link inside the earlier steering prompt keeps its turn summary mounted.
+  const steerAttachment = earlySteer.querySelector<HTMLAnchorElement>('a');
+  expect(steerAttachment).not.toBeNull();
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  steerAttachment!.focus(); flushSync();
+  expect(earlySummary()).not.toBeNull();
+  steerAttachment!.blur(); flushSync();
+  expect(earlySummary()).toBeNull();
+
+  // Once the running next turn streams thinking and even if it stops or fails without a card before answering,
+  // the previous settled steered turn keeps its buttons AND the stopped/failed turn stays untucked with its Retry button.
+  thread.messages.push({ id: 'm-next-tool', threadId: thread.id, turnId: 'turn-next', role: 'assistant', state: 'streaming', createdAt: 2, parts: [{ type: 'thinking', text: 'checking' }] });
+  flushSync();
+  const settledAfterStream = () => document.querySelector<HTMLElement>('[data-mid="m-steer"]')?.closest('article')?.querySelector<HTMLElement>('[data-testid=turn-summary]');
+  const nextSummary = () => document.querySelector<HTMLElement>('[data-mid="m-next-tool"]')?.closest('article')?.querySelector<HTMLElement>('[data-testid=turn-summary]');
+  expect(settledAfterStream()).not.toBeNull();
+  expect(settledAfterStream()?.hasAttribute('data-tucked')).toBe(false);
+  expect(settledAfterStream()?.querySelector('[data-testid=message-actions]')).not.toBeNull();
+  for (const status of ['stopped', 'error'] as const) {
+    thread.turns = thread.turns.map(current => current.id === 'turn-next' ? { ...current, status, finishedAt: 105_000, error: null } : current);
+    flushSync();
+    expect(settledAfterStream()?.hasAttribute('data-tucked')).toBe(false);
+    expect(settledAfterStream()?.querySelector('[data-testid=message-actions]')).not.toBeNull();
+    expect(nextSummary()).not.toBeNull();
+    expect(nextSummary()?.hasAttribute('data-tucked')).toBe(false);
+    expect(nextSummary()?.querySelector('[data-testid=message-copy]')).toBeNull();
+    expect(nextSummary()?.querySelector('[data-testid=message-retry]')).not.toBeNull();
+  }
+  // A stopped automatic wake with no user prompt and no answer text hides both Copy and Retry.
+  thread.turns = [...thread.turns, { ...base, id: 'turn-wake-stop', startedAt: 110_000, finishedAt: 112_000, status: 'stopped', execution: { providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort, speed: thread.speed ?? null, operation: 'routine', opensRequest: true } } as Turn];
+  thread.messages.push({ id: 'm-wake-stop', threadId: thread.id, turnId: 'turn-wake-stop', role: 'system', state: 'complete', createdAt: 3, parts: [{ type: 'text', text: 'Routine check' }] });
+  flushSync();
+  const wakeStopSummary = document.querySelector<HTMLElement>('article[data-turn="turn-wake-stop"] [data-testid=turn-summary]');
+  expect(wakeStopSummary).not.toBeNull();
+  expect(wakeStopSummary?.querySelector('[data-testid=message-copy]')).toBeNull();
+  expect(wakeStopSummary?.querySelector('[data-testid=message-retry]')).toBeNull();
 });
 
 test('a row counts at the height it is drawn, fractions included, so rows measured above the reader move the view by what they weigh', async () => {
@@ -1784,4 +2104,39 @@ test('a failed turn whose card holds Retry keeps its line\'s copy and fork, with
   expect(line.querySelector('.lucide-circle-alert')).toBeNull();
   expect(line.querySelector('.spinner')).toBeNull();
   expect(line.textContent).toContain(strings.chat.failedAt.split('{')[0]!.trim());
+});
+
+test('mounting a thread with a pending messageSearchJump lands on the target message and highlights it without snapping to bottom', async ({ ready }) => {
+  window.localStorage.clear();
+  const { store: live } = await ready({ delayMs: 0, long: true });
+  await live.open('t-long');
+  const thread = live.openThread!;
+  const messages = thread.messages;
+  const target = messages[10]!;
+  const textPart = target.parts.find(part => part.type === 'text')!;
+  const word = (textPart.type === 'text' ? textPart.text : '').match(/[A-Za-z]{4,}/)?.[0] ?? 'scheduler';
+  const painted = new Map<string, { size: number }>();
+  const prevCss = (globalThis as { CSS?: unknown }).CSS;
+  const prevHighlight = (globalThis as { Highlight?: unknown }).Highlight;
+  (globalThis as { CSS?: unknown }).CSS = { ...(prevCss as object | undefined), highlights: painted };
+  (globalThis as { Highlight?: unknown }).Highlight = class FakeHighlight {
+    size: number;
+    constructor(...ranges: Range[]) { this.size = ranges.length; }
+  };
+  try {
+    live.messageSearchJump = { threadId: 't-long', messageId: target.id, query: word };
+    // t-long holds 400 messages in total; the tail page sits near the end.
+    stubLayout(400 * ESTIMATE);
+    running = mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages } });
+    await settle();
+    const box = document.querySelector<HTMLDivElement>('[data-testid="timeline"]')!;
+    expect(live.messageSearchJump).toBeNull();
+    expect(box.classList.contains('below')).toBe(true);
+    expect(box.scrollTop).toBeLessThan(box.scrollHeight - box.clientHeight - 100);
+    expect(document.querySelector(`[data-mid="${target.id}"]`)).not.toBeNull();
+    expect(painted.get('boite-message-search')?.size).toBeGreaterThan(0);
+  } finally {
+    (globalThis as { CSS?: unknown }).CSS = prevCss;
+    (globalThis as { Highlight?: unknown }).Highlight = prevHighlight;
+  }
 });

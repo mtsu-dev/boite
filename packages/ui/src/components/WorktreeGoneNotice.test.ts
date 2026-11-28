@@ -25,7 +25,7 @@ test('a done thread whose worktree was removed says both in one notice, and the 
   const { store, client } = await ready();
   const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
   const thread = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: account.id, title: 'Merged work', worktree: { branch: 'boite/merged-work' } });
-  await client.call('threads.archive', { threadId: thread.id });
+  await client.call('threads.archive', { threadId: thread.id, onlyIfIdle: true });
   client.removeWorktree(thread.id, { branch: 'boite/merged-work', branchDeleted: true, reason: 'pr-merged', pullRequest: { number: 12, url: 'https://github.com/example/repo/pull/12' }, removedAt: Date.now() - 2 * 3_600_000 });
   await store.open(thread.id);
   view = mount(ChatView, { target: document.body, props: { store } });

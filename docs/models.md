@@ -48,7 +48,8 @@ request, when the agent allows it:
 | Codex | Yes | Yes |
 | ACP agents, such as OpenCode | As the agent applies it | Next turn |
 | pi | Yes | Next turn |
-| Grok, Muse Code, Antigravity | Next turn | Next turn |
+| Antigravity | Next turn for model variants. During the turn when the agent provides a separate effort control | Next turn |
+| Grok, Muse Code | Next turn | Next turn |
 
 A change never interrupts a turn. A change of permission mode applies at once;
 see [Permissions](permissions.md).
@@ -70,8 +71,9 @@ device. A conversation with no message yet shows nothing.
 - The excerpts cover the opening and the most recent exchanges, about 20k
   tokens, plus tool results and recent images. Older details may be missing.
   Private reasoning and past approvals do not carry over.
-- When the conversation holds more than 200,000 tokens, Boite asks before it
-  switches account or agent. Compacting first changes nothing.
+- When the conversation holds more than 200,000 tokens, Boite asks before an
+  account switch that starts a fresh session. It switches directly when the
+  other account can resume its saved session.
 - An agent that cannot read images refuses a conversation that holds images.
 - The conversation, its folder and its worktree stay where they are.
 - After a change of account or agent, the line in the conversation says

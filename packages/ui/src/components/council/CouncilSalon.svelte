@@ -128,15 +128,18 @@
     const client = store.client;
     if (!client || !canSend) return;
     if (attempt?.text !== body) attempt = { id: secureId(), text: body };
+    const draft = text;
+    const post = attempt;
     sending = true;
     error = null;
+    text = '';
     try {
-      await client.call('council.post', { councilId, text: body, id: attempt.id });
+      await client.call('council.post', { councilId, text: post.text, id: post.id });
       attempt = null;
-      text = '';
       pinned = true;
       void reader?.refresh();
     } catch (failure) {
+      text = draft;
       error = errorText(failure);
     } finally {
       sending = false;
@@ -308,6 +311,7 @@
         <div class="composer" data-testid="council-composer">
           <ComposerMenu open={menuOpen} items={matches} {selected} kind="mention" label={labels.mention} empty="" onpick={pick} onhover={(index) => (selected = index)} />
           <textarea
+            readonly={sending}
             bind:this={field}
             bind:value={text}
             rows="1"
@@ -321,7 +325,7 @@
             onkeydown={keydown}
             data-testid="council-input"
           ></textarea>
-          <button type="button" class="ghost small icon" title={labels.mention} aria-label={labels.mention} onmousedown={(event) => event.preventDefault()} onclick={startMention} data-testid="council-mention"><AtSign size={14} /></button>
+          <button type="button" class="ghost small icon" title={labels.mention} aria-label={labels.mention} disabled={sending} onmousedown={(event) => event.preventDefault()} onclick={startMention} data-testid="council-mention"><AtSign size={14} /></button>
           <button type="button" class="small send" disabled={!canSend} onmousedown={(event) => event.preventDefault()} onclick={() => void send()} data-testid="council-send">
             {#if sending}<LoaderCircle class="spinner" size={14} /><span class="ui-label">{labels.sending}</span>{:else}{labels.send}{/if}
           </button>

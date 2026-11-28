@@ -4,6 +4,8 @@ Secret Drop is a temporary tunnel from a masked card to one file operation or
 command. The core holds the value in process memory only. It never saves it in
 DPAPI, Keychain, Secret Service, the journal or logs, and never sends the value
 to the agent as a result. There is no project key store or keep option.
+Persistent credentials configured by the owner for managed MCP servers are
+stored separately; see [MCP servers](mcp.md).
 
 The implementation is `packages/core/src/secrets/`, `secret-cli.ts`, and the UI
 component `SecretCard.svelte`.
@@ -19,7 +21,7 @@ component `SecretCard.svelte`.
 boite secret ask <NAME> --why <reason> [--placeholder <example>] [--timeout <minutes>]
 boite secret write <ref> --env-file <path> --key <VAR> [--allow-unignored]
 boite secret run <ref> --as <VAR> -- <cmd> [args ...]
-boite secret pipe <ref> -- <cmd> [args ...]
+boite secret pipe <ref> [--check <arg>] -- <cmd> [args ...]
 ```
 
 Names are uppercase letters, digits and `_`, starting with a letter, at most
@@ -52,7 +54,15 @@ metadata never enter that index.
 ## Destinations
 
 - `run` gives the value to one command as the environment variable `VAR`.
-- `pipe` gives it to one command on standard input.
+- `pipe` gives it to one command on standard input. `--check` first runs the
+  same executable with the given argument and empty standard input, in the
+  same directory and environment. A failed check leaves the ref available
+  until its original expiry. On BoiteOS a pipe from a sandboxed thread runs
+  the check and the recipient inside that thread's sandbox. The core selects
+  the execution route from the thread's checkout. BoiteOS refuses an unknown
+  checkout or a recipient directory on a different route. A host route
+  requires an explicitly configured host project. The RPC accepts an array
+  of check arguments.
 - `write` sets `VAR=<value>` in an env file, preserving other lines and line
   endings. Every line that sets `VAR` gets the value, since loaders read the
   last one, each keeping its indent and `export`. The destination must be inside the conversation's folder, untracked
@@ -79,6 +89,12 @@ public address's name. A group relay must also attest to its client's encrypted 
 Agents can ask for and use refs only in their own conversation. Owners and
 paired devices can read pending metadata and answer cards, with the encrypted
 link requirement enforced by the real core.
+
+On a BoiteOS host, a pipe recipient runs through the checkout's registered
+route. If the `os` launcher or `osd` rejects the protocol as too new before
+launch, Boite names the component to update. Until the original expiry, the
+same ref can retry the original action, command, arguments and resolved
+working directory. This also applies to a `--check` refusal.
 
 ## Migration from the project key store
 

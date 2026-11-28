@@ -54,6 +54,9 @@
  * answers the options, and `initialize` advertises `sessionCapabilities.delete`
  * (each `session/delete` is logged as `delete:<id>`).
  *
+ * `ACP_FAKE_REPLAY=<file>` answers every prompt with a real agent's recorded
+ * turn (`replay.ts`), sent to the live session.
+ *
  * `usage_update.cost` is the session's running total, as the protocol defines
  * it: each `[usage]` adds 0.0042 to it. The total outlives the process, the way
  * OpenCode sums it from the session's stored messages: it is kept in
@@ -62,11 +65,13 @@
  */
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { instructionsOf } from './history.ts';
+import { acpReplay, replayPause } from './replay.ts';
 import { Readable, Writable } from 'node:stream';
 import { agent, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk/unstable';
 import type {
   AvailableCommand,
   ContentBlock,
+  PromptResponse,
   SessionConfigOption,
   SessionMode,
   SessionModeState,
@@ -133,6 +138,7 @@ const FAKE_COMMANDS: AvailableCommand[] = [
 
 /** Mistral Vibe's spelling of the effort option and of its modes. */
 const vibe = process.env['ACP_FAKE_VIBE'] === '1';
+const replay = process.env['ACP_FAKE_REPLAY'] ? acpReplay(process.env['ACP_FAKE_REPLAY']) : null;
 
 const configOptions: SessionConfigOption[] = [
   {
@@ -306,12 +312,15 @@ const app = agent({ name: 'acp-fake' })
         loadSession: !noLoad,
         ...(noImages ? {} : { promptCapabilities: { image: true } }),
         ...(opencode2 ? { sessionCapabilities: { delete: {} } } : {}),
+        ...(process.env['ACP_FAKE_HTTP_MCP'] === '1' ? { mcpCapabilities: { http: true } } : {}),
       },
       agentInfo: { name: 'acp-fake', version: '1' },
     };
   })
-  .onRequest('session/new', async ({ client }) => {
-    const sessionId = `acp-fake-${crypto.randomUUID().slice(0, 8)}`;
+  .onRequest('session/new', async ({ client, params }) => {
+    if (process.env['ACP_FAKE_HTTP_MCP'] === '1') log(`mcp:new ${JSON.stringify(params.mcpServers)}`);
+    // A replay keeps the recorded session, so the updates it sends need no rewrite.
+    const sessionId = replay?.sessionId ?? `acp-fake-${crypto.randomUUID().slice(0, 8)}`;
     known.add(sessionId);
     log(`new:${sessionId}`);
     // Before any prompt: the between-turns path a driver must not drop.
@@ -322,6 +331,7 @@ const app = agent({ name: 'acp-fake' })
     return { sessionId, configOptions, modes: modeState() };
   })
   .onRequest('session/load', ({ params }) => {
+    if (process.env['ACP_FAKE_HTTP_MCP'] === '1') log(`mcp:load ${JSON.stringify(params.mcpServers)}`);
     if (process.env['ACP_FAKE_FORGET'] === '1') {
       log(`load-refused:${params.sessionId}`);
       // A plain throw, like OpenCode's: the SDK answers it with -32603.
@@ -415,6 +425,10 @@ const app = agent({ name: 'acp-fake' })
       if (block.type === 'image') log(`image ${block.mimeType} ${block.data.length}`);
     }
     const send = (update: SessionUpdate): Promise<void> => client.notify('session/update', { sessionId, update });
+    if (replay) {
+      for (const [index, update] of replay.updates.entries()) { await replayPause(index); await send(update as SessionUpdate); }
+      return replay.result as PromptResponse;
+    }
     if (instructions.includes('[tasks]')) await send({ sessionUpdate: 'plan', entries: [{ content: 'Inspect source', priority: 'medium', status: 'completed' }, { content: 'Run checks', priority: 'medium', status: 'in_progress' }] });
     const say = (chunk: string): Promise<void> =>
       send({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: chunk } });

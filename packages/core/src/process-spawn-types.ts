@@ -26,8 +26,10 @@ export interface SpawnOptions {
   agentRoot?: boolean;
   cwd?: string | undefined;
   env?: Record<string, string | undefined> | undefined;
+  /** In `spawn`, use the supplied environment as-is, including deliberate omissions. */
+  envIsComplete?: true;
   /**
-   * `spawn` only: this many more pipes, the child's descriptors 3, 4 and on,
+   * `spawn` or `spawnPiped`: this many more pipes, the child's descriptors 3, 4 and on,
    * whose ends this process holds in `fds`. The agent browser speaks the
    * DevTools protocol over two of them instead of a port anyone could reach.
    */
@@ -109,6 +111,8 @@ export interface ProcRegistryOptions {
   /** The load tick while something works, and while everything is idle. Tests shorten them. */
   loadIntervalMs?: number;
   idleLoadIntervalMs?: number;
+  /** False takes no load samples: the transfer bench, where a sample on a timer would cut a stream at a moment the runner's speed picks. */
+  loadSampling?: boolean;
   /** Persists what the platform and the guards say, which the live log only names. */
   diagnostic?: (message: string, context: { event: string; threadId?: ThreadId; data?: Record<string, string | number | null> }) => void;
 }

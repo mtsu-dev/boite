@@ -3,12 +3,14 @@
   import { untrack, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import type { Store } from '../lib/store.svelte';
-  import { clampSidebar, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN } from '../lib/prefs';
+  import { clampSidebar, SIDEBAR_DEFAULT, SIDEBAR_MIN, sidebarMax, visibleSidebarWidth } from '../lib/prefs';
   import { strings } from '../lib/strings';
   import { pinnedQuotas } from '../lib/pinned-quotas.svelte';
   import Deferred from './Deferred.svelte';
   import { parts } from '../lib/deferred-parts';
+  import { mochiLayout } from '../lib/mochi-layout.svelte';
   import ResizeHandle from './ResizeHandle.svelte';
+  import SidebarFoot from './SidebarFoot.svelte';
 
   /**
    * The column right of the app rail, for the thread list and the Bots list
@@ -48,6 +50,10 @@
   let rail = $state<HTMLElement | undefined>(undefined);
   const phone = new MediaQuery('(max-width: 720px)');
   let dockVisible = $derived(phone.current ? kind === 'sidebar' && store.sidebarOpen : !store.sidebarCollapsed);
+  const railPage = $derived(kind === 'agents-rail' ? 'agents' : 'chat');
+  const agentsColumn = $derived(kind === 'agents-rail' && !drawer);
+  const maxWidth = $derived(sidebarMax(railPage, drawer));
+  const width = $derived(visibleSidebarWidth({ sidebarWidth: store.sidebarWidth, agentsSidebarWidth: store.agentsSidebarWidth, page: railPage }, drawer));
   let folded: boolean | undefined;
   /**
    * Whether this list was folded since it was drawn. Only then does its
@@ -91,26 +97,43 @@
   $effect(() => unmark);
 
   let resizeFrom = 0;
-  /** Rows scrolled under the head: it takes a hairline and the fade deepens, so no sliced row shows below it. */
+  let resizeAgentsBefore: number | null = null;
+  /** Rows scrolled under the head: the fade deepens, and the agents column shows its separator. */
   let scrolled = $state(false);
 
   /** Rows below the foot: the list melts into its edge over a deep fade, and the limits line under it takes a
    *  hairline, the head's mirror, so it stands on its own ground. At the list's end both go: the last row reads
    *  whole, right over the line, with no fade and no room left for one. */
+  let endSentinel = $state<HTMLSpanElement | undefined>(undefined);
   let more = $state(false);
-  const measureMore = () => { const box = scroller; more = !!box && box.scrollTop + box.clientHeight < box.scrollHeight - 1; };
   $effect(() => {
     const box = scroller;
-    if (!box) return;
-    // The list also grows and shrinks without a scroll: rows arrive, a card folds, the window is resized.
+    const sentinel = endSentinel;
+    if (!box || !sentinel) return;
+    if (typeof IntersectionObserver !== 'undefined') {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const entry = entries.at(-1);
+          if (!entry) return;
+          const rootBottom = entry.rootBounds?.bottom ?? 0;
+          const rootHeight = entry.rootBounds?.height ?? 0;
+          more = rootHeight > 0 && !entry.isIntersecting && entry.boundingClientRect.top > rootBottom - 1;
+        },
+        { root: box, rootMargin: '0px 0px 1px 0px', threshold: 0 }
+      );
+      observer.observe(sentinel);
+      return () => observer.disconnect();
+    }
     let frame = 0;
-    const later = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measureMore); };
+    const measure = () => { frame = 0; more = box.scrollTop + box.clientHeight < box.scrollHeight - 1; };
+    const later = () => { if (!frame) frame = requestAnimationFrame(measure); };
     const resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(later);
     const changed = new MutationObserver(later);
     resized?.observe(box);
     changed.observe(box, { childList: true, subtree: true });
-    measureMore();
-    return () => { cancelAnimationFrame(frame); resized?.disconnect(); changed.disconnect(); };
+    box.addEventListener('scroll', later, { passive: true });
+    measure();
+    return () => { cancelAnimationFrame(frame); resized?.disconnect(); changed.disconnect(); box.removeEventListener('scroll', later); };
   });
 
   /**
@@ -118,7 +141,7 @@
    * drag the window as the bar's do. The rows and the resize handle keep their own presses.
    */
   function dragTop(event: MouseEvent) {
-    if (event.target instanceof Element && event.target.closest('.scroll, [role=separator], [role=radio], [role=radiogroup]')) return;
+    if (event.target instanceof Element && event.target.closest('.scroll, .sidebar-foot, [role=separator], [role=radio], [role=radiogroup]')) return;
     dragWindow(event);
   }
 </script>
@@ -134,7 +157,7 @@
   class:more
   aria-hidden={absent ? 'true' : undefined}
   class:was-folded={wasFolded}
-  style:--sidebar-width={`${store.sidebarWidth}px`}
+  style:--sidebar-width={`${width}px`}
   aria-label={label}
   data-testid={testid}
   data-quota-dock-target=""
@@ -142,8 +165,9 @@
 >
   <div class="views" class:scrolled>{@render head()}</div>
   <div class="scroll" class:scrolled data-project-list={kind === 'sidebar' ? '' : undefined} bind:this={scroller}
-    onscroll={() => { scrolled = (scroller?.scrollTop ?? 0) > 0; measureMore(); onscroll?.(); }}>
+    onscroll={() => { scrolled = (scroller?.scrollTop ?? 0) > 0; onscroll?.(); }}>
     {@render children()}
+    <span class="scroll-end" aria-hidden="true" bind:this={endSentinel}></span>
   </div>
   {#if (store.page === 'chat' || store.page === 'agents') && dockVisible && pinnedQuotas.current.pinned && pinnedQuotas.wantsDock(store)}
     <Deferred part={parts.PinnedQuota} quiet>{#snippet children(PinnedQuota)}<PinnedQuota {store} dock />{/snippet}</Deferred>
@@ -151,6 +175,8 @@
   <!-- No app rail below 720 pixels: the drawer's foot keeps the update button, and its card opens as a sheet. -->
   {#if drawer && phone.current}
     <div class="foot"><Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice />{/snippet}</Deferred></div>
+  {:else if !phone.current && !mochiLayout.on && !absent && !store.sidebarCollapsed}
+    <SidebarFoot {store} />
   {/if}
   <div class="resize">
     <ResizeHandle
@@ -158,14 +184,34 @@
       edge="right"
       label={strings.sidebar.resize}
       testid={kind === 'sidebar' ? 'sidebar-resize' : 'agents-resize'}
-      value={store.sidebarWidth}
+      value={width}
       min={SIDEBAR_MIN}
-      max={SIDEBAR_MAX}
-      onstart={() => { resizeFrom = store.sidebarWidth; }}
-      onmove={(delta) => (store.sidebarWidth = clampSidebar(resizeFrom + delta))}
-      onend={() => store.setSidebarWidth(store.sidebarWidth)}
-      onstep={(delta) => store.setSidebarWidth(store.sidebarWidth + delta)}
-      onreset={() => store.setSidebarWidth(SIDEBAR_DEFAULT)}
+      max={maxWidth}
+      onstart={() => { resizeFrom = width; resizeAgentsBefore = store.agentsSidebarWidth; }}
+      onmove={(delta) => {
+        const next = clampSidebar(resizeFrom + delta, maxWidth);
+        if (agentsColumn) store.agentsSidebarWidth = next === resizeFrom && resizeAgentsBefore === null ? null : next;
+        else store.sidebarWidth = next;
+      }}
+      onend={() => {
+        if (agentsColumn) {
+          if (store.agentsSidebarWidth !== resizeAgentsBefore) store.setAgentsSidebarWidth(store.agentsSidebarWidth);
+        } else {
+          store.setSidebarWidth(store.sidebarWidth);
+        }
+      }}
+      onstep={(delta) => {
+        const next = clampSidebar(width + delta, maxWidth);
+        if (agentsColumn) {
+          if (next !== width) store.setAgentsSidebarWidth(next);
+        } else {
+          store.setSidebarWidth(next);
+        }
+      }}
+      onreset={() => {
+        if (agentsColumn) store.setAgentsSidebarWidth(store.sidebarWidth >= maxWidth ? null : clampSidebar(SIDEBAR_DEFAULT, maxWidth));
+        else store.setSidebarWidth(SIDEBAR_DEFAULT);
+      }}
     />
   </div>
 </aside>
@@ -221,6 +267,7 @@
   .scroll[data-project-list] { scroll-snap-type: y proximity; }
   :global(:is(html.thread-dragging, html.project-dragging)) .scroll { scroll-snap-type: none; }
   .scroll > :global(*) { flex-shrink: 0; }
+  .scroll-end { display: block; height: 1px; margin-top: -1px; pointer-events: none; }
 
   /* The drawer's foot: the update button bottom left, at the composer's height. Empty with nothing to update. */
   .foot { display: flex; align-items: flex-end; gap: 4px; margin: 0 10px; padding: 8px 0 10px; }
@@ -236,7 +283,7 @@
     /* Up to the window's top (App.svelte pulls it over the bar's band), its
        head in that band, level with the main column's title. */
     .rail { padding-top: 6px; }
-    .views.scrolled { border-bottom-color: var(--color-border); }
+    .agents-rail .views.scrolled { border-bottom-color: var(--color-border); }
     .rail {
       --slide-room: calc(var(--sidebar-width) + var(--frame-gap));
       /* One motion with the panel that comes in on the other side: the same duration and curve for the slide and the fade. */

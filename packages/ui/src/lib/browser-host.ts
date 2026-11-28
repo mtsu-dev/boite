@@ -41,7 +41,7 @@ export interface HostClient {
 
 /** The events the core listens to on a page: `packages/core/src/browser/page-events.ts`, the recorder and the waits. */
 export const HOST_PAGE_EVENTS = [
-  'Page.frameNavigated', 'Page.javascriptDialogOpening', 'Page.loadEventFired', 'Page.domContentEventFired', 'Page.screencastFrame',
+  'Page.frameNavigated', 'Page.lifecycleEvent', 'Page.javascriptDialogOpening', 'Page.loadEventFired', 'Page.domContentEventFired', 'Page.screencastFrame',
   'Runtime.consoleAPICalled', 'Runtime.exceptionThrown', 'Runtime.executionContextCreated', 'Runtime.executionContextsCleared',
   'Network.requestWillBeSent', 'Network.responseReceived', 'Network.loadingFinished', 'Network.loadingFailed', 'Log.entryAdded',
 ] as const;
@@ -63,23 +63,29 @@ const OPEN_CALLS_MAX = 1000;
  */
 export function compactPageEvent(method: string, params: Record<string, unknown>, calls: Set<unknown>): Record<string, unknown> | null {
   const call = CALL_TYPES.has(String(params.type));
+  const script = params.type === 'Script';
+  const document = { frameId: params.frameId, loaderId: params.loaderId, type: params.type };
+  if (method === 'Page.lifecycleEvent' && params.name !== 'load' && params.name !== 'DOMContentLoaded') return null;
   if (method === 'Network.requestWillBeSent') {
     const request = params.request as { url?: unknown; method?: unknown; headers?: unknown; hasPostData?: unknown; postData?: unknown } | undefined;
-    if (!call) return { requestId: params.requestId, request: { url: request?.url } };
+    if (!call && !script) return { requestId: params.requestId, request: { url: request?.url } };
     calls.add(params.requestId);
     if (calls.size > OPEN_CALLS_MAX) calls.delete(calls.values().next().value);
+    if (script) return { requestId: params.requestId, ...document, request: { url: request?.url } };
     const redirect = params.redirectResponse as { status?: unknown; headers?: unknown; mimeType?: unknown } | undefined;
     return {
       requestId: params.requestId, type: params.type, documentURL: params.documentURL,
+      // A document's frame: the core turns the runtime off as soon as the top frame asks for a public page (`followHostedPage`).
+      ...(params.type === 'Document' ? document : {}),
       request: { url: request?.url, method: request?.method, headers: request?.headers, hasPostData: request?.hasPostData === true || request?.postData !== undefined },
       ...(redirect ? { redirectResponse: { status: redirect.status, headers: redirect.headers, mimeType: redirect.mimeType } } : {}),
     };
   }
   if (method === 'Network.responseReceived') {
     const response = params.response as { status?: unknown; statusText?: unknown; url?: unknown; mimeType?: unknown; headers?: unknown } | undefined;
-    if (call) return { requestId: params.requestId, type: params.type, response: { status: response?.status, statusText: response?.statusText, url: response?.url, mimeType: response?.mimeType, headers: response?.headers } };
+    if (call) return { requestId: params.requestId, ...document, response: { status: response?.status, statusText: response?.statusText, url: response?.url, mimeType: response?.mimeType, headers: response?.headers } };
     if (typeof response?.status !== 'number' || response.status < 400) return null;
-    return { requestId: params.requestId, response: { status: response.status, statusText: response.statusText, url: response.url } };
+    return { requestId: params.requestId, ...(script ? document : {}), response: { status: response.status, statusText: response.statusText, url: response.url } };
   }
   if (method === 'Network.loadingFinished') return calls.delete(params.requestId) ? { requestId: params.requestId, encodedDataLength: params.encodedDataLength } : null;
   if (method === 'Network.loadingFailed') calls.delete(params.requestId);

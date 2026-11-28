@@ -1,9 +1,10 @@
-import { USAGE_THREAD_TURNS_MAX } from '@boite/contracts';
+import { deviceBound, USAGE_THREAD_TURNS_MAX } from '@boite/contracts';
 import type { AgentTotals, ProjectId, ProviderId, ThreadId, Usage, UsageHistory, UsageHistoryProject, UsageHistoryRow, UsageHistoryThread, UsagePrice, UsageThreadDetail, UsageThreadTurn } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams, notFound } from './errors.ts';
 import { turnRoute, turnSums, usageGroups, type UsageGroup, type UsageSumRow, type UsageSums, type UsageThreadRow } from './journal/usage-sums.ts';
 import { addSums } from './journal/usage-slots.ts';
+import { VISIBLE_THREAD_ROWS } from './journal/thread-rows.ts';
 import { priceUsage, pricingStatus } from './pricing/index.ts';
 
 /** A year of days plus the closing edge. */
@@ -138,11 +139,25 @@ export function costOrRates(model: string | null, usage: Usage): number | null {
   return totalTokens(usage) === 0 ? null : priceUsage(model, usage)?.cost ?? null;
 }
 
-function usageOf(core: Core, threadId?: ThreadId): { byThread: Record<ThreadId, Usage>; total: Usage } {
+function visibleUsageThreads(core: Core, ids: Iterable<ThreadId | null>): Set<ThreadId> {
+  const rows = core.journal.db.query(`SELECT id ${VISIBLE_THREAD_ROWS} AND id IN (SELECT value FROM json_each(?))`)
+    .all(JSON.stringify([...new Set(ids)])) as { id: ThreadId }[];
+  return new Set(rows.map(row => row.id));
+}
+
+function missingUsageThread(threadId: ThreadId) {
+  return notFound(`threadId: no thread ${threadId}`, { field: 'threadId' });
+}
+
+function usageOf(core: Core, threadId: ThreadId | undefined, visibleOnly: boolean): { byThread: Record<ThreadId, Usage>; total: Usage } {
+  if (visibleOnly && threadId !== undefined && !visibleUsageThreads(core, [threadId]).has(threadId)) throw missingUsageThread(threadId);
   const groups = threadId === undefined
     ? usageGroups(core.journal.db, { key: 't.thread_id', where: '1' })
     : usageGroups(core.journal.db, { key: 't.thread_id', where: 't.thread_id = ?' }, threadId);
-  return { byThread: Object.fromEntries(sumGroups(core, groups)) as Record<ThreadId, Usage>, total: usageTotal(core, groups) };
+  const sums = sumGroups(core, groups);
+  const visible = visibleOnly && threadId === undefined ? visibleUsageThreads(core, sums.keys()) : null;
+  const byThread = Object.fromEntries(visible === null ? sums : [...sums].filter(([id]) => id !== null && visible.has(id)));
+  return { byThread, total: usageTotal(core, groups) };
 }
 
 function checkEdges(edges: unknown): number[] {
@@ -278,9 +293,11 @@ function projectTotals(core: Core, sums: readonly UsageSumRow[]): UsageHistoryPr
   return [...totals.values()];
 }
 
-export function usageHistory(core: Core, edges: number[], providerId?: ProviderId, projectId?: ProjectId | null): UsageHistory {
+export function usageHistory(core: Core, edges: number[], providerId?: ProviderId, projectId?: ProjectId | null, visibleOnly = false): UsageHistory {
   const sums = core.journal.usageByBucket(edges);
-  const kept = projectId === undefined ? sums : sums.filter((row) => row.project_id === projectId);
+  const projects = projectTotals(core, sums).filter(project => !visibleOnly || !project.removed);
+  const hiddenProject = visibleOnly && typeof projectId === 'string' && !core.journal.getProject(projectId);
+  const kept = hiddenProject ? [] : projectId === undefined ? sums : sums.filter((row) => row.project_id === projectId);
   const grouped = regroup(kept, (row) => JSON.stringify([row.bucket, row.provider_id, row.model, row.legacy])).sort(compareRows);
   // The turns an older core recorded come as their own group, which the row counts as estimated.
   const rows = new Map<string, UsageHistoryRow>();
@@ -313,8 +330,10 @@ export function usageHistory(core: Core, edges: number[], providerId?: ProviderI
     entry.price = priceUsage(entry.model, entry.usage)?.price ?? entry.price ?? cost.price;
   }
 
-  const threadRows = core.journal.usageByThread(edges[0]!, edges[edges.length - 1]!);
-  const all = [...threadTotals(core, threadRows, providerId).byThread.values()].filter((thread) => projectId === undefined || thread.projectId === projectId);
+  const threadRows = hiddenProject ? [] : core.journal.usageByThread(edges[0]!, edges[edges.length - 1]!);
+  const visible = visibleOnly ? visibleUsageThreads(core, threadRows.map(row => row.thread_id)) : null;
+  const eligible = visible === null ? threadRows : threadRows.filter(row => visible.has(row.thread_id));
+  const all = [...threadTotals(core, eligible, providerId).byThread.values()].filter((thread) => projectId === undefined || thread.projectId === projectId);
   const rankings: ((thread: UsageHistoryThread) => number)[] = [
     (thread) => totalTokens(thread.usage),
     (thread) => thread.usage.costUsdEquivalent ?? 0,
@@ -325,7 +344,7 @@ export function usageHistory(core: Core, edges: number[], providerId?: ProviderI
     const order = all.filter((thread) => measure(thread) > 0).sort((a, b) => measure(b) - measure(a));
     for (const thread of order.slice(0, TOP_THREADS)) ranked.add(thread);
   }
-  return { edges, rows: [...rows.values()], threads: [...ranked], projects: projectTotals(core, sums), pricing: pricingStatus() };
+  return { edges, rows: [...rows.values()], threads: [...ranked], projects, pricing: pricingStatus() };
 }
 
 /** A group of one turn: its sums and route, priced as a history row. */
@@ -337,11 +356,12 @@ function priceTurn(core: Core, row: { usage: string | null; execution: string | 
 }
 
 /** One thread's finished turns over the range, each priced, and its subagents' totals (`usage.thread`). */
-export function usageThread(core: Core, threadId: ThreadId, edges: number[], providerId?: ProviderId): UsageThreadDetail {
+export function usageThread(core: Core, threadId: ThreadId, edges: number[], providerId?: ProviderId, visibleOnly = false): UsageThreadDetail {
   const db = core.journal.db;
-  const thread = db.query('SELECT id, title, project_id, provider_id, model, archived FROM threads WHERE id = ?').get(threadId) as
+  const fromThreads = visibleOnly ? VISIBLE_THREAD_ROWS : 'FROM threads WHERE 1';
+  const thread = db.query(`SELECT id, title, project_id, provider_id, model, archived ${fromThreads} AND id = ?`).get(threadId) as
     { id: string; title: string; project_id: string | null; provider_id: string; model: string | null; archived: number } | null;
-  if (thread === null) throw notFound(`threadId: no thread ${threadId}`, { field: 'threadId' });
+  if (thread === null) throw missingUsageThread(threadId);
   const from = edges[0]!;
   const to = edges[edges.length - 1]!;
   const newest = db.query(`SELECT id, finished_at, usage, execution FROM turns WHERE thread_id = ?1 AND finished_at >= ?2 AND finished_at < ?3
@@ -357,7 +377,7 @@ export function usageThread(core: Core, threadId: ThreadId, edges: number[], pro
   const own = byThread.get(threadId) ?? {
     threadId, title: thread.title, projectId: thread.project_id, providerId: providerId ?? thread.provider_id, archived: thread.archived !== 0, turns: 0, usage: emptyUsage(),
   };
-  const childIds = (db.query('SELECT id FROM threads WHERE parent_thread_id = ?').all(threadId) as { id: string }[]).map((row) => row.id);
+  const childIds = (db.query(`SELECT id ${fromThreads} AND parent_thread_id = ?`).all(threadId) as { id: string }[]).map((row) => row.id);
   const children = childIds.length === 0 ? [] : [...threadTotals(core, core.journal.usageByThread(from, to, childIds), providerId).byThread.values()]
     .sort((a, b) => (b.usage.costUsdEquivalent ?? 0) - (a.usage.costUsdEquivalent ?? 0) || totalTokens(b.usage) - totalTokens(a.usage) || b.turns - a.turns);
   return { thread: own, reported, priced, turns, truncated, children };
@@ -376,14 +396,14 @@ function checkProject(projectId: unknown): ProjectId | null | undefined {
 }
 
 export function registerUsageMethods(core: Core): void {
-  core.router.register('usage.get', (params) => usageOf(core, params.threadId));
-  core.router.register('usage.history', (params) => {
+  core.router.register('usage.get', (params, { connection }) => usageOf(core, params.threadId, deviceBound(connection.identity.principal)));
+  core.router.register('usage.history', (params, { connection }) => {
     const edges = checkEdges(params?.edges);
-    return usageHistory(core, edges, checkProvider(params.providerId), checkProject(params.projectId));
+    return usageHistory(core, edges, checkProvider(params.providerId), checkProject(params.projectId), deviceBound(connection.identity.principal));
   });
-  core.router.register('usage.thread', (params) => {
+  core.router.register('usage.thread', (params, { connection }) => {
     const edges = checkEdges(params?.edges);
     if (typeof params.threadId !== 'string' || !params.threadId.trim()) throw invalidParams('threadId: expected a thread id', { field: 'threadId' });
-    return usageThread(core, params.threadId, edges, checkProvider(params.providerId));
+    return usageThread(core, params.threadId, edges, checkProvider(params.providerId), deviceBound(connection.identity.principal));
   });
 }

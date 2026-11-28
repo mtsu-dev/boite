@@ -18,6 +18,10 @@ test('a recycled parent PID and unreadable creation times cannot invent descenda
   const createdAt = (pid: number) => { reads.push(pid); return times.get(pid) ?? null; };
   expect(selectProcessTree(all, 200, createdAt).map(entry => entry.ProcessId)).toEqual([400, 200, 300]);
   expect(new Set(reads).size).toBe(reads.length);
+  // The live fixture launcher is known to be outside the tree, even when the
+  // snapshot's stale parent PID and the creation times allow a link back to it.
+  times.set(100, tick + 2n);
+  expect(selectProcessTree(all, 200, createdAt, 100).map(entry => entry.ProcessId)).toEqual([400, 200, 300]);
   // An unreadable root still appears, but cannot establish any child links.
   times.set(200, null);
   expect(selectProcessTree(all, 200, pid => times.get(pid) ?? null)).toEqual([all[2]!]);

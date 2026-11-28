@@ -1,23 +1,24 @@
 import {createHash} from 'node:crypto';
 import {homedir} from 'node:os';
 import {join, isAbsolute, resolve} from 'node:path';
-import {existsSync} from 'node:fs';
+import {existsSync, realpathSync} from 'node:fs';
 import type {Core} from '../core.ts';
 import type {ProtectedExecutionInput} from '../execution-policy.ts';
 import type {ProtectedDriverExecution} from '../drivers/protected.ts';
 import type {AccessBinding} from './access-scopes.ts';
-import {policyFile} from './file-policy.ts';
+import {inside, policyFile} from './file-policy.ts';
 import {sharedExecutionProtection, sharedPermissionSupport} from './compute-policy.ts';
 import type {PermissionMode} from '@boite/contracts';
 import {refused} from '../errors.ts';
 import {protectedTools} from '../protected-tools.ts';
 import {computeGit, computeChangedFiles} from './compute-git.ts';
+import {abortable} from '../abortable.ts';
 
 interface Installed {key: string; execution: ProtectedDriverExecution; changed: Map<string, string | null>}
 /** One core-owned immutable capability for jobs, board goals and external correspondence. */
 export class SharedNativeExecution {
   readonly #installed = new Map<string, Installed>();
-  readonly #pending = new Map<string, Promise<void>>();
+  readonly #pending = new Map<string, {controller: AbortController; work: Promise<void>}>();
   readonly #core: Core;
   readonly #binding: (id: string) => AccessBinding | null;
 
@@ -42,11 +43,23 @@ export class SharedNativeExecution {
     execution.check(); return execution;
   }
   prepare(id: string): Promise<void> | undefined {
-    const existing = this.#pending.get(id); if (existing) return existing;
-    if (!this.#installed.has(id) && !this.#core.procs.protection.policy(id)
+    const existing = this.#pending.get(id);
+    if (existing && !existing.controller.signal.aborted) return existing.work;
+    if (!existing && !this.#installed.has(id) && !this.#core.procs.protection.policy(id)
       && (!this.#binding(id) || this.#core.providers.require(this.#core.threads.require(id).providerId).protocol === 'echo')) return;
-    const work = this.open(id).finally(() => this.#pending.delete(id));
-    this.#pending.set(id, work); return work;
+    const controller = new AbortController();
+    const open = () => this.open(id, controller.signal);
+    // A revoked preparation may still be closing its OS lease. Serialize
+    // that cleanup with the replacement for this thread.
+    const work = (existing ? existing.work.then(open, open) : open()).finally(() => {
+      if (this.#pending.get(id)?.controller === controller) this.#pending.delete(id);
+    });
+    this.#pending.set(id, {controller, work});
+    return work;
+  }
+  revoke(id: string): Promise<void> {
+    this.#pending.get(id)?.controller.abort(new Error('execution.scope: protection preparation was revoked'));
+    return this.#core.procs.protection.revoke(id);
   }
   #input(id: string): ProtectedExecutionInput | null {
     const binding = this.#binding(id); if (!binding) return null;
@@ -85,13 +98,19 @@ export class SharedNativeExecution {
         ...['OPENCODE_CONFIG', 'OPENCODE_CONFIG_DIR'].flatMap(name => environment[name] ? [selectedPath(name, '')] : []),
       ] : protocol === 'muse' ? ['XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME'].map(name =>
         join(selectedPath(name, join(home, name === 'XDG_CONFIG_HOME' ? '.config' : name === 'XDG_DATA_HOME' ? '.local/share' : '.local/state')), 'muse')) : [];
+    const data = realpathSync(this.#core.dataDir);
+    // Worktrees kept under the data directory have their own private root.
+    // A checkout containing the directory must omit all of its contents.
+    const coreCredentials = binding.checkoutPath !== data && inside(data, binding.checkoutPath)
+      ? [join(data, 'core.json'), join(data, 'core.lock')] : [data];
     return {scope: scopes[0]!, additionalScopes: scopes.slice(1), checkout: binding.checkoutPath,
       route: {providerId: thread.providerId, accountId: thread.accountId, permissionMode: thread.permissionMode, ...(binding.compute ? {profileId: binding.compute.job.profileId} : {})},
-      credentialPaths: [...(account.isolationDir ? [account.isolationDir] : []), ...['.claude', '.codex', '.ssh', '.aws', '.config'].map(p => join(homedir(), p)), ...credentialFiles, ...providerCredentials],
+      credentialPaths: [...coreCredentials, ...(account.isolationDir ? [account.isolationDir] : []), ...['.claude', '.codex', '.ssh', '.aws', '.config'].map(p => join(homedir(), p)), ...credentialFiles, ...providerCredentials],
       executables: [process.execPath], readOverrides, expiresAt: Number.MAX_SAFE_INTEGER};
   }
   private key(input: ProtectedExecutionInput, id: string): string { return createHash('sha256').update(JSON.stringify([input, this.#core.threads.require(id).contextMode?.tools ?? null])).digest('hex'); }
-  private async open(id: string): Promise<void> {
+  private async open(id: string, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
     const input = this.#input(id), old = this.#installed.get(id);
     if (!input) {
       if (old) {
@@ -107,10 +126,12 @@ export class SharedNativeExecution {
     }
     if (old) {await this.#core.procs.protection.release(id); this.#installed.delete(id);}
     if (!old && this.#core.procs.protection.policy(id)) await this.#core.procs.protection.release(id);
+    signal.throwIfAborted();
     if (!old && this.#core.procs.liveCount(id)) await this.#core.procs.stopAndWait(id);
+    signal.throwIfAborted();
     // Host worktree Git can exit before its untraced Windows console leaves
     // the job. Drain it before the capability's idle-process admission gate.
-    await this.#core.procs.waitForExit(id, undefined, {native: true});
+    await abortable(this.#core.procs.waitForExit(id, undefined, {native: true}), signal);
     const changed = old?.changed ?? new Map<string, string | null>();
     const check = () => {
       this.#core.sharedCompute.assertTurn(id);
@@ -119,7 +140,9 @@ export class SharedNativeExecution {
     };
     // A desktop opened before the protection runs its apps outside it: it goes, like the thread's processes.
     await this.#core.desktops.stop({threadId: id});
+    signal.throwIfAborted();
     await this.#core.procs.protection.install(id, input, check);
+    signal.throwIfAborted();
     const execution = protectedTools(this.#core.procs, id, check, paths => {
       for (const path of paths) changed.set(path, existsSync(join(input.checkout, path)) ? policyFile(input.checkout, path).identity : null);
     }, async message => {

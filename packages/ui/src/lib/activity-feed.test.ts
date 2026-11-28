@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import type { PermissionRequest, QuestionRequest, ThreadSummary } from '@boite/contracts';
+import { stateInbox, type PermissionRequest, type QuestionRequest, type ThreadSummary } from '@boite/contracts';
 import { activityFeed, feedOperation, readableThreads, storeNeeds } from './activity-feed';
 
 const NOW = Date.UTC(2026, 10, 7, 12);
@@ -71,6 +71,20 @@ test('a sub-agent that failed under a parent still at work is the parent\'s busi
   expect(storeNeeds(machine.store, threads)).toEqual({ count: 1, failed: 1 });
 });
 
+test('a remote permission appears in Activity on the subagent that can answer it', () => {
+  const remoteSubagents = { count: 1, asking: 1, since: NOW };
+  const parent = thread('parent', { remoteSubagents });
+  const child = thread('child', { status: 'waiting' });
+  const permission = { id: 'p', threadId: child.id, toolName: 'Bash', input: { command: 'bun test' }, createdAt: NOW } as PermissionRequest;
+  const local = { id: 'local', store: { pendingQuestions: [], pendingPermissions: [], subagents: () => remoteSubagents } };
+  const remote = { id: 'remote', store: { pendingQuestions: [], pendingPermissions: [permission], subagents: () => null } };
+
+  const entries = [{ machine: local, thread: parent, project: undefined }, { machine: remote, thread: child, project: undefined }];
+  const rows = activityFeed<typeof local | typeof remote>(entries);
+  expect(rows.map(row => [row.thread.id, row.kind, row.verb])).toEqual([[child.id, 'permission', 'allow']]);
+  expect(stateInbox([parent], [], [], () => null)).toEqual([]);
+});
+
 test('one event per row: a sub-agent shares its parent\'s row only for the same ask, so a permission never carries a stopped helper', () => {
   const permissions = [
     { id: 'p1', threadId: 'parent', toolName: 'Bash', input: { command: 'git push' }, description: null, createdAt: NOW - 60_000 },
@@ -100,7 +114,7 @@ test('Mark all as read clears every failure, stop and finish, never a decision; 
   const permissions = [{ id: 'p', threadId: 'push', toolName: 'Bash', input: { command: 'git push' }, description: null, createdAt: NOW - 5_000 }] as unknown as PermissionRequest[];
   const threads = [
     thread('failed', { status: 'error', unread: true }),
-    thread('stopped', { unread: true, backgroundWait: { state: 'interrupted', for: 'tests', reason: 'core-restarted', at: NOW } }),
+    thread('stopped', { interruptionReadAt: null, backgroundWait: { state: 'interrupted', for: 'tests', reason: 'core-restarted', at: NOW } }),
     thread('done', { unread: true }),
     thread('asks', { status: 'waiting', openQuestions: 1 }),
     thread('push', { status: 'waiting' }),
@@ -111,8 +125,8 @@ test('Mark all as read clears every failure, stop and finish, never a decision; 
   const machine = { id: 'local', store: { pendingQuestions: questions, pendingPermissions: permissions, subagents: () => null } };
   const feed = activityFeed(threads.map(t => ({ machine, thread: t, project: undefined })));
   expect(feed.map(row => row.thread.id).sort()).toEqual(['asks', 'done', 'failed', 'push', 'stopped']);
-  expect(readableThreads(feed)).toEqual(new Map([[machine, ['failed', 'stopped', 'done']]]));
+  expect(readableThreads(feed)).toEqual(new Map([[machine, [{ threadId: 'failed' }, { threadId: 'stopped', interruptionAt: NOW }, { threadId: 'done' }]]]));
   // Once read, only the decisions are left.
-  const after = activityFeed(threads.map(t => ({ machine, thread: { ...t, unread: false }, project: undefined })));
-  expect(after.map(row => row.thread.id).sort()).toEqual(['asks', 'push']);
+  const after = activityFeed(threads.map(t => ({ machine, thread: { ...t, unread: t.id === 'stopped', ...(t.id === 'stopped' ? { interruptionReadAt: NOW } : {}) }, project: undefined })));
+  expect(after.map(row => [row.thread.id, row.kind]).sort()).toEqual([['asks', 'question'], ['push', 'permission'], ['stopped', 'done']]);
 });

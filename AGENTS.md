@@ -88,6 +88,10 @@ Stop it with `bun run dev:instance stop`.
 
 ## Follow through on pull requests
 
+Without write access to this repository, read
+[CONTRIBUTING.md](CONTRIBUTING.md) before the first commit: which PRs are
+accepted, and the steps of [working from a fork](CONTRIBUTING.md#working-from-a-fork).
+
 A PR marked ready gets an mtsu-patrol review; a draft gets CI only. Read every
 finding and the failures
 from every applicable CI job before changing code. Verify findings against the
@@ -154,6 +158,8 @@ and assertions when making the suite faster.
   memory, routines and a desk, their `boite mochi` commands and their guide.
 - [Teams](docs/internals/teams.md): mochis and the owner in one group, routing, delivery
   through coordination letters, the reply envelope and `boite team`.
+- [Conversation storage](docs/internals/transcripts.md): the modes that compact and erase
+  old conversations, the archive format and how agents read it.
 - [Model switching](docs/internals/model-switching.md) and [context](docs/internals/context.md):
   session reuse, queued turns and compaction.
 - [Phone](docs/internals/phone.md) and [server](docs/internals/server.md):

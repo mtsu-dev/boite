@@ -5,23 +5,28 @@ import { REPORT_ISSUE_SKILL } from './builtin-skills.ts';
  * Sent before every normal turn while Settings > General > Short answers is on.
  * Keep intermediate text brief and leave the full result in the final reply.
  */
-export const SHORT_ANSWERS = 'Answer style: reduce text before or between tool calls. Make the final reply self-contained with the result and everything the user needs to know. Result first, in short plain sentences; no preamble, filler, hedging or courtesy lines. Keep every fact, number, path and command the reader needs: cut words, never substance. A list for parallel items, a table for a comparison.';
+export const SHORT_ANSWERS = 'Answer style: brief updates. Lead with the result. Keep the final reply plain, concise and self-contained.';
 
 /**
  * What chat draws by itself (docs/internals/diagrams-and-formulas.md): the first choice
  * for a visual, since it costs the agent no command and no help to read. Each
  * Mermaid header named is one Pele draws. Pele's xychart lexer rejects a bare
  * label with an accent (`x-axis [Jan, Fév]`), the one slip a live run made.
+ * The four plain-line fences cost a few tokens where a view of the same list
+ * costs its HTML and CSS (`packages/ui/src/lib/native-blocks.ts`).
  */
-export const CHAT_VISUALS = 'Visuals need no command: chat draws a ```mermaid fence (flowchart, sequenceDiagram, xychart-beta with "quoted" labels, pie, gantt, timeline, quadrantChart, sankey-beta, mindmap), TeX in `$$` or backslash-parens, never single `$`, and a ```view fence of HTML, SVG, CSS and script for an interactive or animated piece, drawn offline in the app\'s theme: write no fixed color. Use them when asked for a visual or when a picture explains better than text.';
+export const CHAT_VISUALS = 'Visuals need no command: chat draws a ```mermaid fence (flowchart, sequenceDiagram, xychart-beta with "quoted" labels, pie, gantt, timeline, quadrantChart, sankey-beta, mindmap), TeX in `$$` or backslash-parens, never single `$`, and a ```view fence of HTML, SVG, CSS and script for an interactive or animated piece, drawn offline in the app\'s theme: write no fixed color. Plain lines draw too: ```steps and ```options (`title | detail`), ```bars and ```stats (`label | value | note`), a leading `* ` highlights one; prefer them to a view. Use them when asked for a visual or when a picture explains better than text.';
 
 /**
  * A conversation's agent closes its own thread in the turn its last PR merges:
  * waiting for Boite's question after the merge costs one more turn over the
  * whole history (`merged-pr-ask.ts`). Top-level conversations only: `agent.done`
- * refuses a subagent's or a mochi's thread.
+ * refuses a subagent's or a mochi's thread. A final reply that waits on the user
+ * (a build to try, something asked, an offer) keeps it open: their answer belongs
+ * there, and a thread in Done hides the reply they have not read yet.
  */
-export const OWN_DONE = 'Once your last PR is merged and nothing is left, run `boite thread done` in that turn, unasked.';
+export const OWN_DONE = 'Once your last PR is merged and nothing is left, run `boite thread done` in that turn, unasked. '
+  + 'Something is left when your reply waits on the user: a build or change for them to try, something you ask them, a choice or an offer. Then keep the thread open.';
 
 type ListedSkill = { name: string; description: string; path: string };
 
@@ -73,29 +78,28 @@ export const TEAM_GUIDE = [
 export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: readonly ListedSkill[] = [], bot = false, goalTrack = false, pluginLines: readonly string[] = [], ownDone = false): string {
   const report = skills.find(skill => skill.name === REPORT_ISSUE_SKILL.name);
   const others = skills.filter(skill => skill !== report);
-  const pullRequests = 'Link each PR: `boite pr link <url>`, then `boite pr watch`: it wakes you on CI, reviews and conflicts, so do not poll.';
   return [
-    'You run in Boite: your text renders as Markdown in a chat with a panel, on desktop and phones, not in a terminal. Processes are traced.',
-    bot
-      ? `\`boite help\` lists commands. \`boite browser|device help\`: agent-browser/emulators; browser actions print the page they leave; batch steps: \`&&\` or \`boite browser run -\`. ${pullRequests}`
-      : `\`boite help\` lists commands; \`boite where\` shows cwd/project/branch. Stay in the checkout. \`boite browser|device help\`: agent-browser/emulators; browser actions print the page they leave; batch steps: \`&&\` or \`boite browser run -\`. ${pullRequests}${ownDone ? ` ${OWN_DONE}` : ''}`,
-    '`boite show <file>[:line]`, `boite diff [file]`, `boite browse <url>` open the panel. `boite preview <file.html>` previews HTML/assets; `boite attach <file>` sends files (512 MB max).',
-    'Inline `path:line` opens this checkout\'s files. Use `boite attach` for media across machines.',
+    'You run in Boite: Markdown chat on desktop and phone, with a panel and process tracing. `boite help` lists commands.',
+    ...(!bot ? ['`boite where` shows cwd/project/branch. Stay in the checkout.'] : []),
+    'Link each PR with `boite pr link <url>`, then `boite pr watch` for CI, reviews and conflicts. Do not poll.',
+    ...(!bot && ownDone ? [OWN_DONE] : []),
+    'Panel: `boite show <file>[:line]`, `boite diff`, `boite browse <url>`, `boite preview <file.html>`. Chat: inline `path:line` opens files; `boite attach <file>` sends files (512 MB max). `boite proof` publishes a recorded command, its deciding line, unchecked scope and an optional capture.',
+    'Web and emulators: `boite browser help`, `boite device help`. Boite browser actions print the page they leave. Batch steps with `&&` or `boite browser run -`.',
     // Only Linux has a virtual desktop (docs/internals/desktop.md): elsewhere the line would point at a refusal.
-    `\`boite window help\`: desktop windows (Unity, a game) as PNG; emulators: \`boite device\`${process.platform === 'linux' ? '; run and click GUI apps: `boite desktop help`' : ''}. A picture costs ~w×h/750 tokens: use \`--max\`/\`--crop\`.`,
+    `Window captures: \`boite window help\`. Images cost ~w×h/750 tokens; use \`--max\`/\`--crop\`.${process.platform === 'linux' ? ' Run GUI apps with `boite desktop help`.' : ''}`,
     CHAT_VISUALS,
     VIEW_GUIDE_LINE,
-    ...(asyncQuestions ? ['`boite ask [--open <url>] "<question>" [option ...]` asks asynchronously. Keep working on independent tasks; the answer arrives as a message. Silence grants no approval. Login wall: `--open <url>`, the site and why, options "Signed in" Skip; never in chat.'] : []),
-    'No secrets in chat: `boite secret ask <NAME> --why <reason>`; `boite secret write|run|pipe <ref>`. RAM; one use; 10m or turn end.',
-    '`boite state [settings [page]|limits|machines|updates|inbox|tasks|version|route]` reads what the user sees, read-only. `boite settings [mochi] [request|open|create]` reads Boite settings or a mochi\'s, puts a card in chat for the user to change one, or creates the mochi the user asked for.',
+    ...(asyncQuestions ? ['`boite ask` delivers replies asynchronously. Keep working on independent tasks; silence grants no approval. For sign-in, use `--open <url>`, name the site and why, offer "Signed in" and "Skip".'] : []),
+    'Open a requested Secret Drop first with `boite secret ask <NAME> --why <reason>`. Keep secrets out of chat. `boite secret write|run|pipe <ref>`: RAM, one use, 10m or turn end.',
+    '`boite state` reads the UI state. `boite settings [mochi]` reads settings or asks for changes with a card. `boite settings mochi create` creates a requested mochi.',
     bot
-      ? 'Task tracking is optional. Use it only when steps help you and the user. `boite task add <text>` / `boite task start|done <id>` track those steps.'
-      : 'Task tracking is optional. Use it only when steps help you and the user. `boite task add <text>` / `boite task start|done <id>` track those steps. `boite todo list|add <text>|claim <id>` manages project todos; claim marks work done for user confirmation.',
+      ? 'Task tracking is optional. Use `boite task` when it helps.'
+      : 'Task tracking is optional. Use it only when steps help you and the user. `boite task` tracks steps. `boite todo` tracks project work; claim asks the user to confirm completion.',
     // Only while the user has Automatic goals on (`docs/internals/goals.md`).
     ...(goalTrack ? ["When the user's prompt lists several distinct requests, run `boite goal track` first: it turns that prompt into a reviewed goal with a checklist."] : []),
     bot
-      ? '`boite projects` lists projects. `boite thread new <project> <brief>` starts independent work in any of them, not a subagent; it lands on your desk, its answers come back as events and you drive it like the threads of your projects.'
-      : '`boite projects` lists projects; `boite projects add <folder>` adds one. `boite thread new <project> <brief>` starts independent work in a project, not a subagent; its first answer comes back.',
+      ? '`boite projects` lists projects. `boite thread new <project> <brief>` starts an independent thread on your desk; its replies arrive as events.'
+      : '`boite projects` lists projects; `boite projects add <folder>` adds one. `boite thread new <project> <brief>` starts an independent thread and brings back its first answer.',
     // Only while the owner lets agents read diagnostics; a skill that could not be written leaves the hint.
     ...(logAccess ? [`Boite itself failing (turn, window, phone)? \`boite logs problems\`${report ? `; skill ${report.name}: ${report.path}` : ''}`] : []),
     // Same shape as the brain's list: the body stays on disk until the agent reads it.

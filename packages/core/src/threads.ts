@@ -1,7 +1,7 @@
 import { archiveState, archiveStateKey } from './merged-pr-archive-state.ts';
 import { assertIdleFamily } from './threads/completion.ts';
 import { AgentDoneRequests } from './threads/agent-done.ts';
-import { previewReferencesError, previewPrompt, threadActive, DEFAULT_THREAD_DELETION_RETENTION_DAYS, type AgentProfile } from '@boite/contracts';
+import { previewReferencesError, previewPrompt, threadActive, unreadInterruptionAt, type AgentProfile } from '@boite/contracts';
 import type {
   Account, AccountId, Attachment,
   ImageMimeType,
@@ -24,6 +24,7 @@ import type {
   TurnInFlightData,
 } from '@boite/contracts';
 import type { Core } from './core.ts';
+import { waitForMailReceipt, type MailDelivery } from './threads/steering.ts';
 import { notFound, refused } from './errors.ts';
 import { newId } from './ids.ts';
 import { assertDriverRunnable, releaseThread } from './drivers/index.ts';
@@ -51,16 +52,16 @@ import { ResumePlanner } from './threads/resume.ts';
 import { ThreadTitles } from './threads/retitle.ts';
 import { SideQuestions } from './threads/side-questions.ts';
 import { messagePage, threadSnapshot, type MessagePage } from './threads/snapshot.ts';
-import { checkEffort, checkModel, checkSpeed, checkStoredEffort, checkStoredSpeed, defaultModel } from './threads/selection.ts';
+import { checkEffort, checkModel, checkSelection, checkSpeed, checkStoredEffort, checkStoredSpeed, defaultModel, selectionFor } from './threads/selection.ts';
 import { TurnContexts } from './threads/turn-context.ts';
 import { TurnRunner } from './threads/turn-runner.ts';
-import { markQueuedStopped } from './threads/turn-settlement.ts';
+import { markQueuedStopped, userStopKey } from './threads/turn-settlement.ts';
 import { ThreadFocus } from './threads/focus.ts';
 import { ThreadListLog } from './threads/list-changes.ts';
 import { ProgressState } from './threads/progress.ts';
 import { eraseIncognito } from './threads/incognito.ts';
 import { AccountSessions } from './threads/account-sessions.ts';
-import { removeTranscripts, threadSessions, type NativeSession } from './threads/transcript-purge.ts';
+import { purgeExpiredThreads } from './threads/deletion-retention.ts';
 import { ThreadCreation } from './threads/creation.ts';
 import { accountRemoved, followedAgent } from './threads/account-fallback.ts';
 import { requireAgent } from './threads/agentless.ts';
@@ -184,7 +185,7 @@ export class ThreadStore {
    * one page here; the rest is walked back through `messages`, whose cursor is
    * `messagesBefore`.
    */
-  get(threadId: ThreadId, after?: MessageId, options: Pick<RpcParams<'threads.get'>, 'limit' | 'maxBytes' | 'compactTools' | 'compactFiles' | 'compactImages' | 'compactToolParts' | 'around' | 'sync' | 'open'> = {}): Thread {
+  get(threadId: ThreadId, after?: MessageId, options: Pick<RpcParams<'threads.get'>, 'limit' | 'maxBytes' | 'compactTools' | 'compactFiles' | 'compactImages' | 'compactToolParts' | 'omitThinking' | 'omitTools' | 'around' | 'sync' | 'open'> = {}): Thread {
     return threadSnapshot(this.#core, this.#withLoad(this.require(threadId)), after, options, this.agentState);
   }
 
@@ -311,6 +312,7 @@ export class ThreadStore {
   update(params: {
     threadId: ThreadId;
     accountId?: AccountId;
+    requireSavedSession?: true;
     expectedSelectionVersion?: number;
     title?: string;
     model?: string | null;
@@ -334,13 +336,16 @@ export class ThreadStore {
       const modeChanged = next.permissionMode !== thread.permissionMode;
       if (modeChanged) next.selectionVersion = (thread.selectionVersion ?? 0) + 1;
       const saved = this.#save(next, 'thread.updated');
-      if (modeChanged) this.runner.changePermissionMode(thread.id, next.permissionMode, thread, next);
+      if (modeChanged) this.runner.selectionChanged(thread, next);
       return saved;
     }
     const account = this.#core.accounts.require(params.accountId ?? thread.accountId);
     const switched = account.id !== thread.accountId;
     const provider = this.#core.providers.require(account.providerId);
     if (switched) {
+      if (params.requireSavedSession === true && !this.accountSessions.canResume(thread, account)) {
+        throw refused('the saved session can no longer resume; review the account switch again', { field: 'accountId', expected: 'an account with a resumable session' });
+      }
       assertDriverRunnable(provider.protocol, this.#core.providers.summary(provider.id), account, () => this.#core.providers.launcherScriptOnly(provider.id));
       next.accountId = account.id;
       next.providerId = provider.id;
@@ -355,11 +360,11 @@ export class ThreadStore {
     if (params.model !== undefined && (params.model !== thread.model || switched)) {
       // A new model starts on its own default unless the call says otherwise.
       next.model = checkModel(provider, account.id, params.model);
-      next.effort = null;
+      next.effort = selectionFor(provider, account.id, params.model)?.effort ?? null;
       next.speed = null;
     }
     if (params.permissionMode !== undefined) next.permissionMode = params.permissionMode;
-    if (params.effort !== undefined) next.effort = params.effort;
+    if (params.effort !== undefined) next.effort = params.effort ?? selectionFor(provider, account.id, params.model ?? next.model)?.effort ?? null;
     if (params.speed !== undefined) next.speed = params.speed;
     const changedModel = switched || next.model !== thread.model;
     if (changedModel || next.speed !== thread.speed) next.speed = checkSpeed(provider, account.id, next.model, next.speed ?? null);
@@ -394,13 +399,10 @@ export class ThreadStore {
   }
 
   archive(threadId: ThreadId, archived: boolean, onlyIfIdle = false, plugin?: { pluginId: string; pluginName: string }): ThreadSummary {
-    this.require(threadId);
-    if (archived && onlyIfIdle) assertIdleFamily(this.#core, threadId, plugin ? 'automatic' : 'explicit');
-    if (!archived && this.#removing.has(threadId)) throw refused('threadId: this conversation is being deleted', { threadId, field: 'threadId', expected: 'a conversation not being deleted' });
     const thread = this.require(threadId);
-    // Removing a project archives its threads first: one reopened meanwhile would run on once the project is gone.
-    if (!archived && thread.projectId !== null && this.#core.projects.isRemoving(thread.projectId)) {
-      throw refused('threadId: its project is being removed', { threadId, field: 'threadId', expected: 'a conversation whose project is not being removed' });
+    if (archived && onlyIfIdle) assertIdleFamily(this.#core, threadId, plugin ? 'automatic' : 'explicit');
+    if (!archived && (this.#removing.has(threadId) || this.#core.projects.isRemoving(thread.projectId))) {
+      throw refused('threadId: this conversation or its project is being removed', { threadId, field: 'threadId', expected: 'a conversation and project not being removed' });
     }
     // A subagent reopened by hand is not put away again for the work it already finished.
     if (!archived && thread.archived && thread.parentThreadId) this.#core.delegation.retirements.keep(threadId);
@@ -459,7 +461,7 @@ export class ThreadStore {
    */
   async #endArchivedWork(threadId: ThreadId): Promise<void> {
     try {
-      const family = this.#core.journal.listThreads().filter(t => t.id === threadId || t.parentThreadId === threadId).map(t => t.id);
+      const family = this.#core.journal.listThreadFamily(threadId).map(t => t.id);
       await Promise.all(family.map(id => this.#core.scheduler.stopAndWait(id)));
       if (this.#core.stopping || this.#core.journal.isClosed() || this.#removing.has(threadId)) return;
       if (this.#core.journal.getThread(threadId)?.archived !== true) return;
@@ -473,10 +475,12 @@ export class ThreadStore {
     }
   }
 
-  markRead(threadId: ThreadId): void {
+  markRead(threadId: ThreadId, interruptionAt?: number, messages = interruptionAt === undefined): ThreadSummary {
     const thread = this.require(threadId);
-    if (!thread.unread) return;
-    this.#save({ ...thread, unread: false }, 'thread.read');
+    const acknowledge = interruptionAt !== undefined && unreadInterruptionAt(this.#withLoad(thread)) === interruptionAt;
+    if (!acknowledge && !(messages && thread.unread)) return thread;
+    return this.#save({ ...thread, unread: !messages && thread.unread,
+      ...(acknowledge ? { interruptionReadAt: interruptionAt } : {}) }, 'thread.read');
   }
 
   async remove(threadId: ThreadId): Promise<void> {
@@ -485,7 +489,7 @@ export class ThreadStore {
       throw refused('threadId: delete a conversation from its parent; a mochi\'s thread goes when the mochi is archived', { threadId, field: 'threadId', expected: 'a top-level conversation without agentSessionId' });
     }
     if (this.#removing.has(threadId)) throw refused('threadId: this conversation is already being deleted', { threadId, field: 'threadId', expected: 'a conversation not being deleted' });
-    const family = this.#core.journal.listThreads().filter(t => t.id === threadId || t.parentThreadId === threadId);
+    const family = this.#core.journal.listThreadFamily(threadId);
     for (const thread of family) this.#removing.add(thread.id);
     try {
       // One write hides the family; until it commits, its runs and steps go on.
@@ -525,23 +529,7 @@ export class ThreadStore {
     return this.#withLoad(this.require(threadId));
   }
 
-  /** Expiry uses the deletion date, never the conversation's creation or last message. */
-  purgeDeleted(): void {
-    const days = this.#core.settings.get().threadDeletionRetentionDays ?? DEFAULT_THREAD_DELETION_RETENTION_DAYS;
-    if (days === 0) return;
-    let sessions: NativeSession[] = [];
-    let purgedIds: string[] = [];
-    const purged = this.#core.journal.purgeDeletedThreads(Date.now() - days * 86_400_000, ids => {
-      sessions = threadSessions(this.#core.journal.db, ids);
-      purgedIds = ids;
-    });
-    if (purged > 0) {
-      // Gone for good: listeners drop what they still hold of them (queued input, remote delegations).
-      for (const threadId of purgedIds) this.#core.bus.emit('thread.removed', { threadId });
-      this.#core.bus.emit('thread.deletionsUpdated', {});
-      this.transcriptPurge = removeTranscripts(this.#core, sessions);
-    }
-  }
+  purgeDeleted(): void { purgeExpiredThreads(this.#core); }
 
   pin(threadId: ThreadId, pinned: boolean): ThreadSummary {
     const thread = this.require(threadId);
@@ -605,7 +593,8 @@ export class ThreadStore {
     const clientRequestId = origin.requestId;
     const activity = origin.kind === 'goal' ? origin.activity : undefined;
     const startedBy = origin.kind === 'spawned' ? origin.startedBy : undefined;
-    const { sentFrom = null, plugin: byPlugin = undefined } = origin.kind === 'user' ? origin : {};
+    const sentFrom = origin.kind === 'user' ? origin.sentFrom : undefined;
+    const byPlugin = 'plugin' in origin ? origin.plugin : undefined;
     if (this.#core.stopping) throw refused('the core is stopping; reconnect before sending another prompt');
     let thread = requireAgent(this, threadId);
     this.codeCheckpoints.assertAvailable(thread.cwd);
@@ -630,10 +619,9 @@ export class ThreadStore {
     if (executionChoice) {
       const provider = this.#core.providers.require(executionChoice.providerId);
       const account = this.#core.accounts.require(executionChoice.accountId);
-      const model = checkModel(provider, account.id, executionChoice.model);
+      const selection = checkSelection(provider, account.id, executionChoice.model, executionChoice.effort, executionChoice.speed ?? null);
       const sameAccount = thread.providerId === provider.id && thread.accountId === account.id;
-      thread = { ...thread, providerId: provider.id, accountId: account.id, model,
-        effort: checkEffort(provider, account.id, model, executionChoice.effort), speed: checkSpeed(provider, account.id, model, executionChoice.speed ?? null),
+      thread = { ...thread, providerId: provider.id, accountId: account.id, ...selection,
         ...(!sameAccount ? { sessionId: null, sessionResumeAt: null } : {}) };
     } else [thread, accountLeft] = followedAgent(this.#core, thread);
     this.#core.sharedCompute?.assertTurn(threadId);
@@ -686,6 +674,7 @@ export class ThreadStore {
         sessionGeneration: thread.sessionGeneration ?? 0, selectionVersion: thread.selectionVersion ?? 0,
         ...(executionChoice ? { frozenSelection: true as const } : {}),
         ...(operation ? { operation } : {}), ...(automatic ? { automatic: true as const } : {}),
+        ...(origin.kind === 'delegation' && origin.workflowSummary ? { workflowSummary: true as const } : {}),
         ...(originAgentWrites(origin) && threadAtRest(this.#core, thread) ? { opensRequest: true as const } : {}),
         ...(accountLeft ? { accountLeft } : {}),
       },
@@ -696,7 +685,7 @@ export class ThreadStore {
       turnId: turn.id,
       role: systemOperation(operation) || automatic ? 'system' : 'user',
       parts: [
-        { type: 'text', text: previewPrompt(prompt, previewReferences), ...(previewReferences.length ? { displayText: prompt, previewReferences } : {}), ...(systemOperation(operation) ? { displayText: displayText ?? SYSTEM_LABEL[operation] } : {}), ...(automatic ? { displayText } : {}), ...(activity ? { activity } : {}), ...(moved ? { moved } : {}), ...(startedBy ? { displayText: displayText ?? prompt, startedBy } : {}), ...(sentFrom && !operation ? { sentFrom } : {}), ...(byPlugin && !operation ? { byPlugin } : {}) },
+        { type: 'text', text: previewPrompt(prompt, previewReferences), ...(previewReferences.length ? { displayText: prompt, previewReferences } : {}), ...(systemOperation(operation) ? { displayText: displayText ?? SYSTEM_LABEL[operation] } : {}), ...(automatic ? { displayText } : {}), ...(activity ? { activity } : {}), ...(moved ? { moved } : {}), ...(startedBy ? { displayText: displayText ?? prompt, startedBy } : {}), ...(sentFrom && !operation ? { sentFrom } : {}), ...(byPlugin ? { byPlugin } : {}) },
         ...attachments.map((attachment): MessagePart => attachment.kind === 'file' ? { type: 'file', mimeType: attachment.mimeType, data: attachment.data, name: attachment.name } : ({
           type: 'image',
           mimeType: attachment.mimeType,
@@ -764,10 +753,12 @@ export class ThreadStore {
 
   stopTurn(threadId: ThreadId): boolean {
     this.require(threadId);
-    this.handoff.forget(threadId);
+    const running = this.#core.journal.runningTurn(threadId);
+    if (running) this.#core.journal.setSetting(userStopKey(running.id), true);
+    const handoffCancelled = this.handoff.forget(threadId);
     this.cacheKeepalive.forget(threadId);
     // Stop on a thread waiting for a usage limit to reset, or for the wake its agent scheduled, means: do not resume it.
-    const planned = [this.resumes.cancel(threadId, 'the thread was stopped'), this.#core.wakes.cancel(threadId, 'the thread was stopped')].includes(true);
+    const planned = [handoffCancelled, this.resumes.cancel(threadId, 'the thread was stopped'), this.#core.wakes.cancel(threadId, 'the thread was stopped')].includes(true);
     this.#core.coordination.pause(threadId);
     // Runs first: once they are stopped, a team with no child has nothing left to pause.
     const childrenStopped = this.#core.workflows.stopRoot(threadId, 'Stopped with its thread') + this.#core.delegation.stop(threadId);
@@ -787,7 +778,7 @@ export class ThreadStore {
    * its exit, and with no `turn.finished` to follow nothing else would sweep it.
    */
   releaseAgent(threadId: ThreadId): void {
-    void this.#core.procs.protection.revoke(threadId).catch(() => {});
+    void this.#core.sharedAccess.execution.revoke(threadId).catch(() => {});
     this.agentState.cancelBackground(threadId);
     releaseThread(threadId);
     this.#core.procs.sweepSoon(threadId);
@@ -803,29 +794,36 @@ export class ThreadStore {
     return typeof this.runner.handles.get(threadId)?.steer === 'function' && operation !== 'compact' && !this.cacheKeepalive.pinging(threadId);
   }
 
-  async steer(threadId: string, text: string): Promise<boolean> {
+  async steer(threadId: string, text: string, delivery?: MailDelivery): Promise<boolean> {
     const handle = this.runner.handles.get(threadId);
     if (!handle?.steer || this.runner.steering.has(threadId)) return false;
     const turn = this.#core.journal.runningTurn(threadId);
     if (!turn || turn.execution?.operation === 'keepalive' || turn.execution?.operation === 'compact') return false;
-    this.runner.steering.add(threadId);
+    const steering = this.runner.beginSteering(threadId, handle);
+    if (!steering) return false;
     try {
-      const submitted = await handle.steer(text);
-      if (submitted && !this.#core.journal.isClosed()) this.noteCoordination(threadId, turn.id, text);
+      delivery?.signal.throwIfAborted();
+      // A late receipt can settle mail from a finished turn. The transport can
+      // still cancel its request when the attempt releases its steering slot.
+      const receipt = handle.steer(text, undefined, undefined, steering.signal);
+      const submitted = await waitForMailReceipt(receipt, steering.signal, steering.turnStopSignal, delivery);
+      if (submitted && !this.#core.stopping && !this.#core.journal.isClosed()) this.noteCoordination(threadId, turn.id, text);
       return submitted;
     } finally {
-      this.runner.steering.delete(threadId);
-      void this.deferred.flushRunning(threadId);
+      if (!steering.signal.aborted) {
+        steering.release();
+        void this.deferred.flushRunning(threadId);
+      }
     }
   }
 
   noteCoordination(threadId: string, turnId: string, text: string): void { this.noteSystem(threadId, turnId, text, 'Agent coordination', 'coordination.context'); }
 
-  /** A line of Boite's own inside a running turn: what the agent was told, under a short label. */
+  /** A line of Boite's own, attached to the turn that received it. */
   noteSystem(threadId: string, turnId: string, text: string, displayText: string, eventType: 'coordination.context' | 'turn.pausedForUpdate' | 'turn.resumedAfterUpdate' | 'turn.cutByUpdate'): void {
     const message: Message = { id: newId('msg_'), threadId, turnId, role: 'system', parts: [{ type: 'text', text, displayText }], state: 'complete', createdAt: Date.now() };
     this.#core.journal.append({ type: eventType, threadId, version: 1, payload: message }, () => this.#core.journal.putMessage(message));
-    this.runner.noteMail(threadId, message.createdAt);
+    this.runner.noteMail(threadId, message.createdAt, turnId);
     this.#core.bus.emit('message.started', message);
     this.#core.bus.emit('message.completed', { threadId, messageId: message.id, state: 'complete' });
   }

@@ -15,6 +15,7 @@ import { browserProfiles } from './browser-profiles.svelte';
 import { work } from './work-prefs.svelte';
 import { ZOOM_STEPS } from './zoom';
 import { CONTACTS_RAIL_WIDTH, contactsRail } from './contacts-rail.svelte';
+import { visibleSidebarWidth, type SidebarPage } from './prefs';
 import { FileDocuments, type FileDocument, type FileSaved, type FileWrite } from './file-documents.svelte';
 
 /**
@@ -201,9 +202,12 @@ function parse(raw: string): Record<string, PanelState> {
  * left and the contacts column on the right. A phone gives the panel the
  * whole screen.
  */
-export function panelSibling(layout: { sidebarCollapsed: boolean; sidebarWidth: number; owner: boolean }, viewport: number): number {
+export function panelSibling(
+  layout: { sidebarCollapsed: boolean; sidebarWidth: number; agentsSidebarWidth?: number | null; page?: SidebarPage } & Parameters<typeof contactsRail.shown>[0],
+  viewport: number
+): number {
   if (viewport <= 720) return 0;
-  return (layout.sidebarCollapsed ? 0 : layout.sidebarWidth) + (contactsRail.shown(layout) ? CONTACTS_RAIL_WIDTH : 0);
+  return (layout.sidebarCollapsed ? 0 : visibleSidebarWidth(layout)) + (contactsRail.shown(layout) ? CONTACTS_RAIL_WIDTH : 0);
 }
 
 /** The app rail and the frame gaps between the columns, measured on a desktop window. */
@@ -338,7 +342,15 @@ export class RightPanelStore {
    * keys it may judge: a machine not connected yet must keep its own.
    */
   prune(stale: (key: string) => boolean): void {
-    this.#forget(Object.keys(this.threads).filter((key) => key !== '' && stale(key)));
+    this.#forget([...new Set([...Object.keys(this.threads), ...this.#bound.keys()])].filter((key) => key !== '' && stale(key)));
+  }
+
+  /** A disconnected Store can reconnect with the same saved layout. */
+  releaseMachine(machineId: string | null): void {
+    const prefix = machineId ? JSON.stringify([machineId]).slice(0, -1) + ',' : null;
+    for (const key of this.#bound.keys()) {
+      if (prefix ? key.startsWith(prefix) : !key.startsWith('["')) this.#bound.delete(key);
+    }
   }
 
   /** A deleted profile's tabs close in every thread, their views with them. */
@@ -363,6 +375,9 @@ export class RightPanelStore {
     const kept = { ...this.threads };
     let changed = false;
     for (const key of keys) {
+      this.#bound.delete(key);
+      this.documents.forget(key);
+      this.phoneShut.delete(key);
       const state = kept[key];
       if (!state) continue;
       // The strip goes with the layout, so nothing will ever list these surfaces
@@ -372,9 +387,6 @@ export class RightPanelStore {
         if (surface.kind === 'browser') browserBridge.destroy(surface.id);
       }
       delete kept[key];
-      this.#bound.delete(key);
-      this.documents.forget(key);
-      this.phoneShut.delete(key);
       changed = true;
     }
     if (!changed) return;

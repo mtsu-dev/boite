@@ -122,6 +122,12 @@ jobs:
           # v2: v1 held crates built with an explicit release profile, which no build uses any more.
           shared-key: desktop-release-v2
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Restore the pinned Bun baseline runtime
+        id: bun-baseline
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: node_modules/.cache/boite-bun-runtime
+          key: desktop-windows-x64-bun-baseline-${{ hashFiles('package.json', 'apps/shell/scripts/stage-sidecar.ts') }}
       - name: Set nightly artifact version
         if: inputs.channel == 'nightly' && inputs.version != ''
         env:
@@ -136,13 +142,14 @@ jobs:
           BOITE_RELEASE_TELEMETRY: ${{ inputs.sign-updates && '1' || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.sign-updates && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
         run: |
-          # A published shell is built with fat LTO over one codegen unit, about
-          # 7 more minutes; only this step, so the Rust tests keep Cargo's
+          # A published shell uses size optimization and fat LTO over one
+          # codegen unit. Only this step, so the Rust tests keep Cargo's
           # defaults. Any other build sets neither: even `16`, the default,
           # changes every crate's fingerprint and misses the cache (docs/internals/ci.md#build-cost).
           if ($env:BOITE_SIGN_UPDATES -eq '1') {
             $env:CARGO_PROFILE_RELEASE_LTO = 'fat'
             $env:CARGO_PROFILE_RELEASE_CODEGEN_UNITS = '1'
+            $env:CARGO_PROFILE_RELEASE_OPT_LEVEL = 's'
           }
           if ($env:BUILD_CHANNEL -eq 'nightly') {
             bun run build:shell:nightly
@@ -152,7 +159,12 @@ jobs:
             throw "Unsupported build channel: $env:BUILD_CHANNEL"
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          bun run apps/shell/scripts/stage-sidecar.ts
+      - name: Cache the verified Bun baseline runtime
+        if: github.ref == 'refs/heads/main' && steps.bun-baseline.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: node_modules/.cache/boite-bun-runtime
+          key: ${{ steps.bun-baseline.outputs.cache-primary-key }}
       # The UI and core bundles just packaged hold no cut feature above the build's kind
       # (docs/internals/experiments.md#out-of-the-build).
       - name: Feature cut of this build
@@ -213,7 +225,10 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Install Linux shell dependencies
         if: runner.os == 'Linux'
-        run: bash scripts/ci/ubuntu-apt.sh libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb dbus-x11 xdg-utils
+        run: |
+          fuse=libfuse2
+          if apt-cache show libfuse2t64 >/dev/null 2>&1; then fuse=libfuse2t64; fi
+          bash scripts/ci/ubuntu-apt.sh libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb dbus-x11 xdg-utils binutils squashfs-tools "$fuse"
       - name: Run Intel binaries under Rosetta
         if: runner.os == 'macOS' && env.BOITE_TARGET == 'x86_64-apple-darwin'
         run: arch -x86_64 /usr/bin/true 2>/dev/null || sudo softwareupdate --install-rosetta --agree-to-license
@@ -268,18 +283,35 @@ jobs:
       - name: Build and test installed Linux package
         if: runner.os == 'Linux'
         env:
-          # Fat LTO for a published shell, as in the Windows job.
+          # A published shell uses size optimization and fat LTO, as on Windows.
           SHIP_PROFILE: ${{ inputs.sign-updates && '1' || '0' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.sign-updates && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
         run: |
           export TAURI_SIGNING_PRIVATE_KEY="${TAURI_SIGNING_PRIVATE_KEY:-${THROWAWAY_UPDATER_KEY:-}}"
           if [ "$SHIP_PROFILE" = 1 ]; then
-            export CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+            export CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 CARGO_PROFILE_RELEASE_OPT_LEVEL=s
+            export CARGO_PROFILE_RELEASE_DEBUG=line-tables-only CARGO_PROFILE_RELEASE_STRIP=none
           fi
+          # Both bundlers read the finished release binary. Split its symbols
+          # before they patch in the installer type and sign the packages.
           # shellcheck disable=SC2086 # BUNDLE_CONFIGS holds several arguments.
-          bun apps/shell/scripts/tauri.ts build $BUNDLE_CONFIGS --bundles deb
+          bun apps/shell/scripts/tauri.ts build $BUNDLE_CONFIGS --no-bundle
+          bash apps/shell/scripts/linux-symbols.sh split "${BUNDLE_DIR%/bundle}/boite-shell" "$RUNNER_TEMP/boite-shell.debug"
+          # shellcheck disable=SC2086
+          bun apps/shell/scripts/tauri.ts bundle $BUNDLE_CONFIGS --bundles deb
           sudo dpkg -i "$BUNDLE_DIR"/deb/*.deb
+          bash apps/shell/scripts/linux-symbols.sh verify /usr/bin/boite-shell "$RUNNER_TEMP/boite-shell.debug"
+          # The group launcher as the package and its installation hold it: the one built here, a static executable, 0755.
+          bun scripts/ci/linux-package-launcher.ts deb "$BUNDLE_DIR"/deb/*.deb packages/core/dist/boite-launch
+          bun scripts/ci/linux-package-launcher.ts root / packages/core/dist/boite-launch
           dbus-run-session -- xvfb-run -a bun scripts/ci/desktop-smoke.ts /usr/bin/boite-shell
+      - uses: ./.github/actions/upload-artifact
+        if: runner.os == 'Linux'
+        with:
+          name: desktop-linux-symbols-${{ env.PORTABLE_ID }}
+          path: ${{ runner.temp }}/boite-shell.debug
+          if-no-files-found: error
+          retention-days: 7
       - name: Bundle and test Linux AppImage
         if: runner.os == 'Linux'
         env:
@@ -300,14 +332,16 @@ jobs:
           mkdir "$RUNNER_TEMP/appimage"
           appimage=$(realpath "$BUNDLE_DIR"/appimage/*.AppImage)
           (cd "$RUNNER_TEMP/appimage" && "$appimage" --appimage-extract > /dev/null)
+          bash apps/shell/scripts/linux-symbols.sh verify "$RUNNER_TEMP/appimage/squashfs-root/usr/bin/boite-shell" "$RUNNER_TEMP/boite-shell.debug"
+          bun scripts/ci/linux-package-launcher.ts appimage "$appimage" "$RUNNER_TEMP/appimage/squashfs-root" packages/core/dist/boite-launch
           if [ "$(uname -m)" = aarch64 ]; then
             cmp packages/core/dist/boite-core "$RUNNER_TEMP/appimage/squashfs-root/usr/bin/boite-core"
           fi
-          dbus-run-session -- xvfb-run -a bun scripts/ci/desktop-smoke.ts "$RUNNER_TEMP/appimage/squashfs-root/AppRun"
+          dbus-run-session -- xvfb-run -a bun scripts/ci/desktop-smoke.ts "$appimage" --resident
       - name: Build and test macOS application bundle
         if: runner.os == 'macOS'
         env:
-          # Fat LTO for a published shell, as in the Windows job.
+          # A published shell uses size optimization and fat LTO, as on Windows.
           SHIP_PROFILE: ${{ inputs.sign-updates && '1' || '0' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.sign-updates && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           DEVELOPER_ID_CERTIFICATE: ${{ inputs.sign-updates && secrets.APPLE_CERTIFICATE || '' }}
@@ -319,7 +353,7 @@ jobs:
         run: |
           export TAURI_SIGNING_PRIVATE_KEY="${TAURI_SIGNING_PRIVATE_KEY:-${THROWAWAY_UPDATER_KEY:-}}"
           if [ "$SHIP_PROFILE" = 1 ]; then
-            export CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+            export CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 CARGO_PROFILE_RELEASE_OPT_LEVEL=s
           fi
           if [ -n "$DEVELOPER_ID_CERTIFICATE" ] && [ -n "$DEVELOPER_ID_PASSWORD" ] && [ -n "$DEVELOPER_ID_IDENTITY" ] \
             && [ -n "$NOTARY_ISSUER" ] && [ -n "$NOTARY_KEY_ID" ] && [ -n "$NOTARY_PRIVATE_KEY" ]; then

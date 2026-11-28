@@ -251,7 +251,10 @@ subscription and its sockets. The device's `group.get` lists its own entry only.
 
 **Removal.** `group.revokeDevice`, on any member, writes the device's removal in
 the roster. Every member, as it hears of it, drops the device's session and
-closes its sockets; a member that is off does it when it is back. A removal is
+closes its sockets; a member that is off does it when it is back. The device
+reconnects and discards its key only after a known member signs the refusal
+for that machine, the fresh hello nonce and the device key. This works
+through a relay whether the relay or the destination refuses the hello. A removal is
 final: the same key is never admitted again, and the app makes a new one when it
 is added again. A device admitted by a machine that is then removed with **Remove
 from the group** stays: the member that removes it signs those devices in again.
@@ -273,9 +276,7 @@ Advanced) whose host is the one the socket asked for, outside loopback. It
 learns it before any hello, so the first page of a phone that holds no key yet
 already opens the way, and publishes up to four in the roster (`origins`). A
 machine behind a reverse proxy is thus accepted by the others without anything
-set on them. Every core also accepts the phone app's own address
-(`APP_ORIGIN`, [phone](phone.md#the-app-on-its-own-address)), a page no machine
-serves. The origin check keeps arbitrary websites out; it grants nothing,
+set on them. The origin check keeps arbitrary websites out; it grants nothing,
 since every socket still needs a credential at `hello`.
 
 ## Relay
@@ -702,8 +703,8 @@ address, where it is worth nothing once the member has given that address up.
 - A window trusts the machine that serves its page. A machine removed from
   the group that still serves the page a client opens decides what that page
   does, with every key saved under its address.
-- A page served by a machine comes from that machine; the app's own address
-  ([phone](phone.md#the-app-on-its-own-address)) is no machine's. With the
+- A page served by a machine comes from that machine; the native app's page
+  ([Android app](android-native.md)) is no machine's. With the
   page's machine off, an installed app opens from the copy its service worker kept, which needs an
   HTTPS address ([phone](phone.md#https-and-installation)); a page opened over
   plain HTTP does not load at all, and another member's address is another
@@ -713,8 +714,8 @@ address, where it is worth nothing once the member has given that address up.
   machine's page was this case for anybody else's phone.
 - A scanned or pasted link reaches the machine that drew it, which it names.
   A page served by a machine outside the group still holds none of the group's
-  keys, its origin being none of theirs: open the app's own address, or the
-  drawing machine's, and scan there.
+  keys, its origin being none of theirs: open the native app, or the
+  drawing machine's address, and scan there.
 - A machine that runs a version from before device keys drops them from the
   roster it keeps and lets no device key in. Update every member.
 - A member that has not heard a removal stays exposed to the removed machine,

@@ -7,6 +7,7 @@ import { writeLandsInside } from '../../workdir.ts';
 import type { QuestionAsk, SessionContext } from '../types.ts';
 import { exitSentence, exitWithin } from '../exit.ts';
 import { IdleTimer } from '../idle-timer.ts';
+import { SessionTurns } from '../session-turns.ts';
 import {
   addUsage,
   answerOf,
@@ -53,6 +54,8 @@ import { SessionRetention } from '../session-retention.ts';
 import { endOnClose, releaseChild } from '../session-close.ts';
 import { protectedMuse } from './protected.ts';
 import { MuseControls } from './controls.ts';
+import { sessionMcp } from '../mcp.ts';
+import { museMcpConfig, museMcpSupport, probeMuseVersion } from './mcp.ts';
 
 /** One question set still open, settled by an answer, a stop or the host itself. */
 interface OpenQuestion {
@@ -92,6 +95,8 @@ export class MuseSession {
   #exitCode: number | null = null;
   #exited: Promise<number | null> | null = null;
   #processClosed: Promise<void> = Promise.resolve();
+  #mcp: ReturnType<typeof sessionMcp> = null;
+  #retryMcp = false;
   readonly #idle = new IdleTimer(() => this.#drop());
   readonly #retention = new SessionRetention();
   /** The turn waiting on the host's startup, which a stop ends by closing the host. */
@@ -109,8 +114,10 @@ export class MuseSession {
   readonly #items = new Map<string, { kind: string; revision: number }>();
   readonly #approvals = new Map<string, OpenApproval>();
   readonly #questions = new Map<string, OpenQuestion>();
-  #queue: Promise<void> = Promise.resolve();
-  #running = 0;
+  readonly #turns = new SessionTurns<MuseTurn>(turn => this.#runTurn(turn), (turn, error) => {
+    turn.fail(messageOf(error));
+    this.#endTurn(turn, true);
+  });
   #closing = false;
   #ended = false;
 
@@ -121,7 +128,7 @@ export class MuseSession {
   ) { }
 
   usable(key: string, warmMs: number): boolean {
-    return !this.#ended && !this.#closing && this.key === key && this.#retention.reusable(warmMs, this.warmMs);
+    return !this.#ended && !this.#closing && !this.#retryMcp && this.key === key && this.#retention.reusable(warmMs, this.warmMs);
   }
 
   setViewed(viewed: boolean): void {
@@ -137,27 +144,20 @@ export class MuseSession {
     catch (error) { this.#drop(); throw error; }
     finally {
       ctx.finishStartup?.();
-      if (!this.#ended && !this.busy() && !this.#retention.viewed) this.#armIdle();
+      if (!forTurn && this.#retryMcp && !this.busy() && !this.#ended) this.#drop();
+      else if (!this.#ended && !this.busy() && !this.#retention.viewed) this.#armIdle();
     }
   }
 
   busy(): boolean {
-    return this.#running > 0;
+    return this.#turns.busy;
   }
 
   attach(turn: MuseTurn, warmMs: number): void {
     this.warmMs = warmMs;
     this.#retention.beginTurn();
-    this.#running += 1;
     this.#idle.clear();
-    this.#queue = this.#queue.then(async () => {
-      try {
-        await this.#runTurn(turn);
-      } catch (error) {
-        turn.fail(messageOf(error));
-        this.#endTurn(turn, true);
-      }
-    });
+    this.#turns.enqueue(turn);
   }
 
   /**
@@ -187,12 +187,12 @@ export class MuseSession {
    * `turn/steer` names the turn it means: a host whose turn already ended
    * refuses it, and the text waits for the next turn instead of starting one.
    */
-  async steer(turn: MuseTurn, text: string, onAccepted?: () => void): Promise<boolean> {
+  async steer(turn: MuseTurn, text: string, onAccepted?: () => void, signal?: AbortSignal): Promise<boolean> {
     const rpc = this.#rpc;
     const sessionId = this.#sessionId;
     if (rpc === null || sessionId === null || this.#current !== turn || turn.turnId === null || turn.isStopped || turn.compacting) return false;
     try {
-      await rpc.command('turn/steer', { sessionId, expectedTurnId: turn.turnId, input: inputOf(text, []) }, onAccepted);
+      await rpc.command('turn/steer', { sessionId, expectedTurnId: turn.turnId, input: inputOf(text, []) }, { onAccepted, signal, writeKind: 'steer' });
       return true;
     } catch (error) {
       if (error instanceof MspError) return false;
@@ -204,7 +204,7 @@ export class MuseSession {
     const rpc = this.#rpc;
     const sessionId = this.#sessionId;
     if (rpc === null || sessionId === null || turn.turnId === null) return;
-    void rpc.command('turn/interrupt', { sessionId, turnId: turn.turnId }).catch((error: unknown) => {
+    void rpc.command('turn/interrupt', { sessionId, turnId: turn.turnId }, { writeKind: 'stop' }).catch((error: unknown) => {
       turn.ctx.log('warn', `muse: turn/interrupt failed: ${messageOf(error)}`);
     });
     const deadline = setTimeout(() => {
@@ -284,7 +284,12 @@ export class MuseSession {
         let prompt = ctx.prompt, attachments = ctx.attachments;
         if (this.#replaces !== null && this.#replaces === ctx.sessionId) {
           this.#replaces = null;
-          const carried = ctx.continuation?.();
+          const carried = await ctx.continuation?.();
+          if (turn.isStopped) {
+            this.#current = null;
+            this.#endStopped(turn);
+            return;
+          }
           if (!carried) throw new Error('execution.muse.history: a protected cold start requires the captured conversation continuation');
           prompt = carried.prompt; attachments = carried.attachments;
         }
@@ -301,6 +306,7 @@ export class MuseSession {
           ...(effort === null ? {} : { reasoningEffort: effort }),
         });
         if (typeof started.turnId === 'string' && started.turnId.length > 0) turn.turnId = started.turnId;
+        ctx.sessionAccepted?.(sessionId);
         ctx.inputReady?.();
         if (turn.isStopped) this.#interrupt(turn);
       }
@@ -327,12 +333,12 @@ export class MuseSession {
     turn.settle();
     // Turns run one at a time: what the map holds was this turn's.
     this.#items.clear();
-    this.#running = Math.max(0, this.#running - 1);
-    if (drop || this.#closing || this.#retention.idleMs(this.warmMs) <= 0) {
+    this.#turns.end();
+    if (drop || this.#closing || (this.#retryMcp && !this.busy()) || this.#retention.idleMs(this.warmMs) <= 0) {
       this.#drop();
       return;
     }
-    if (this.#running === 0 && !this.#retention.viewed) this.#armIdle();
+    if (!this.busy() && !this.#retention.viewed) this.#armIdle();
   }
 
   // -- the process ----------------------------------------------------------
@@ -352,10 +358,23 @@ export class MuseSession {
     const posture = MODE_POSTURE[ctx.thread.permissionMode];
     const declared = profileFor(ctx.provider)?.launch?.args ?? [];
     this.#protection = protectedMuse(ctx, () => this.#current ? {ctx: this.#current.ctx, stopped: this.#current.stopped} : null, declared);
-    const args = this.#protection?.args ?? [...declared, ...museHostArgs(executable), ...posture.flags];
+    const hostArgs = museHostArgs(executable);
+    this.#mcp = sessionMcp(ctx);
+    if (this.#mcp !== null) {
+      const support = await museMcpSupport(executable, () => probeMuseVersion(ctx, executable));
+      if (this.#ended) throw new Error('the muse session was closed before it started');
+      if (support !== true) {
+        this.#mcp.release();
+        this.#mcp = null;
+        // MCP config is fixed at launch. Let this turn finish and probe on the next host.
+        this.#retryMcp = support === null;
+      }
+    }
+    const mcpConfig = museMcpConfig(this.#mcp);
+    const args = this.#protection?.args ?? [...declared, ...hostArgs, ...posture.flags, ...mcpConfig.args];
     const child = ctx.spawnChild(executable, args, {
       cwd: this.#protection?.cwd ?? ctx.thread.cwd,
-      env: this.#protection?.env ?? agentEnv(ctx.provider, ctx.accountEnv),
+      env: this.#protection?.env ?? { ...agentEnv(ctx.provider, ctx.accountEnv), ...mcpConfig.env },
     });
     this.#child = child;
     this.#killTree = ctx.killTree ?? null;
@@ -489,6 +508,7 @@ export class MuseSession {
     this.#ended = true;
     this.#closing = true;
     this.#idle.clear();
+    this.#mcp?.release();
     try { this.#protection?.close(this.#processClosed); }
     catch (error) { this.#logSink?.('error', `muse: protected cleanup failed: ${logMessageOf(error)}`); }
     this.#protection = null;
@@ -545,7 +565,7 @@ export class MuseSession {
         this.#closing = true;
         const turn = this.#current;
         if (turn !== null) turn.fail(`Muse closed the session: ${textOf(params['reason']) || 'no reason given'}`);
-        else if (this.#running === 0) this.#drop();
+        else if (!this.busy()) this.#drop();
         return;
       }
       default:
@@ -555,6 +575,11 @@ export class MuseSession {
     const turn = this.#current;
     if (turn === null) return;
     switch (method) {
+      case 'turn/started':
+        if (!turn.compacting && turn.turnId !== null && params['turnId'] === turn.turnId && turn.sessionId !== null) {
+          turn.ctx.sessionAccepted?.(turn.sessionId);
+        }
+        break;
       case 'item/started':
       case 'item/updated':
       case 'item/completed': {
@@ -615,8 +640,7 @@ export class MuseSession {
         turn.ctx.log('warn', 'muse: the host skipped some updates of this turn; the saved session is complete');
         break;
       default:
-        // turn/started (the id is already known), session/statusChanged,
-        // session/nameChanged and the rest: nothing to draw.
+        // session/statusChanged, session/nameChanged and the rest: nothing to draw.
         break;
     }
   }

@@ -58,6 +58,20 @@ test('adding a task at the core limit refuses it without changing the list', asy
   expect(await client.call('threads.tasks.get', { threadId })).toEqual(tasks);
 });
 
+test('conversation search returns the best message and follows archive visibility like the core', async () => {
+  const client = await fake();
+  const query = '"TRACE tab"';
+  const search = () => client.call('threads.search', { query, replacePending: true });
+  expect(await search()).toEqual({ query, matches: [{
+    threadId: 't-trace', messageId: 'm-1', role: 'user', score: 3,
+    messageCreatedAt: expect.any(Number), snippet: 'What does the trace tab need from the core?',
+  }] });
+  await client.call('threads.archive', { threadId: 't-trace', archived: true });
+  expect((await search()).matches).toHaveLength(1);
+  expect((await client.call('threads.search', { query, includeArchived: false })).matches).toEqual([]);
+  expect(await code(client.call('threads.search', { query, limit: 51 }))).toBe(RpcErrorCode.InvalidParams);
+});
+
 test('a first-turn title reaches the client while the answer is still running', async () => {
   const client = await fake({ delayMs: 100, chunkSize: 16 });
   const thread = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
@@ -98,6 +112,44 @@ test('removing a project closes the shells of its threads, as projects.ts remove
   await client.call('projects.remove', { projectId: project.id });
   expect(events).toEqual([`terminal.exited ${JSON.stringify({ id: shell.id, exitCode: 0 })}`]);
   expect(await code(client.call('terminals.write', { id: shell.id, data: 'dir\r' }))).toBe(RpcErrorCode.NotFound);
+  const restored = await client.call('projects.add', { path: project.path });
+  expect(restored.id).toBe(project.id);
+  expect(restored).not.toHaveProperty('archived');
+});
+
+test('removing a project drains questions left on archived threads, as projects.ts remove', async () => {
+  const { FakeContext } = await import('./fake-client/context');
+  const { seed } = await import('./fake-client/seed');
+  const { projectMethods } = await import('./fake-client/projects');
+  const { requestMethods } = await import('./fake-client/requests');
+  const ctx = new FakeContext({});
+  seed(ctx);
+  const thread = ctx.thread('t-trace');
+  const requests = requestMethods(ctx);
+  const result = await requests['questions.ask']({ threadId: thread.id, text: 'Keep working?', options: ['Yes', 'No'] });
+  thread.archived = true;
+  await projectMethods(ctx)['projects.remove']({ projectId: thread.projectId! });
+  expect((await requests['questions.list']({})).map(question => question.id)).not.toContain(result.questionId);
+});
+
+test.each(['C:/Users/you/AppData/Local/boite2', 'C:/Users/you/AppData/Local/./boite2'])('a paired device cannot read credential paths or the data folder (%s), as workdir.ts', async dataPath => {
+  const client = await fake();
+  const project = await client.call('projects.add', { path: 'D:/workspace/safe' });
+  const data = await client.call('projects.add', { path: dataPath });
+  const thread = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: 'a-echo' });
+  const dataThread = await client.call('threads.create', { projectId: data.id, providerId: 'echo', accountId: 'a-echo' });
+  await client.call('settings.set', { worktreeStorage: { mode: 'shared', directory: `${data.path}/worktrees` } });
+  const worktree = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo', worktree: {} });
+  await client.call('files.write', { threadId: thread.id, path: '.env', text: 'fixture' });
+  await client.call('files.write', { threadId: thread.id, path: '.env.example', text: 'template' });
+  await client.call('files.write', { threadId: dataThread.id, path: 'internal.txt', text: 'internal' });
+  client.becomes('session');
+  expect(await client.call('files.read', { threadId: thread.id, path: '.env.example' })).toMatchObject({ text: 'template' });
+  expect(await client.call('files.list', { threadId: worktree.id })).toEqual(expect.any(Array));
+  for (const path of ['.env', '.ssh/config']) {
+    await expect(client.call('files.read', { threadId: thread.id, path })).rejects.toThrow('does not read credential files');
+  }
+  await expect(client.call('files.read', { threadId: dataThread.id, path: 'internal.txt' })).rejects.toThrow('does not read boite\'s data folder');
 });
 
 test('a cancelled login fails, closes its terminal without signing in, and is read again, as accounts.ts loginCancel', async () => {

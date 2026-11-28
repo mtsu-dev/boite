@@ -1,5 +1,6 @@
 import type { Query } from '@anthropic-ai/claude-agent-sdk';
-import type { ModelInfo } from '@boite/contracts';
+import { fillModelCapabilities, modelCapabilities, type DiscoveredModel } from '../model-capabilities.ts';
+import { canonicalClaudeModel } from './config.ts';
 import { unavailable } from '../../errors.ts';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import type { ProbeContext, ProbeResult } from '../types.ts';
@@ -30,21 +31,25 @@ export async function readClaudeModels(ctx: ProbeContext, deps: ClaudeDeps): Pro
     const rows = await Promise.race([query.supportedModels(), new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error('Claude model discovery timed out after 20 seconds')), 20_000);
     })]);
-    const models: ModelInfo[] = rows.filter(row => !/^(default|auto)$/i.test(row.value)).map(row => {
+    const models = new Map<string, DiscoveredModel>();
+    for (const row of rows) {
+      if (/^(default|auto)$/i.test(row.value)) continue;
       const id = row.resolvedModel ?? row.value;
       // The family and version alone, as the other providers name theirs: `Opus 5.5`, never `Claude Opus 5.5`.
       // Older CLIs put the version in the description and a bare `Opus` in the display name.
       const versioned = (name: string) => name.match(/^(?:Claude\s+)?((?:Fable|Opus|Sonnet|Haiku)\s+\d+(?:\.\d+)*)(?:\b|$)/i)?.[1];
       const name = versioned(row.displayName) ?? versioned(row.description) ?? (row.displayName.trim().replace(/^Claude(?:\s+|$)/i, '').trim() || id);
-      const levels = row.supportsEffort ? (row.supportedEffortLevels ?? []).map(id => ({ id: String(id), label: id === 'xhigh' ? 'Extra high' : id.charAt(0).toUpperCase() + id.slice(1) })) : [];
-      if (row.supportsAdaptiveThinking) levels.push({ id: 'ultrathink', label: 'Ultrathink' });
-      return { id, name: id.includes('[1m]') ? `${name} (1M)` : name,
-        ...(levels.length ? { effort: { levels, default: levels.some(l => l.id === 'high') ? 'high' : levels[0]!.id } } : {}),
-        ...(row.supportsFastMode ? { speeds: [{ id: 'fast', label: 'Fast' }] } : {}),
+      const discovered: DiscoveredModel = { id, name: id.includes('[1m]') ? `${name} (1M)` : name,
+        ...modelCapabilities({
+          supportsEffort: row.supportsEffort,
+          supportedReasoningEfforts: row.supportsEffort === false ? [] : row.supportedEffortLevels,
+          capabilities: { speed: row.supportsFastMode, adaptive_thinking: row.supportsAdaptiveThinking },
+        }, { claude: true }),
       };
-    });
-    // Native discovery supplies no legacy classification. Keep its rows current
-    // and do not append obsolete descriptor entries to the account's catalog.
-    return { models: models.filter((model, index) => models.findIndex(m => m.id === model.id) === index), probedAt: Date.now() };
+      const model = canonicalClaudeModel(discovered);
+      const previous = models.get(model.id);
+      models.set(model.id, previous ? fillModelCapabilities(previous, model) : model);
+    }
+    return { models: [...models.values()], probedAt: Date.now() };
   } finally { if (timer) clearTimeout(timer); cli.end(prompts, query, abortController); }
 }

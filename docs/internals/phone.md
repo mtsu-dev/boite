@@ -2,8 +2,7 @@
 
 A phone is a device of a [group](groups.md): added once on any machine of the
 group, it reaches all of them with one key of its own. It opens the UI served by
-a machine or the [app's own address](#the-app-on-its-own-address) and connects
-over authenticated WebSockets. Agents and the journal remain on the machine
+a machine and connects over authenticated WebSockets. Agents and the journal remain on the machine
 hosting the core. The [native Android app](android-native.md) carries this same UI;
 the separate [Android server](android-server.md) can host a core and agents on
 the phone itself in Termux.
@@ -197,7 +196,7 @@ same link, copied on the machine and sent to the phone, for a camera that cannot
 read it. Either way the app makes its device key if it has none and is admitted
 to the group with it ([groups](groups.md#devices)): it then lists every machine
 of the group and opens on the one the link names. The link names the machine
-that drew it, so it works from the app's own address as from a page a machine
+that drew it, so it works from the native app as from a page a machine
 serves. The installed iPhone app needs its own scanner because the Camera app
 hands a link to Safari, whose storage the home-screen app does not share.
 
@@ -227,92 +226,25 @@ machine it was added on; **Remove from the group** takes one out on every
 machine. A computer copies the same link and pastes it under **Join**: its own
 core joins the group ([groups](groups.md#using-it)).
 
-### The app on its own address
+### When the phone cannot connect
 
-The phone app can also be a page no machine serves: `APP_ORIGIN` in the
-contracts, `https://boite.mtsu.dev`. Every core accepts sockets from it, as
-it does the desktop shell's, so nothing is set on any machine for it. A fork
-that serves its own names it in `BOITE_APP_ORIGIN` on its cores, an `https`
-origin or the core does not start, and in `VITE_BOITE_APP_ORIGIN` when it builds
-its UI, which otherwise takes its own page for a machine's. There the app opens on its way
-in alone. A scanned or pasted link names the machine that drew it. The page is
-HTTPS, and a browser blocks a plain `http://` socket from it, the device's own
-loopback excepted. A link to a machine with no HTTPS address therefore says so
-in one line and opens that machine's own page, a top-level navigation, which a
-browser allows from HTTPS (`machinePage` and `openOnMachine` in
-`lib/app-origin.ts`). The page is built from the machine's address the link
-names, its `core` parameter when a UI served it, plus the grant: only an
-absolute `http:` address with no credentials, query or fragment, so a host typed
-without a scheme or another scheme is refused as an invalid address and nothing
-opens. The page the machine serves takes the grant from its address and pairs
-there over plain HTTP: its device key needs no WebCrypto
-([groups](groups.md#devices)). The `#join=` part of the link, the invitation a
-computer pastes under **Join**, is not carried, so it never sits in the phone's
-address bar or history. The phone then uses Boite on that page;
-for the app itself, give the machine an HTTPS address. The first machine
-added becomes the one the app shows and opens on next time; the group brings the
-others.
+A page sees a bare socket error whatever blocked it, and the machine never
+sees a socket that did not reach it. Android adds a lock of its own: the app
+that opens the page, a browser or the [native app](android-native.md), needs
+Android's local network permission, shown as Nearby devices in its app
+settings, before it reaches the local network. Android 17 makes it a runtime
+permission (`ACCESS_LOCAL_NETWORK`); a Titanium install on Android 16 needed it
+too (2026-10-15). No page can read it.
 
-#### Chrome's local network permission
+Under the waiting screen's buttons, **Troubleshoot**
+(`ConnectTroubleshoot.svelte`) unfolds the checks one by one: Nearby devices,
+on Android only, and the machine's own address to open in a tab, where a page
+that does not load means the phone cannot reach it at all (Tailscale, VPN,
+Wi-Fi).
 
-That address is public and the machines are not: a LAN address, a tailnet
-address or a name only the home DNS resolves are all private. Chrome 142 and
-later block a public page's requests to a private address until the user allows
-it, WebSockets included since Chrome 147. The socket fails at once with
-`net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS` in the console and a bare
-socket error in the page, and the machine never sees it, so its log has no line
-for that phone. A page a machine serves is on the private side already and is
-not concerned. Every Chromium on Android does the same, including the browser
-the installed app runs in when it is not Chrome (Titanium and Vanadium enforce it
-on WebSockets too).
-
-Android adds a second lock: the browser app itself needs Android's local network
-permission, shown as Nearby devices in its app settings, before any of its pages
-reaches the local network. Android 17 makes it a runtime permission
-(`ACCESS_LOCAL_NETWORK`); a Titanium install on Android 16 needed it too
-(2026-10-15), with Local network already allowed. No page can read it.
-
-The permission is `local-network` since Chrome 145, "Local network" in site
-settings; Chrome 142 to 144 named it `local-network-access`. Chrome asks the
-first time a socket goes out. On the app's page, `lib/local-network.svelte.ts`
-reads its state with `navigator.permissions.query` and follows its changes:
-
-- `prompt`: the first screen and the waiting screen say what to answer before
-  Chrome asks.
-- `denied`: the waiting screen becomes **Allow the local network** and gives the
-  way back: in the browser that runs the app, Settings, Site settings, Local
-  network, then the app's own host; on Android, Nearby devices for that browser
-  too. The app icon's Site settings shortcut is no way there: it opens
-  the browser's list of linked sites and their storage, without permissions. The
-  bare "socket error" is not shown over it.
-- `granted`: every machine is tried at once, through the same `resume()` as the
-  `online` event, rather than at its next retry.
-
-Under the buttons, **Troubleshoot** (`ConnectTroubleshoot.svelte`) unfolds the
-checks one by one: Local network with its live state, on the app's page only;
-Nearby devices, on Android only; and the machine's own address to open in a
-tab, where a page that does not load means the phone cannot reach it at all
-(Tailscale, VPN, Wi-Fi), whatever the permissions say.
-
-A browser that knows neither name (Safari, Firefox, an older Chrome) blocks
-nothing and the app says nothing. `tests/e2e/app-origin.test.ts` passes
-`--ip-address-space-overrides` so that Chromium sees the app public and the
-cores private, the way a phone does; without it every address there is loopback
-and nothing is checked.
-
-That address serves files and nothing else: `.github/workflows/app.yml`
-publishes the UI build there with GitHub Pages on every change of the UI, the
-contracts or the build's dependencies on `main`, `/.well-known/assetlinks.json` included. A phone downloads
-the page once and its service worker keeps it; conversations, prompts and
-sockets go from the phone to the machines, never to that address. Whoever
-controls the address controls the code the phone runs, as whoever signs the APK
-does.
-
-Notifications are enabled on the machine the app shows, which becomes the
-device's push home. Every push to a device of the group names the machine its
-thread is on, so a tap opens the thread there whatever page the app runs.
-A machine reached only over plain HTTP is reached through a member that has
-HTTPS ([relay](groups.md#relay)), as from any HTTPS page.
+The page is served by a machine, or packaged in the native app. Boite once
+published it at a public address of its own; that site is retired, and no
+core trusts its origin any more.
 
 ### Older links
 
@@ -378,7 +310,12 @@ home folder's hidden entries, `AppData` or `Library`, so a new agent CLI's folde
 is covered before anyone lists it. The temporary folder and the cloud drives under
 `Library/CloudStorage` and `Library/Mobile Documents` are not among them. A project
 or shared worktree folder the owner keeps inside one of them (`~/.worktrees`, iCloud
-Drive, the data folder) is a root of its own and keeps its reads. At a phone's width the Changes panel shows
+Drive, the data folder) is a root of its own and keeps its reads. In a shared
+XDG folder, the provider's declared login files and SQLite sidecars stay private,
+including the targets of links. A paired device cannot add a nested folder
+that directly holds a declared login file as a project. It can add projects
+beside or inside that folder. A provider's declared dedicated roots stay
+private as a whole. At a phone's width the Changes panel shows
 the list, then one diff with Back and previous/next file; a file reads as wrapped,
 numbered lines with no editor.
 
@@ -522,9 +459,11 @@ Safari 17 and Chrome 114 for the complete layout:
 This table describes features in the built CSS and `lib/floating.ts`. It does
 not record real Safari 15/16 device testing.
 
-A browser under the floor fails to parse the app, so `main.ts` never runs. An
-inline script in `index.html` notices on `load` and writes one sentence in the
-page instead: this browser cannot start Boite, and the versions it needs. A
+The HTML paints a localized Starting message while the app files load. On a
+fresh phone, the scan and paste controls can open before the conversations
+navigation is fetched. A browser under the floor fails to parse the app, so
+`main.ts` never runs. On `load`, an inline script in `index.html` replaces the
+status with a notice listing the browser versions Boite needs. A
 browser that has `Array.prototype.at`, `Object.hasOwn`, `structuredClone` and
 `oklch()`, which Safari 15.4 and Chrome 111 are the first to have together,
 failed before the entry ran instead, most often on a chunk lost on the way
@@ -631,8 +570,8 @@ account.
 JavaScript that Vite copies to `dist/sw.js` with one change, the build id in
 its cache name, and `lib/sw.ts` registers
 it after the first paint, never before: the registration must not delay what the
-user sees. It registers only where it helps: an http(s) origin, the core's own
-or the app's ([its own address](#the-app-on-its-own-address)). The Tauri shell loads the identical build from `tauri://`, where the
+user sees. It registers only where it helps: the core's own http(s) origin; the
+native app's mobile build ships none. The Tauri shell loads the identical build from `tauri://`, where the
 files are already on disk, and `?fake=1` runs on the in-memory client with no
 core behind it; both are skipped. A registration that fails is one
 `console.warn`, and the app runs on.
@@ -676,11 +615,12 @@ the locale map of an inline script: the language the page last spoke, which it
 writes beside the notification words, else the device's first language the
 build has, else English. The app mounts only with a catalogue, so an offline
 open needs it as much as the entry; the other languages stay on the wire until
-someone picks one. It also stores the phone navigation's chunk and the files
-it imports, which the build lists in a `boite-offline` meta tag
-(`offlineParts` in `packages/ui/vite.config.ts`): the header and the recovery
-screen live there, and the browser fetches nothing for that tag, so the
-desktop shell never loads them (`tests/e2e/offline-phone.test.ts`). Every
+someone picks one. Once a connection is accepted, the app asks the worker
+to store the phone navigation, conversation list, chat and agent views listed in
+`boite-offline-conversations`. On desktop the build preloads the views with
+the entry, reusing the document's links, and draws them together once connected.
+A fresh phone can pair before the views load
+(`tests/e2e/phone-startup.test.ts`, `tests/e2e/offline-phone.test.ts`). Every
 successful navigation refreshes the offline
 HTML. Network errors and HTTP 5xx responses fall back to that cached shell.
 Secondary screens are cached when opened; an uncached Settings screen names
@@ -726,8 +666,7 @@ a member of the group, which forwards it to the device's push home.
 `pushCovers` in `lib/notify.ts` requires the page's push switch, the granted
 permission and a live browser subscription. Otherwise the page shows the
 notice through the service worker whenever one is registered, since Android
-Chrome refuses `new Notification` on a page and the phone app's page serves no
-machine. It uses the tag and data a push about that thread would: `thread-<id>`
+Chrome refuses `new Notification` on a page. It uses the tag and data a push about that thread would: `thread-<id>`
 for this page's own core, `thread-<core>-<id>` with `{threadId, core}` for a
 machine of the group (`GroupLinks.coreOf`, handed to `lib/notify.ts` by the
 workspace), so a later push replaces it and a tap opens the thread there. A

@@ -5,12 +5,12 @@
  * provider's usable login. A child runs on a speed tier only when the request
  * names one: it never inherits the parent's.
  */
-import { CONVERSATION_PROFILE_ID, loggedInAccount, matchSpeed, SPEED_NEEDS_MODEL, speedRefusal } from '@boite/contracts';
+import { CONVERSATION_PROFILE_ID, loggedInAccount, matchSpeed, resolveModelId, SPEED_NEEDS_MODEL, speedRefusal } from '@boite/contracts';
 import type { Account, DelegationConfig, DelegationModelChoice, DelegationModels, DelegationProfile, ProviderId, ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { probedModelsOf } from '../drivers/index.ts';
-import { checkEffort, modelsFor, PROBED_PROTOCOLS } from '../threads/selection.ts';
+import { checkEffort, modelsFor, PROBED_PROTOCOLS, selectionFor } from '../threads/selection.ts';
 import type { ProviderProbe } from '../providers/probe.ts';
 
 /** A profile, or a conversation's own route, whose model may be the provider's default. */
@@ -33,12 +33,30 @@ export type Asker = Pick<ThreadSummary, 'providerId' | 'accountId' | 'model'>;
 export const anyModel = (config: DelegationConfig): boolean => config.anyModel !== false;
 
 /** Explicit model choices respect the same owner-approved routes here and on another machine. */
-export function checkModelAllowed(config: DelegationConfig, parent: ThreadSummary, choice: Pick<DelegationModelChoice, 'providerId' | 'model'>): void {
+export function checkModelAllowed(config: DelegationConfig, parent: ThreadSummary, choice: Pick<ChildRoute, 'providerId' | 'accountId' | 'model' | 'effort'>, models: DelegationModelChoice[], base?: ChildRoute): void {
   if (anyModel(config)) return;
-  const allowed = [conversationRoute(parent), ...config.profiles];
-  if (!allowed.some(route => route.providerId === choice.providerId && route.model === choice.model)) {
-    throw refused(`the owner limited subagents to this conversation's model and the profiles (${allowed.map(route => route.id).join(', ')}); leave --model out or name one of them`);
+  const accountModels = models.filter(model => model.providerId === choice.providerId && model.accountId === choice.accountId);
+  if (base) {
+    const alias = resolveModelId(accountModels, base.model, row => row.model, row => row.aliases)?.alias;
+    checkAliasEffortAllowed(config, base, alias?.effort, choice.effort);
+    return;
   }
+  const allowed = [conversationRoute(parent), ...config.profiles];
+  if (!allowed.some(route => {
+    if (route.providerId !== choice.providerId) return false;
+    const resolved = resolveModelId(accountModels, route.model, row => row.model, row => row.aliases);
+    const required = resolved?.alias?.effort === undefined ? undefined : route.effort ?? resolved.alias.effort;
+    return resolved?.row.model === choice.model && (required === undefined || required === choice.effort);
+  })) throw modelNotAllowed(allowed);
+}
+
+function modelNotAllowed(allowed: Pick<ChildRoute, 'id'>[]) {
+  return refused(`the owner limited subagents to this conversation's model and the profiles (${allowed.map(route => route.id).join(', ')}); use an allowed model and effort`);
+}
+
+/** An effort override on a named route must also respect its legacy model ID. */
+function checkAliasEffortAllowed(config: DelegationConfig, base: ChildRoute, aliasEffort: string | undefined, effort: string | null): void {
+  if (!anyModel(config) && aliasEffort !== undefined && (base.effort ?? aliasEffort) !== effort) throw modelNotAllowed([base]);
 }
 
 /** The parent's account on its own provider, else that provider's logged-in default login. */
@@ -63,12 +81,14 @@ export function catalog(core: Core, parent: Asker, withLegacy = false): Delegati
     const provider = core.providers.require(summary.id);
     const models = modelsFor(provider, account.id);
     if (!models.length && PROBED_PROTOCOLS.includes(provider.protocol)) unavailable.push({ providerId: summary.id, reason: 'models not read yet' });
+    const current = resolveModelId(models, parent.model, row => row.id, row => row.aliases)?.row;
     for (const model of models) {
       const choice: DelegationModelChoice = {
         providerId: summary.id, providerName: summary.name, accountId: account.id, model: model.id, name: model.name,
         efforts: model.effort?.levels.map(level => level.id) ?? [], defaultEffort: model.effort?.default ?? null,
         speeds: model.speeds?.map(speed => ({ ...speed })) ?? [],
-        current: parent.providerId === summary.id && parent.model === model.id,
+        ...(model.aliases ? { aliases: model.aliases } : {}),
+        current: parent.providerId === summary.id && current?.id === model.id,
       };
       (model.legacy ? legacy : choices).push(choice);
     }
@@ -126,7 +146,7 @@ export async function readNamed(core: Core, probe: ProviderProbe, parent: Asker,
   if (!models.length) return;
   const absent = (): string[] => {
     const known = catalog(core, parent, true).choices;
-    return models.filter(model => !known.some(c => `${c.providerId}/${c.model}` === model || c.model === model));
+    return models.filter(model => !hasNamedModel(known, model));
   };
   const missing = absent();
   if (!missing.length) return;
@@ -159,18 +179,50 @@ export async function readNamed(core: Core, probe: ProviderProbe, parent: Asker,
 
 const label = (choice: DelegationModelChoice) => `${choice.providerId}/${choice.model}`;
 
-/** `codex/gpt-5.5`, `gpt-5.5`, then a unique part of an id or a name, such as `opus`. `list` is the command that lists them. */
-function pick(choices: DelegationModelChoice[], parent: Pick<ThreadSummary, 'providerId'>, wanted: string, list = 'boite delegate models'): DelegationModelChoice {
+function byName(choices: DelegationModelChoice[], wanted: string, qualified: boolean) {
+  const identify = (choice: DelegationModelChoice) => qualified ? label(choice).toLowerCase() : choice.model.toLowerCase();
+  return resolveModelId(choices, wanted, identify, choice => choice.aliases?.map(alias => ({
+    ...alias, id: (qualified ? `${choice.providerId}/${alias.id}` : alias.id).toLowerCase(),
+  })));
+}
+
+export function hasNamedModel(choices: DelegationModelChoice[], wanted: string): boolean {
+  const id = wanted.trim().toLowerCase();
+  return Boolean(byName(choices, id, true) ?? byName(choices, id, false));
+}
+
+/** Qualified ID, bare ID, exact alias, then a unique part of an ID or name. */
+function pick(choices: DelegationModelChoice[], parent: Pick<ThreadSummary, 'providerId'>, wanted: string, list = 'boite delegate models') {
   const query = wanted.trim().toLowerCase();
-  const exact = choices.filter(c => label(c).toLowerCase() === query);
-  if (exact.length) return exact[0]!;
-  const byId = choices.filter(c => c.model.toLowerCase() === query);
-  const partial = byId.length ? byId : choices.filter(c => c.model.toLowerCase().includes(query) || c.name.toLowerCase().includes(query) || label(c).toLowerCase().includes(query));
+  const qualified = choices.find(choice => label(choice).toLowerCase() === query);
+  if (qualified) return { row: qualified };
+  const exact = choices.filter(choice => choice.model.toLowerCase() === query);
+  const alias = exact.length === 0 ? byName(choices, query, true) ?? byName(choices.filter(choice => choice.providerId === parent.providerId), query, false) : undefined;
+  if (alias) return alias;
+  const aliases = exact.length ? [] : choices.filter(choice => byName([choice], query, false));
+  const exactMatches = exact.length ? exact : aliases;
+  const partial = exactMatches.length ? exactMatches : choices.filter(c => c.model.toLowerCase().includes(query) || c.name.toLowerCase().includes(query) || label(c).toLowerCase().includes(query));
   const own = partial.filter(c => c.providerId === parent.providerId);
-  if (partial.length === 1) return partial[0]!;
-  if (byId.length && own.length === 1) return own[0]!;
+  const selected = partial.length === 1 ? partial[0] : exactMatches.length && own.length === 1 ? own[0] : undefined;
+  if (selected) return byName([selected], query, false) ?? { row: selected };
   if (!partial.length) throw invalidParams(`model: no installed model matches "${wanted}"; run ${list}`, { field: 'model', expected: choices.slice(0, 40).map(label) });
   throw invalidParams(`model: "${wanted}" matches ${partial.length} models; name one of ${partial.slice(0, 8).map(label).join(', ')}`, { field: 'model', expected: partial.map(label) });
+}
+
+function pickedEffort(choice: DelegationModelChoice, caller: Pick<ThreadSummary, 'model' | 'effort'>, own: boolean, alias: string | undefined): string | null {
+  const inherited = own ? caller.effort ?? choice.aliases?.find(entry => entry.id === caller.model)?.effort : undefined;
+  return alias ?? (inherited && choice.efforts.includes(inherited) ? inherited : choice.defaultEffort);
+}
+
+function namedEffort(choice: DelegationModelChoice, level: string): string {
+  if (choice.efforts.includes(level)) return level;
+  const name = label(choice);
+  throw refused(choice.efforts.length ? `effort: ${name} has no "${level}" level; expected ${choice.efforts.join(', ')}`
+    : `effort: ${name} offers no reasoning level; leave --effort out`, { field: 'effort', expected: choice.efforts });
+}
+
+function sameModel(choice: DelegationModelChoice, caller: Pick<ThreadSummary, 'providerId' | 'model'>): boolean {
+  return choice.providerId === caller.providerId && (choice.model === caller.model || choice.aliases?.some(alias => alias.id === caller.model) === true);
 }
 
 /** The agent a thread an agent starts runs on. */
@@ -186,16 +238,11 @@ export interface ModelPick { providerId: ProviderId; accountId: string; model: s
 export function chooseModel(choices: DelegationModelChoice[], caller: Pick<ThreadSummary, 'providerId' | 'model' | 'effort' | 'speed'>, request: Omit<RouteRequest, 'profileId'>, list: string): ModelPick {
   const wanted = request.model ?? (caller.model === null ? null : `${caller.providerId}/${caller.model}`);
   if (wanted === null) throw invalidParams(request.speed === undefined ? 'effort: this thread runs on the provider\'s default model; name a model with --model to choose its reasoning' : SPEED_NEEDS_MODEL, { field: 'model' });
-  const choice = pick(choices, caller, wanted, list);
+  const { row: choice, alias } = pick(choices, caller, wanted, list);
   const name = label(choice);
-  const own = choice.providerId === caller.providerId && choice.model === caller.model;
-  let effort = own && choice.efforts.includes(caller.effort ?? '') ? caller.effort : choice.defaultEffort;
-  if (request.effort !== undefined) {
-    effort = request.effort.trim();
-    if (!choice.efforts.includes(effort)) {
-      throw refused(choice.efforts.length ? `effort: ${name} has no "${effort}" level; expected ${choice.efforts.join(', ')}` : `effort: ${name} offers no reasoning level; leave --effort out`, { field: 'effort', expected: choice.efforts });
-    }
-  }
+  const own = sameModel(choice, caller);
+  const inherit = request.model === undefined && own && choice.efforts.includes(caller.effort ?? '');
+  const effort = request.effort === undefined ? pickedEffort(choice, caller, own, inherit ? undefined : alias?.effort) : namedEffort(choice, request.effort.trim());
   const speeds = choice.speeds;
   let speed = own && speeds?.some(tier => tier.id === caller.speed) ? caller.speed ?? null : null;
   if (request.speed !== undefined) {
@@ -211,17 +258,17 @@ export function conversationRoute(parent: ThreadSummary): ChildRoute {
 }
 
 /** The route a request names, checked against what is installed and what the owner allows. */
-export function resolveRoute(core: Core, parent: ThreadSummary, config: DelegationConfig, request: RouteRequest): ChildRoute {
+export function resolveRoute(core: Core, parent: ThreadSummary, config: DelegationConfig, request: RouteRequest, defaultNamedEffort: 'inherit' | 'automatic' = 'inherit'): ChildRoute {
   const profiles = config.profiles;
   const named = (id: string) => profiles.find(p => p.id === id) ?? (id === CONVERSATION_PROFILE_ID ? conversationRoute(parent) : undefined);
   let route: ChildRoute;
+  let choices: DelegationModelChoice[] | undefined;
   if (request.model !== undefined) {
-    const choice = pick(catalog(core, parent, true).choices, parent, request.model);
-    checkModelAllowed(config, parent, choice);
-    const sameAsParent = choice.providerId === parent.providerId && choice.model === parent.model;
+    ({ choices } = catalog(core, parent, true));
+    const { row: choice, alias } = pick(choices, parent, request.model);
     route = {
       id: label(choice), name: choice.name, providerId: choice.providerId, accountId: choice.accountId, model: choice.model,
-      effort: sameAsParent && choice.efforts.includes(parent.effort ?? '') ? parent.effort ?? null : choice.defaultEffort,
+      effort: alias?.effort ?? (defaultNamedEffort === 'automatic' ? null : pickedEffort(choice, parent, sameModel(choice, parent), undefined)),
     };
   } else {
     const id = request.profileId ?? CONVERSATION_PROFILE_ID;
@@ -232,12 +279,15 @@ export function resolveRoute(core: Core, parent: ThreadSummary, config: Delegati
   if (request.effort !== undefined) {
     const provider = core.providers.require(route.providerId);
     if (route.model === null) throw invalidParams('effort: this route runs on the provider\'s default model; name a model with --model to choose its reasoning');
-    route = { ...route, effort: checkEffort(provider, route.accountId, route.model, request.effort) };
+    const effort = checkEffort(provider, route.accountId, route.model, request.effort);
+    if (!choices) checkAliasEffortAllowed(config, route, selectionFor(provider, route.accountId, route.model)?.alias?.effort, effort);
+    route = { ...route, effort };
   }
+  if (choices) checkModelAllowed(config, parent, route, choices);
   if (request.speed === undefined) return { ...route, speed: null };
   if (route.model === null) throw invalidParams(SPEED_NEEDS_MODEL);
   const provider = core.providers.require(route.providerId);
-  const listed = modelsFor(provider, route.accountId).find(entry => entry.id === route.model)?.speeds;
+  const listed = selectionFor(provider, route.accountId, route.model)?.model.speeds;
   const speed = matchSpeed(listed, request.speed);
   if (speed !== null) return { ...route, speed };
   // A spawn reads no agent. Tiers are unread only while an agent that owns its list has given none; anything else without tiers offers none.

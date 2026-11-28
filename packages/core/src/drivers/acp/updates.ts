@@ -10,7 +10,7 @@ import type {
   RequestPermissionResponse,
   SessionNotification,
 } from '@agentclientprotocol/sdk/unstable';
-import { antigravitySubagentKind, isAntigravityQuestion } from '../antigravity.ts';
+import { antigravitySubagentKind, isAntigravityAccountUnavailable, isAntigravityQuestion } from '../antigravity.ts';
 import { usdCostOf, type AcpTurn } from './turn.ts';
 
 type Update = SessionNotification['update'];
@@ -155,15 +155,28 @@ export function sessionNotificationOf(params: unknown): SessionNotification | nu
 }
 
 /** One `session/update` of the prompt in flight. */
-export function drawUpdate(turn: AcpTurn, update: Update): void {
+export function drawUpdate(turn: AcpTurn, update: Update, sessionId?: string): void {
+  const ownSession = sessionId === turn.sessionId;
   switch (update.sessionUpdate) {
-    case 'agent_message_chunk':
-      if (update.content.type === 'text') turn.writeText(update.content.text);
+    case 'agent_message_chunk': {
+      if (update.content.type !== 'text') break;
+      const { text } = update.content;
+      if (text.length === 0) break;
+      if (ownSession) turn.flushExecutionError();
+      // Antigravity sends this execution failure as a text update, then returns end_turn.
+      if (turn.antigravity && ownSession && isAntigravityAccountUnavailable(text)) {
+        turn.noteExecutionError(text);
+      } else turn.writeText(text);
       break;
+    }
     case 'agent_thought_chunk':
-      if (update.content.type === 'text') turn.writeThinking(update.content.text);
+      if (update.content.type === 'text' && update.content.text.length > 0) {
+        if (ownSession) turn.flushExecutionError();
+        turn.writeThinking(update.content.text);
+      }
       break;
     case 'tool_call':
+      if (ownSession) turn.flushExecutionError();
       turn.upsertTool(
         update.toolCallId,
         update.name ?? update.title,
@@ -210,6 +223,7 @@ export function drawUpdate(turn: AcpTurn, update: Update): void {
 export async function answerPermission(turn: AcpTurn | null, params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
   // `RequestPermissionResponse.outcome` is itself the tagged outcome object.
   if (turn === null || turn.isStopped) return { outcome: { outcome: 'cancelled' } };
+  if (params.sessionId === turn.sessionId) turn.flushExecutionError();
   const call = params.toolCall;
   // Antigravity carries questions on this method, using its own option ids.
   const question = turn.antigravity && isAntigravityQuestion(params);
@@ -222,7 +236,7 @@ export async function answerPermission(turn: AcpTurn | null, params: RequestPerm
     const ticket = turn.ctx.askQuestion(ask);
     const index = turn.takeIndex();
     turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer: null });
-    const answer = await Promise.race([ticket, turn.stopped.then(() => null)]);
+    const answer = await turn.awaitUser(Promise.race([ticket, turn.stopped.then(() => null)]));
     if (answer === null) return { outcome: { outcome: 'cancelled' } };
     turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer });
     const optionId = answer.optionIds[0];
@@ -237,7 +251,7 @@ export async function answerPermission(turn: AcpTurn | null, params: RequestPerm
   const ticket = turn.ctx.requestPermission(toolName, call.rawInput ?? null, call.title ?? null);
   const index = turn.takeIndex();
   turn.part(index, { type: 'permission', requestId: ticket.requestId, toolName, decision: null });
-  const answer = await Promise.race([ticket, turn.stopped.then(() => 'cancelled' as const)]);
+  const answer = await turn.awaitUser(Promise.race([ticket, turn.stopped.then(() => 'cancelled' as const)]));
   if (answer === 'cancelled') return { outcome: { outcome: 'cancelled' } };
   turn.part(index, { type: 'permission', requestId: ticket.requestId, toolName, decision: answer });
   const optionId = pickOption(params.options, answer);

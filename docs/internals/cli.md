@@ -108,6 +108,10 @@ An agent can add a profile, never rename or delete one: that stays in Settings.
 `tab <id>` makes one current and `--tab <id>` aims a single command at it. The
 agent cannot select a tab from another conversation.
 
+`boite browser show` reveals the current tab to viewers of the conversation.
+Use `boite browser show --tab <id>` to reveal a specific tab. Opening a page
+with `boite browser open` leaves the panel closed until someone shows it.
+
 `snapshot -i` lists the page's interactive elements with refs:
 `- textbox "Email" [ref=e3]`, `- button "Continue" [ref=e5]`. A plain element
 that acts as a control, a `div` or `span` with a click handler, a `tabindex` or
@@ -297,15 +301,18 @@ At most 20 PRs can be linked to one conversation.
 ### Watching a pull request
 
 `boite pr watch [<url|number>]` asks Boite to babysit a PR for the agent, so
-the agent ends its turn instead of polling CI. With nothing named it watches
+the agent ends its turn while CI and reviews run. With nothing named it watches
 the conversation's only linked PR, or its only open one; a number names a
 linked PR; a URL not linked yet is linked first. It prints what the first
-read saw (head, checks running and failed, a conflict) and wakes nothing for
-it. `boite pr unwatch [<url|number>]` stops one watch, or all of them.
+read saw (head, checks running and failed, the base tip's first failure and a
+conflict if present). `boite pr unwatch [<url|number>]` stops one watch, or all of
+them.
 
 The core (`packages/core/src/pull-request-watch.ts`) wakes the conversation
 with one message, a `pull-request` turn, when:
 
+- the base branch's current commit has a failed check. It names the branch,
+  commit, first failure and check link apart from the pull request's checks;
 - the first check of a head fails; failures after it on that head wait until
   no CI job runs and go out together as its verdict, unless only an aggregate
   gate is new (a required job such as `CI required` that started once every
@@ -341,7 +348,8 @@ with one message, a `pull-request` turn, when:
 
 The message names each change with its link. A change waits 20 seconds for
 the rest of its burst and for a running turn to end, then everything waiting
-goes out together; the same state never wakes twice.
+goes out together. The core records the wake and clears its pending changes
+in the same database transaction, so a restart cannot deliver the batch twice.
 
 Each watched PR costs one GraphQL query a minute, a fingerprint of its state,
 mergeability, merge state, head, place in the merge queue, check counts by state, comment and review counts, edits
@@ -431,6 +439,9 @@ or `sent` once delivered. Repeat the same `--request-id` to check or retry an
 accepted submission. Incognito prompts wait in the core's memory and survive
 the terminal closing. Retired conversations use direct submission. A prompt
 whose conversation folder cannot be recovered stays held with the reason.
+On an older core that has no outbox method, the CLI submits directly with the
+same request ID. Task edits use the older read and write methods if the core
+has no task-edit method.
 The owner can list and restore recoverable conversations with `thread deleted`
 and `thread restore <id>`.
 
@@ -502,6 +513,7 @@ boite answer <id> <question-id> <option|text ...> [--text <note>] [--skip]
 boite permissions [<id>]         pending tool permissions
 boite allow|deny <id> <request-id>
 boite attach <file>               publish a file snapshot in chat, at most 512 MB
+boite proof <message-id> <output-line> <unchecked> [capture]
 boite view <file.html>            draw the page where a line ![title](file.html) of the answer places it, else at its end (--title <text>)
 boite view check <file.html>      check without publishing; save PNGs at desktop/phone widths (--script checks.js, --scheme dark|light)
 boite view help                   the rules of a page: layout, the app's look, theme, motion, checks
@@ -513,6 +525,8 @@ boite diff [file]                open the changes surface, or one file's diff
 boite browse <url>               open the url in a new tab of this conversation's browser (http, https)
 boite open trace|tasks|changes|files|workflow [dir|run-id]
 boite status                     git status: branch, upstream, one row per change
+boite transcripts [list|failures|read] ...
+                                 compacted conversations kept for audits (see Transcripts)
 boite journal-check [table rowid] [--limit <n>]
                                  read-only journal diagnostics, owner only (see Diagnostics)
 boite ask <question> [option ...] [--multiple] [--open <url>]
@@ -520,7 +534,7 @@ boite secret list
 boite secret ask <NAME> --why <reason> [--placeholder <example>] [--timeout <minutes>]
 boite secret write <ref> --env-file <path> --key <VAR> [--allow-unignored]
 boite secret run <ref> --as <VAR> -- <cmd> [args ...]
-boite secret pipe <ref> -- <cmd> [args ...]
+boite secret pipe <ref> [--check <arg>] -- <cmd> [args ...]
 boite task list|add <text>|start <id>|done <id>|remove <id>|clear
 boite todo list|add <text>|claim <id>
 boite goal track
@@ -537,6 +551,7 @@ boite contacts [view]|forward|connect|start|share|ask-owner|refuse|cut|deliver|b
 boite mochi memory
 boite mochi remember [--section <title>] [--replace <start>] <fact>
 boite mochi routines
+boite mochi triggers
 boite mochi schedule <json>
 boite mochi unschedule <routine-id>
 boite mochi watch|unwatch <thread-id>
@@ -1220,6 +1235,24 @@ it checked and one line per issue, at most 100 rows a page (`--limit`, up to
 journal-check <table> <rowid>`. It is owner only: from the owner's terminal
 it needs no thread, and inside a thread's agent environment it is refused.
 `--json` keeps the result.
+
+## Transcripts
+
+`boite transcripts` reads the archive of compacted conversations
+([conversation storage](transcripts.md)), for the owner and for an agent in
+its thread; an agent's sandbox does not hold the data directory.
+
+```
+boite transcripts [list] [--query <text>] [--limit <n>]
+boite transcripts failures [<conversation>] [--query <text>] [--limit <n>]
+boite transcripts read <conversation> [--session <id>] [--after <line>]
+      [--kinds user,assistant,call,result] [--query <text>] [--limit <n>]
+```
+
+`list` prints one conversation a line, newest first. `failures` prints the
+failed tools, API errors and failed turns the index holds, each with the
+session and line to read from. `read` prints the records of one session in
+order, one JSON a line, and ends with the command for the next page.
 
 ## Where the command lives
 

@@ -21,20 +21,24 @@ for (const width of [1280, 390]) {
         await client.call('threads.archive', {threadId: thread.id, onlyIfIdle: true});
         return thread.id;
       })()`);
-      if (width < 720) {
-        // The phone's archive is a row of the General page, under Settings' App group.
-        await mobileAction(page, 'mobile-settings');
-        await page.click('[data-testid=mobile-settings-home] [data-testid=settings-tab-general]');
-        await page.click('[data-testid=mobile-settings-archived]');
-      } else {
-        await page.click('[data-testid=nav-settings]');
-        await page.click('[data-testid=settings-tab-general]');
-        await page.click('[data-testid=archived-show]');
-      }
-      await page.waitFor(`document.querySelector('[data-testid=done-expires]')`);
+      const phone = width < 720;
+      const enterGeneral = async () => {
+        if (phone) await mobileAction(page, 'mobile-settings');
+        else if (!await page.evaluate(`!!document.querySelector('[data-testid=settings-tab-general]')`)) await page.click('[data-testid=nav-settings]');
+        await page.click(`${phone ? '[data-testid=mobile-settings-home] ' : ''}[data-testid=settings-tab-general]`);
+      };
+      const openArchive = async () => {
+        if (!await page.evaluate(`!!document.querySelector('[data-testid=archived-list]')`)) {
+          await page.click(phone ? '[data-testid=mobile-settings-archived]' : '[data-testid=archived-show]');
+        }
+        await page.waitFor(`document.querySelector('[data-testid=archived-list]')`);
+      };
+      await enterGeneral();
+      if (phone) await openArchive();
+      await page.waitFor(`document.querySelector('[data-testid=done-retention-days]')`);
       expect(await page.evaluate(`document.querySelector('[data-testid=done-retention-days]').value`)).toBe('3');
       await page.evaluate(`document.querySelector('[data-testid=done-retention-days]').scrollIntoView({block:'center'})`);
-      await page.evaluate(`Promise.all([document.fonts.ready, ...document.querySelector('[data-testid=archived-threads]').getAnimations({subtree:true}).filter(a => a.timeline === document.timeline && a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
+      await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `done-retention-${width}.png`));
       expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
       await page.choose('[data-testid=done-retention-days]', '0.5');
@@ -44,12 +48,16 @@ for (const width of [1280, 390]) {
       // A valid value saves when the field changes, with no Save button.
       await page.choose('[data-testid=done-retention-days]', '7');
       await page.waitFor(`globalThis.__boiteTest.workspace.active.settings.threadDoneRetentionDays === 7`);
+      if (!phone) await openArchive();
       const doneAt = await page.evaluate<number>(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId: ${JSON.stringify(threadId)}}).then(t => t.doneAt)`);
       expect(await page.evaluate(`document.querySelector('[data-testid=done-expires]').textContent.includes(new Date(${doneAt + 7 * 86_400_000}).toLocaleString())`)).toBe(true);
+      if (!phone) await enterGeneral();
       await page.choose('[data-testid=done-retention-days]', '0');
-      await page.waitFor(`globalThis.__boiteTest.workspace.active.settings.threadDoneRetentionDays === 0 && !document.querySelector('[data-testid=done-expires]')`);
+      await page.waitFor(`globalThis.__boiteTest.workspace.active.settings.threadDoneRetentionDays === 0`);
+      if (!phone) await openArchive();
+      expect(await page.evaluate(`document.querySelector('[data-testid=done-expires]')`)).toBeNull();
       await page.click(`[data-thread-id="${threadId}"] [data-testid=archived-restore]`);
-      await page.waitFor(`document.querySelector('[data-testid=archived-open]')`);
+      await page.waitFor(`!document.querySelector('[data-thread-id="${threadId}"] [data-testid=archived-restore]')`);
       expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId: ${JSON.stringify(threadId)}}).then(t => t.doneAt)`)).toBeNull();
     } finally { await page.close(); }
   }, 60_000);

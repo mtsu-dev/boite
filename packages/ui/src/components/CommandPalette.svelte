@@ -2,16 +2,20 @@
   import { desktopShell } from '../lib/shell-platform';
   import { rowAsks } from '../lib/status-order';
   import { tick, untrack } from 'svelte';
-  import { CornerDownRight, Search } from '@lucide/svelte';
-  import type { AgentProfile, Project, ProjectId, ThreadSummary } from '@boite/contracts';
+  import { CornerDownRight, MessageSquare, Search, X } from '@lucide/svelte';
+  import { MESSAGE_SEARCH_QUERY_LIMIT, RpcErrorCode, messageMatchRanges, messageSearchTerms, orderMessageMatches, type AgentProfile, type Project, type ProjectId, type SearchRange, type ThreadMessageMatch, type ThreadSummary } from '@boite/contracts';
+  import { RpcFailure } from '../lib/client';
   import { Closing } from '../lib/closing.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { appCommands, runCommand } from '../lib/commands.svelte';
   import { archivedThreads } from '../lib/archive';
   import { pluginUi } from '../lib/plugin-ui.svelte';
   import { focusComposer, focusedElement, restoreFocus } from '../lib/focus';
-  import { projectName } from '../lib/format';
+  import { projectName, relativeTime } from '../lib/format';
+  import { keyCap } from '../lib/keybindings';
   import { BOTS_SECTION, paletteSections, threadGroup, type PaletteItem, type PaletteSection } from '../lib/palette';
+  import type { FieldName } from '../lib/palette-search';
+  import { projectThread } from '../lib/thread-rows';
   import { threadState } from '../lib/thread-state';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -26,11 +30,11 @@
   import { inbox } from '../lib/inbox.svelte';
   import { hostMark, hostName } from '../lib/machine-host';
 
-  let { store }: { store: Store } = $props();
+  let { store, onopen }: { store: Store; onopen?: () => void } = $props();
 
   const overlay = new Closing();
   let query = $state('');
-  let selected = $state(0);
+  let selection = $state<string | null>(null);
   /** The selection moved by the keys: the row then draws the focus ring, as a row reached by Tab does anywhere else. */
   let keyed = $state(false);
   let input = $state<HTMLInputElement | undefined>(undefined);
@@ -51,7 +55,7 @@
     for (const machine of untrack(() => machines)) {
       const owner = machine.store;
       // A machine that cannot answer keeps what it showed last; the rest of the list does not wait for it.
-      void archivedThreads(owner).then((threads) => {
+      void archivedThreads(owner, undefined, { includeSubagents: true }).then((threads) => {
         if (read === reading) shelved = new Map(shelved).set(owner, threads);
       }).catch(() => {});
     }
@@ -70,8 +74,10 @@
     }
     untrack(() => (previous = focusedElement()));
     query = '';
-    selected = 0;
+    selection = null;
     keyed = false;
+    mentions = [];
+    searchFailed = false;
     overlay.show();
     readShelved();
     void tick().then(() => input?.focus({ preventScroll: true }));
@@ -89,6 +95,49 @@
   }
 
   let machines = $derived(workspace.machinesOr(store));
+  let mentions = $state.raw<{ machine: Machine; hit: ThreadMessageMatch }[]>([]);
+  let mentionsQuery = $state('');
+  let searchFailed = $state(false);
+  const mentionQuery = $derived(query.slice(0, MESSAGE_SEARCH_QUERY_LIMIT));
+  const searchTerms = $derived(messageSearchTerms(mentionQuery));
+  const mentionTerms = $derived(messageSearchTerms(mentionsQuery));
+  $effect(() => {
+    if (!store.paletteOpen) return;
+    const asked = mentionQuery;
+    const owners = machines.filter(machine => machine.store.connection === 'ready' && machine.store.core?.features?.messageSearch);
+    const enough = searchTerms.some(term => term.words.some(word => word.length >= 2));
+    searchFailed = false;
+    if (!enough || owners.length === 0) {
+      mentions = [];
+      mentionsQuery = '';
+      return;
+    }
+    let current = true;
+    const timer = setTimeout(() => {
+      const byMachine = new Map<string, { machine: Machine; hit: ThreadMessageMatch }[]>();
+      const publish = () => {
+        mentionsQuery = asked;
+        mentions = [...byMachine.values()].flat().sort((a, b) =>
+          orderMessageMatches(a.hit, b.hit) || a.machine.id.localeCompare(b.machine.id)).slice(0, 20);
+      };
+      for (const machine of owners) {
+        const client = machine.store.client;
+        if (!client) continue;
+        const wanted = () => current && machine.store.client === client;
+        void client.call('threads.search', { query: asked, replacePending: true }).then(({ matches }) => {
+          if (!wanted()) return;
+          byMachine.set(machine.id, matches.map(hit => ({ machine, hit })));
+          publish();
+        }).catch((error: unknown) => {
+          if (!wanted()) return;
+          byMachine.delete(machine.id);
+          publish();
+          if (!(error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound)) searchFailed = true;
+        });
+      }
+    }, 120);
+    return () => { current = false; clearTimeout(timer); };
+  });
   /** One machine names no machine. */
   let several = $derived(workspace.machines.length > 1);
   /** A heading names its machine as a project card does (lib/machine-host.ts): this app's own goes unsaid. */
@@ -101,30 +150,51 @@
     for (const machine of machines) {
       const live = new Set(machine.store.threads.map(thread => thread.id));
       const every = [...machine.store.threads, ...(shelved.get(machine.store) ?? []).filter(thread => !live.has(thread.id))];
+      const projects = new Map(machine.store.projects.map(project => [project.id, project]));
+      const byId = new Map(every.map(thread => [thread.id, thread]));
       for (const thread of every) {
         if (thread.incognito) continue;
-        const project = machine.store.projects.find(p => p.id === thread.projectId) ?? null;
+        const project = thread.projectId ? projects.get(thread.projectId) ?? null : null;
         const id = `thread:${machine.store.threadKey(thread.id)}`;
         const bot = project ? null : agentDirectory(machine.store).ownerOf(thread);
         const botThread = !project && (bot !== null || !!thread.agentSessionId || !!thread.teamId);
         const section = botThread ? BOTS_SECTION : threadGroup(thread, threadState(thread, rowAsks(machine.store, thread.id)));
-        const parent = thread.parentThreadId ? every.find(one => one.id === thread.parentThreadId)?.title ?? null : null;
+        const parentThread = thread.parentThreadId ? byId.get(thread.parentThreadId) : undefined;
+        const parent = parentThread?.title ?? null;
         places.set(id, { machine, project, thread, bot, parent });
+        if (thread.archived && thread.parentThreadId && !projectThread(thread, parentThread)) continue;
         if (botThread && thread.archived) continue;
+        const label = bot && thread.agentSessionId ? bot.name : thread.title;
+        const metadata: [FieldName, string | null | undefined][] = [
+          ['title', label], ['project', project ? projectName(project) : undefined],
+          ['model', machine.store.modelOf(thread)?.name], ['model', thread.model], ['model', thread.providerId],
+          ['branch', thread.branch], ['pr', thread.pullRequest ? `#${thread.pullRequest.number}` : undefined],
+          ['machine', several ? machine.label : undefined], ['parent', parent],
+          ['keywords', thread.status], ['keywords', bot?.name], ['keywords', bot ? thread.title : undefined],
+        ];
         items.push({
           id,
           kind: 'thread',
-          // A bot's own conversation goes by the bot's name; its helpers keep their titles.
-          label: bot && thread.agentSessionId ? bot.name : thread.title,
-          // What a query may also land on: the project and the machine, never drawn on the row.
-          hint: [project ? projectName(project) : '', bot ? `${bot.name} ${thread.title}` : '', parent ?? '', several ? machine.label : ''].filter(Boolean).join(' '),
-          keywords: thread.status,
+          label,
+          fields: metadata.flatMap(([field, value]) => value ? [{ field, text: value }] : []),
           section,
           at: thread.lastUserMessageAt ?? thread.createdAt
         });
       }
     }
     return { items, places };
+  });
+
+  const mentionRows = $derived.by(() => {
+    const rows = new Map<string, { item: PaletteItem; place: Place; hit: ThreadMessageMatch }>();
+    for (const { machine, hit } of mentions) {
+      const place = threadData.places.get(`thread:${machine.store.threadKey(hit.threadId)}`);
+      if (!place?.thread) continue;
+      const label = place.bot && place.thread.agentSessionId ? place.bot.name : place.thread.title;
+      const id = `mention:${JSON.stringify([machine.id, hit.messageId])}`;
+      rows.set(id, { item: { id, kind: 'mention', label }, place, hit });
+    }
+    return rows;
   });
 
   /** Every project, a new thread in it once picked: the list offers them only to a query. */
@@ -156,25 +226,24 @@
   let sections = $derived.by((): PaletteSection[] => {
     // Keep the exit animation's rows without subscribing a closed search to live updates.
     if (!store.paletteOpen) return snapshot.sections;
-    return snapshot.sections = paletteSections(query, [...threadData.items, ...projectData.items, ...commandItems]);
+    const ranked = paletteSections(query, [...threadData.items, ...projectData.items, ...commandItems]);
+    const results = [...mentionRows.values()].map(row => row.item);
+    if (results.length > 0) {
+      const afterThreads = ranked.findLastIndex(section => section.kind === 'thread') + 1;
+      ranked.splice(afterThreads, 0, { id: 'mentions', kind: 'mention', items: results });
+    }
+    return snapshot.sections = ranked;
   });
   /** The rows in the order they are drawn: what the arrows walk. */
   let rows = $derived(sections.flatMap(section => section.items));
+  let selected = $derived(Math.max(0, rows.findIndex(item => item.id === selection)));
 
   // The walk starts over on what the user typed, never on the list being
   // rebuilt: the core pushes a `thread.updated` a second per live agent, and
   // the selection cannot jump back to the top under his fingers.
   $effect(() => {
     void query;
-    untrack(() => { selected = 0; keyed = false; });
-  });
-
-  /** A shorter list keeps the keyboard on a row that is still there. */
-  $effect(() => {
-    const count = rows.length;
-    untrack(() => {
-      if (selected >= count) selected = Math.max(0, count - 1);
-    });
+    untrack(() => { selection = null; keyed = false; });
   });
 
   $effect(() => {
@@ -190,8 +259,21 @@
 
   function pick(item: PaletteItem) {
     close();
-    // A thread or a new one takes the main card back from desktop Activity.
-    if (item.kind !== 'command' || item.id === 'new-thread') inbox.open = false;
+    // A thread or a new one takes the main card back from desktop Activity and switches a phone to chat.
+    if (item.kind !== 'command' || item.id === 'new-thread') {
+      inbox.open = false;
+      onopen?.();
+    }
+    if (item.kind === 'mention') {
+      const mention = mentionRows.get(item.id);
+      if (!mention) return;
+      const { hit, place } = mention;
+      const target = place.machine.store;
+      const match = { messageId: hit.messageId, query: mentionsQuery || mentionQuery };
+      if (workspace.machines.length) void workspace.select(target, hit.threadId, undefined, { match });
+      else { target.showChat(); void target.open(hit.threadId, true, { match }); }
+      return;
+    }
     if (item.kind === 'thread') {
       if (workspace.machines.length) void workspace.openNotification(item.id.slice('thread:'.length));
       else { store.showChat(); void store.open(item.id.slice('thread:'.length)); }
@@ -244,11 +326,13 @@
       return;
     }
     if (rows.length === 0) return;
-    if (event.key === 'ArrowDown') selected = (selected + 1) % rows.length;
-    else if (event.key === 'ArrowUp') selected = (selected - 1 + rows.length) % rows.length;
-    else if (event.key === 'Home') selected = 0;
-    else if (event.key === 'End') selected = rows.length - 1;
+    let next: number;
+    if (event.key === 'ArrowDown') next = (selected + 1) % rows.length;
+    else if (event.key === 'ArrowUp') next = (selected - 1 + rows.length) % rows.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = rows.length - 1;
     else return;
+    selection = rows[next]!.id;
     keyed = true;
     event.preventDefault();
   }
@@ -257,6 +341,7 @@
     if (section.id === BOTS_SECTION) return strings.agents.heading;
     if (section.kind === 'project') return strings.palette.projects;
     if (section.kind === 'command') return strings.palette.commands;
+    if (section.kind === 'mention') return strings.palette.mentions;
     return strings.palette.groups[section.id as keyof typeof strings.palette.groups] ?? section.id;
   }
 
@@ -272,6 +357,10 @@
   }
 </script>
 
+{#snippet highlighted(label: string, ranges: SearchRange[] = [])}
+  {#each ranges as { start, end }, index}{label.slice(ranges[index - 1]?.end ?? 0, start)}<mark>{label.slice(start, end)}</mark>{/each}{label.slice(ranges.at(-1)?.end ?? 0)}
+{/snippet}
+
 {#if overlay.shown}
   <div
     class="scrim"
@@ -285,7 +374,7 @@
   >
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="palette" class:closing={overlay.closing} role="dialog" aria-modal="true" tabindex="-1" aria-label={strings.palette.placeholder} data-testid="palette" bind:this={dialog} {onkeydown}>
-      <label class="field">
+      <div class="field">
         <Search size={16} strokeWidth={1.75} />
         <input
           bind:this={input}
@@ -296,8 +385,12 @@
           spellcheck="false"
           data-testid="palette-input"
         />
-        <span class="kbd ui-label-box"><span class="ui-label">Esc</span></span>
-      </label>
+        {#if phoneWidth.current}
+          <button type="button" class="ghost icon" aria-label={strings.common.close} onclick={close}><X size={16} /></button>
+        {:else}
+          <span class="kbd ui-label-box"><span class="ui-label">{keyCap('Escape')}</span></span>
+        {/if}
+      </div>
       <div class="list" role="listbox" bind:this={list} data-testid="palette-list">
         {#each sections as section, at (section.id)}
           {@const first = offset(at)}
@@ -305,33 +398,52 @@
             <div class="section-label" data-testid="palette-heading">{headingOf(section)}</div>
             {#each section.items as item, n (item.id)}
               {@const index = first + n}
-              {@const place = placeOf(item.id)}
+              {@const mention = mentionRows.get(item.id)}
+              {@const place = mention?.place ?? placeOf(item.id)}
               <button
                 type="button"
                 class="row"
                 class:selected={index === selected}
                 class:keyed={keyed && index === selected}
                 class:sub={!!place?.parent}
+                class:two-lines={!!mention || !!item.matchHint}
                 role="option"
                 tabindex="-1"
                 aria-selected={index === selected}
                 data-index={index}
                 data-testid="palette-row"
                 data-palette-id={item.id}
-                onmousemove={() => { selected = index; keyed = false; }}
+                onmousemove={() => { selection = item.id; keyed = false; }}
                 onclick={() => pick(item)}
               >
                 <!-- The slot says where the row lives: a thread's project, a bot's picture, a subagent's turn off its parent. The state reads at the right. -->
                 <span class="mark-slot">
-                  {#if place?.bot}<AgentAvatar kind="profile" id={place.bot.id} name={place.bot.name} avatar={place.bot.avatar} size={16} />
+                  {#if mention}<MessageSquare size={15} strokeWidth={1.75} />
+                  {:else if place?.bot}<AgentAvatar kind="profile" id={place.bot.id} name={place.bot.name} avatar={place.bot.avatar} size={16} />
                   {:else if place?.thread?.teamId}<AgentAvatar kind="team" id={place.thread.teamId} name={place.thread.title} size={16} />
                   {:else if !place?.thread && item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />
                   {:else if place?.parent}<span class="sub-mark" aria-hidden="true"><CornerDownRight size={14} /></span>
                   {:else if place?.thread && place.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
                 </span>
-                <span class="label ui-label" class:sub={!!place?.parent}>{item.label}</span>
-                {#if place?.parent}{@const [before, after = ''] = strings.palette.subagentOf.split('{parent}')}<span class="parent ui-label" data-testid="palette-parent"><span class="joint">{before}</span><span class="parent-title">{place.parent}</span>{#if after}<span class="joint">{after}</span>{/if}</span>{/if}
-                {#if place?.thread}
+                <span class="copy" class:sub={!!place?.parent && !mention}>
+                  <span class="title-line">
+                    <span class="label ui-label">{@render highlighted(item.label, item.titleRanges)}</span>
+                    {#if mention}
+                      {#if place?.project}<span class="mention-place">{projectName(place.project)}</span>{/if}
+                      {#if place && hostName(place.machine, machines, home)}<MachinePlace host={hostName(place.machine, machines, home)!} />{/if}
+                      <time datetime={new Date(mention.hit.messageCreatedAt).toISOString()}>{relativeTime(mention.hit.messageCreatedAt, now)}</time>
+                    {/if}
+                  </span>
+                  {#if mention}
+                    <span class="detail mention-snippet"><span class="speaker">{strings.palette.speakers[mention.hit.role]}</span> {@render highlighted(mention.hit.snippet, messageMatchRanges(mention.hit.snippet, mentionTerms))}</span>
+                  {:else if item.matchHint}
+                    <span class="detail" data-testid="palette-match-hint">{strings.palette.matchFields[item.matchHint.field]} {@render highlighted(item.matchHint.text, item.matchHint.ranges)}</span>
+                  {/if}
+                </span>
+                {#if place?.parent && !mention}{@const [before, after = ''] = strings.palette.subagentOf.split('{parent}')}<span class="parent ui-label" data-testid="palette-parent"><span class="joint">{before}</span><span class="parent-title">{place.parent}</span>{#if after}<span class="joint">{after}</span>{/if}</span>{/if}
+                {#if mention}
+                  <!-- The time and place are on this result's title line. -->
+                {:else if place?.thread}
                   {#if place.project && !place.parent}<span class="where" data-testid="palette-where"><span class="ui-label">{projectName(place.project)}</span>{#if hostName(place.machine, machines, home)}<MachinePlace host={hostName(place.machine, machines, home)!} />{/if}</span>{/if}
                   <span class="state"><ThreadState thread={place.thread} {now} subagents={rowAsks(place.machine.store, place.thread.id)} away={place.machine.store.connection !== 'ready'} mark /></span>
                 {:else if item.kind === 'project' && place}
@@ -347,6 +459,7 @@
           <p class="empty subtle">{strings.palette.empty}</p>
         {/if}
       </div>
+      {#if searchFailed}<p class="search-hint subtle" role="status" data-testid="palette-search-hint">{strings.palette.searchFailed}</p>{/if}
     </div>
   </div>
 {/if}
@@ -483,17 +596,56 @@
     flex: none;
   }
 
-  .label {
+  .copy {
     flex: 1;
     min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .title-line {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .label, .detail, .mention-place {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 400;
   }
 
+  .label {
+    flex: 1;
+    min-width: 0;
+    font-weight: 400;
+    line-height: 1.3;
+  }
+
+  .row.two-lines {
+    min-height: calc(var(--overlay-row) + var(--space-4));
+    height: auto;
+    padding-block: var(--space-1);
+  }
+
+  .detail, time, .mention-place {
+    color: var(--color-muted-foreground);
+    font-size: var(--text-xs);
+    line-height: 1.3;
+  }
+
+  .mention-place { max-width: 30%; }
+  time { flex: none; }
+  .speaker { color: var(--color-subtle); }
+  @media (max-width: 600px) {
+    .mention-snippet { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }
+  }
+  mark { color: var(--color-foreground); background: var(--color-accent-soft); border-radius: var(--radius-sm); }
+  .row.selected mark { background: color-mix(in oklch, var(--color-accent) 28%, transparent); }
+
   /* A subagent's title gives its room to the parent's name only past its own width. */
-  .label.sub { flex: 0 1 auto; }
+  .copy.sub { flex: 0 1 auto; }
   /* A helper stands under its state like any thread, a step back: smaller, in the quiet ink, until it is the row Enter takes. */
   .row.sub { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .row.sub.selected { color: var(--color-foreground); }
@@ -524,6 +676,12 @@
   .empty {
     padding: 14px 10px;
     text-align: center;
+    font-size: var(--text-sm);
+  }
+
+  .search-hint {
+    margin: 0;
+    padding: var(--space-2) calc(var(--overlay-pad) + var(--overlay-row-pad));
     font-size: var(--text-sm);
   }
 

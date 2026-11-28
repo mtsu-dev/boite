@@ -1,14 +1,19 @@
 <script lang="ts">
+  import SettingsSection from './SettingsSection.svelte';
+  import SettingField from './SettingField.svelte';
+  import SettingSwitch from './SettingSwitch.svelte';
   import { lockedBy } from '../lib/policy';
   import { workspace } from '../lib/workspace.svelte';
   import { tick, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import { ChevronDown, ChevronRight, FileDown, Bug } from '@lucide/svelte';
-  import { formatLogDuration, LOG_LEVELS, type CoreLogLevel, type CoreLogRecord, type CoreLogsQuery, type DiagnosticSummary, type LogOrigin } from '@boite/contracts';
+  import { ATTACHMENT_MAX_BYTES, formatLogDuration, LOG_LEVELS, type CoreLogLevel, type CoreLogRecord, type CoreLogsQuery, type DiagnosticsFileExport, type DiagnosticSummary, type LogOrigin } from '@boite/contracts';
   import InfoTip from './InfoTip.svelte';
   import Menu from './Menu.svelte';
   import DiagnosticsReport from './DiagnosticsReport.svelte';
-  import { browserDownload, saveAttachment } from '../lib/attachment-save';
+  import { browserDownload, saveAttachment, saveAttachmentUrl } from '../lib/attachment-save';
+  import { coreHref } from '../lib/endpoint';
+  import { desktopShell } from '../lib/shell-platform';
   import { bytes, count, exactTime, millis, relativeTime, time } from '../lib/format';
   import { errorText, olderCore } from '../lib/errors';
   import { fill, strings } from '../lib/strings';
@@ -212,12 +217,34 @@
     exporting = true;
     exportNote = '';
     try {
-      const result = await client.call('diagnostics.export', {});
+      const endpoint = store.endpointUrl;
+      const desktop = desktopShell();
+      let exported: DiagnosticsFileExport | undefined;
+      if (endpoint && desktop) {
+        try { exported = await client.call('diagnostics.exportFile', {}); }
+        catch (error) { if (!olderCore(error)) throw error; }
+        if (store.client !== client) return;
+        if (exported?.url !== undefined) {
+          await saveAttachmentUrl(exported.name, coreHref(endpoint, exported.url), false);
+          if (store.client === client) exportNote = fill(s.exportDone, { name: exported.name, size: bytes(exported.bytes) });
+          return;
+        }
+      }
+      const result = exported ?? await client.call('diagnostics.export', {});
       if (store.client !== client) return;
       const body = new TextEncoder().encode(result.text);
       const size = bytes(body.byteLength);
-      const saved = await saveAttachment(result.name, body, false);
-      if (saved) { exportNote = fill(s.exportDone, { name: result.name, size }); return; }
+      if (desktop) {
+        // Older cores send text through the desktop shell's capped save command.
+        if (body.byteLength > ATTACHMENT_MAX_BYTES) {
+          const machine = store.core?.hostname;
+          exportNote = machine ? fill(strings.errors.olderCore, { machine }) : strings.errors.olderCoreHere;
+          return;
+        }
+        await saveAttachment(result.name, body, false);
+        if (store.client === client) exportNote = fill(s.exportDone, { name: result.name, size });
+        return;
+      }
       const file = new File([body], result.name, { type: 'text/plain' });
       // A phone hands the file to the share sheet when it can; anything else downloads it.
       if (window.matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
@@ -250,16 +277,10 @@
 
 {#if store.owner}
 <div class="page diagnostics" data-testid="diagnostics-page">
-  <header>
-    <div>
-      <h1 class="ui-label-box"><span class="ui-label">{s.heading}</span><InfoTip topic={s.heading} text={s.intro} /></h1>
-    </div>
-  </header>
 
   {#if failure}<p class="hint alert" role="alert">{failure}</p>{/if}
 
-  <section class="card" id="settings-diagnostics-status" data-testid="diagnostics-status">
-    <h2 class="ui-label-box"><span class="ui-label">{s.status}</span><InfoTip gather topic={s.status} text="" testid="section-info" /></h2>
+  <SettingsSection id="settings-diagnostics-status" testid="diagnostics-status" title={s.status} info="" infoTestid="section-info">
     {#if environment && summary}
       <dl class="facts">
         <div><dt>{s.version}</dt><dd>{environment.version} · {environment.channel}</dd></div>
@@ -298,11 +319,10 @@
       {/if}
     </div>
     {#if exportNote}<p class="hint note" data-testid="diagnostics-export-note">{exportNote}</p>{/if}
-  </section>
+  </SettingsSection>
 
   {#if !outdated}
-  <section class="card" id="settings-diagnostics-problems" data-testid="diagnostics-problems">
-    <h2 class="ui-label-box"><span class="ui-label">{s.problems}</span><InfoTip topic={s.problems} text={s.problemsHint} /></h2>
+  <SettingsSection id="settings-diagnostics-problems" testid="diagnostics-problems" title={s.problems} info={s.problemsHint}>
     {#if summary && errorsFirst.length === 0}
       <p class="hint">{s.problemsEmpty}</p>
     {:else}
@@ -341,11 +361,10 @@
         {/each}
       </ul>
     {/if}
-  </section>
+  </SettingsSection>
   {/if}
 
-  <section class="card log-card" id="settings-diagnostics-log" data-testid="diagnostics-log">
-    <h2 class="ui-label-box"><span class="ui-label">{s.log}</span><InfoTip topic={s.log} text={s.live} /></h2>
+  <SettingsSection class="log-card" id="settings-diagnostics-log" testid="diagnostics-log" title={s.log} info={s.live}>
     <div class="filters">
       <Menu items={levelItems} label={s.level} placement="bottom" testid="diagnostics-level" onpick={id => { minLevel = id as CoreLogLevel; }}>
         <span class="ui-label">{s.atLeast[minLevel]}</span><ChevronDown size={13} />
@@ -400,14 +419,15 @@
         </div>
       {/each}
     </div>
-  </section>
+  </SettingsSection>
 
   <section class="card" id="settings-diagnostics-agents">
-    <label for="{uid}-agents" class="switch-row">
-      <span class="text"><span class="ui-label" id="{uid}-agents-name">{s.agentAccess}</span><span class="hint" id="{uid}-agents-effect">{strings.settings.effects.agentAccess}</span></span>
-      <input id="{uid}-agents" aria-labelledby="{uid}-agents-name" aria-describedby="{uid}-agents-effect" type="checkbox" role="switch" data-testid="setting-agent-log-access"
-        checked={store.settings?.agentLogAccess ?? true} disabled={!store.settings} onchange={event => void toggleAgents(event.currentTarget)} />
-    </label>
+    <SettingField title={s.agentAccess} hint={strings.settings.effects.agentAccess}>
+      {#snippet control(attributes)}
+        <SettingSwitch {...attributes} data-testid="setting-agent-log-access" checked={store.settings?.agentLogAccess ?? true}
+          disabled={!store.settings} onchange={(event) => void toggleAgents(event.currentTarget)} />
+      {/snippet}
+    </SettingField>
   </section>
 </div>
 
@@ -456,7 +476,7 @@
   .level[data-level='warn'] { color: color-mix(in srgb, var(--color-danger) 55%, var(--color-muted-foreground)); font-weight: 600; }
   .level[data-level='debug'] { color: var(--color-subtle); }
 
-  .log-card { padding-bottom: 0; }
+  .page :global(.log-card) { padding-bottom: 0; }
   .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
   .thread-pick { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .search { flex: 1 1 160px; min-width: 0; height: var(--control-sm); font-size: var(--text-sm); }

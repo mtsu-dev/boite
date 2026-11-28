@@ -1,5 +1,5 @@
 // Model metadata, reasoning effort and provider capabilities.
-import type { EffortLevel, ModelInfo, Protocol, ProviderCapabilities } from '@boite/contracts';
+import type { EffortLevel, ModelAlias, ModelInfo, Protocol, ProviderCapabilities } from '@boite/contracts';
 import { reject, asObject, asString, asBoolean, asArray, checkKeys } from './validate-primitives.ts';
 
 const CAPABILITY_KEYS: readonly (keyof ProviderCapabilities)[] = [
@@ -49,12 +49,28 @@ function checkEffort(value: unknown, file: string, field: string): { levels: Eff
   return { levels, default: fallback };
 }
 
+function checkAliases(value: unknown, file: string, field: string, model: ModelInfo): ModelAlias[] {
+  const seen = new Set([model.id]);
+  return asArray(value, file, field).map((entry, index) => {
+    const path = `${field}[${index}]`;
+    const alias = asObject(entry, file, path);
+    checkKeys(alias, ['id', 'effort'], file, path);
+    const id = asString(alias['id'], file, `${path}.id`);
+    if (seen.has(id)) reject(file, `${path}.id`, 'a distinct alias', `the model already uses ${id}`);
+    seen.add(id);
+    if (alias['effort'] === undefined) return { id };
+    const effort = asString(alias['effort'], file, `${path}.effort`);
+    if (!model.effort?.levels.some(level => level.id === effort)) reject(file, `${path}.effort`, 'a reasoning level offered by the model', `the model does not offer ${effort}`);
+    return { id, effort };
+  });
+}
+
 export function checkModels(value: unknown, file: string, protocol: Protocol): ModelInfo[] {
   const raw = asArray(value, file, 'models');
   if (raw.length === 0 && protocol === 'echo') reject(file, 'models', 'at least one model for echo', 'echo models must list at least one model');
   return raw.map((entry, index) => {
     const obj = asObject(entry, file, `models[${index}]`);
-    checkKeys(obj, ['id', 'name', 'default', 'legacy', 'badge', 'effort'], file, `models[${index}]`);
+    checkKeys(obj, ['id', 'name', 'default', 'legacy', 'badge', 'effort', 'aliases'], file, `models[${index}]`);
     const model: ModelInfo = {
       id: asString(obj['id'], file, `models[${index}].id`),
       name: asString(obj['name'], file, `models[${index}].name`),
@@ -67,6 +83,7 @@ export function checkModels(value: unknown, file: string, protocol: Protocol): M
       model.badge = 'new';
     }
     if (obj['effort'] !== undefined) model.effort = checkEffort(obj['effort'], file, `models[${index}].effort`);
+    if (obj['aliases'] !== undefined) model.aliases = checkAliases(obj['aliases'], file, `models[${index}].aliases`, model);
     return model;
   });
 }

@@ -7,7 +7,7 @@ import type {
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import type { Connection } from '../router.ts';
-import { botDefaultModel, checkModel, checkEffort, agentProvider, listsModel, modelsFor, PROBED_PROTOCOLS } from '../threads/selection.ts';
+import { botDefaultModel, checkModel, checkEffort, agentProvider, listsModel, modelsFor, PROBED_PROTOCOLS, selectionFor } from '../threads/selection.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { readSavedCatalog } from '../providers/saved-catalogs.ts';
 import { withLoad } from '../threads/records.ts';
@@ -15,13 +15,14 @@ import { AgentsRepository } from './repository.ts';
 import { AgentEntrustments } from './entrust.ts';
 import { ResidentAgents } from './resident.ts';
 import { AgentRoutines } from './routines.ts';
+import { AgentTriggers } from './triggers.ts';
 import { AgentProjects } from './projects.ts';
 import { AgentNewSessions } from './new-session.ts';
 import { GroupBots, remoteGrant } from './group-bots.ts';
 import { GroupBotHost } from './group-host.ts';
 import { AgentSettingCards, registerAgentSettingMethods } from './setting-cards.ts';
 import { MemoryKeeper, NOTE_MAX } from './memory.ts';
-import { agentContextIf, deskPullRequest, deskState, descendantLinks, linkedPullRequests } from './context.ts';
+import { agentContextIf, deskPullRequest, deskState, descendantLinks, linkedPullRequests, type ContextSnapshot } from './context.ts';
 import { EVENT_PROMPT_MAX, eventPrompt, finalText, midnight, type AgentFact, type AgentWake } from './runtime.ts';
 import { agentSpend, rootThread } from './spend.ts';
 import { migrateAgents } from './migration.ts';
@@ -63,11 +64,12 @@ const INSTRUCTIONS_PROMPT = 'The user changed your instructions. Check that your
   + 'and tell the user in one or two lines what changes for them.';
 
 /** `memory`: the MEMORY.md the session last read, which the next change is told against. */
-interface ContextSent { hash: string; sessionGeneration: number; turnId: string; memory?: string }
+interface ContextSent extends Partial<ContextSnapshot> { hash: string; sessionGeneration: number; turnId: string }
 
 export class AgentStore {
   readonly resident: ResidentAgents;
   readonly routines: AgentRoutines;
+  readonly triggers: AgentTriggers;
   readonly records: AgentsRepository;
   readonly entrusted: AgentEntrustments;
   readonly projects: AgentProjects;
@@ -96,6 +98,7 @@ export class AgentStore {
   readonly #off: () => void;
   constructor(readonly core: Core) {
     this.records = new AgentsRepository(core.journal); this.resident = new ResidentAgents(core, this.records); this.routines = new AgentRoutines(core);
+    this.triggers = new AgentTriggers(core);
     this.pictures = new AgentPictures(core.dataDir, () => this.records.list('profile').map(agent => agent.avatar));
     // Stewards became agents with projects; their grants have nothing left to grant.
     core.journal.db.query("DELETE FROM settings WHERE key LIKE 'steward:%'").run();
@@ -137,9 +140,15 @@ export class AgentStore {
     });
   }
   close(): void {
+    this.triggers.close();
     this.#off(); this.projects.close(); this.group.close(); this.groupHost.close(); this.memory.close(); this.settingCards.close();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+  }
+
+  /** A running phase can change the activity shown in an agent's team. */
+  progressChanged(threadId: string): void {
+    if (this.#threads.has(threadId)) this.changed();
   }
 
   private last = 0;
@@ -271,10 +280,12 @@ export class AgentStore {
     // may drop that id (a gateway renamed it), which must not block an unrelated change.
     const kept = previous !== null && previous.selection.providerId === provider.id && previous.selection.accountId === account.id
       && v.selection.model != null && previous.selection.model === v.selection.model;
-    const model = kept ? v.selection.model! : checkModel(provider, account.id, v.selection.model ?? botDefaultModel(provider, account.id));
+    const requested = v.selection.model ?? botDefaultModel(provider, account.id);
+    const resolved = selectionFor(provider, account.id, requested, v.selection.effort);
+    const model = kept ? requested : checkModel(provider, account.id, requested);
     if (!model) throw refused('selection.model: choose a default model');
     if (previous && this.core.journal.getSetting(`agents:runtime:${previous.id}`) && JSON.stringify(previous.selection) !== JSON.stringify({ ...v.selection, model }) && !this.resident.allowed(previous.id, { ...v.selection, model })) throw refused('selection.model: default model must be allowed by this agent policy');
-    const effort = kept && previous.selection.effort === v.selection.effort ? v.selection.effort : checkEffort(provider, account.id, model, v.selection.effort);
+    const effort = kept && previous.selection.effort === v.selection.effort ? v.selection.effort : checkEffort(provider, account.id, model, resolved?.effort ?? v.selection.effort);
     const projectIds = ids(v.projectIds ?? [], 'projectIds', 50);
     for (const id of projectIds) {
       // A project of another machine of the group: that machine checks it at every request, and while it turned groupBots on.
@@ -340,6 +351,9 @@ export class AgentStore {
     }
     if (saved.status === 'archived') this.core.agentRuntime.forget(saved.id);
     if (previous.status !== saved.status) this.resident.enforce();
+    if (previous.status !== saved.status || JSON.stringify(previous.projectIds ?? []) !== JSON.stringify(saved.projectIds ?? [])) {
+      this.core.bus.whenCommitted(() => this.triggers.syncWatches(saved.id));
+    }
     if ((previous.projectIds ?? []).some(id => !(saved.projectIds ?? []).includes(id))) this.projects.forget(saved);
     if (previous.instructions !== saved.instructions) this.#wakeSoon(saved, 'instructions', 'Instructions changed', INSTRUCTIONS_PROMPT);
   }
@@ -348,9 +362,8 @@ export class AgentStore {
 
   /**
    * The context block a turn of an agent's thread starts with: whole on a
-   * fresh native session or when its hash moved since the last turn that
-   * carried it, the memory's added and removed lines when only MEMORY.md
-   * changed, else nothing. What went out is recorded on the thread's events
+   * fresh native session, then only the changed sections and memory. What
+   * went out is recorded on the thread's events
    * (`agent.context.sent`: the turn, block or memory, its size and hash).
    */
   contextFor(thread: ThreadSummary, sessionId: string | null, turnId: string): string {
@@ -369,11 +382,13 @@ export class AgentStore {
     const generation = thread.sessionGeneration ?? 0;
     // The bot section of the Boite guide (`agent-guide.ts`) comes in the block while that guide is off.
     const guided = (thread.contextMode == null || thread.contextMode.guides) && this.core.brain.config().boiteGuide !== false;
-    // A record from before the memory was kept beside the hash hears the block whole once.
-    const held = sessionId !== null && sent && sent.sessionGeneration === generation && typeof sent.memory === 'string' ? { hash: sent.hash, memory: sent.memory } : null;
+    // Older records contain a single hash. Send a full block once to start tracking sections.
+    const held = sessionId !== null && sent?.sessionGeneration === generation && sent.fingerprints && sent.brainPath && typeof sent.memory === 'string'
+      ? { fingerprints: sent.fingerprints, brainPath: sent.brainPath, memory: sent.memory } : null;
     const block = agentContextIf(this.core, agent, held, guided);
     if (!block) return '';
-    const record = { hash: block.hash, sessionGeneration: generation, turnId, memory: block.memory } satisfies ContextSent;
+    const { hash, memory, fingerprints, brainPath } = block;
+    const record = { hash, memory, fingerprints, brainPath, sessionGeneration: generation, turnId } satisfies ContextSent;
     // Only blank lines moved: the session's copy is current, and this turn carries nothing a failure would lose.
     if (!block.text) { this.core.journal.setSetting(key, { ...record, turnId: sent?.turnId ?? turnId }); return ''; }
     this.core.journal.append({
@@ -394,7 +409,7 @@ export class AgentStore {
     if (!sent) return;
     const compacted = turn.execution?.operation === 'compact'
       || [...this.core.journal.walkTurnMessages(turn.threadId, turn.id, { blobs: false })].some(m => m.parts.some(p => p.type === 'compaction'));
-    if (compacted || (turn.status === 'error' && sent.turnId === turn.id)) this.core.journal.deleteSetting(key);
+    if (compacted || (turn.status !== 'done' && sent.turnId === turn.id)) this.core.journal.deleteSetting(key);
   }
 
   /** The owner's or a device's read of any brain; an agent reads its own. */
@@ -656,6 +671,7 @@ export class AgentStore {
       profiles,
       sessions: sessions.filter(s => mine(s.agentId)),
       routines: routines.filter(r => mine(r.agentId)),
+      triggers: this.records.list('trigger').filter(t => mine(t.agentId)),
       status: profiles.map(agent => this.status(agent, sessions, routines)),
       watches: profiles.filter(agent => own !== null || desk === undefined || agent.id === desk).flatMap(agent => this.#watchesOf(agent.id)),
       accountGrants: own ? [] : this.resident.grants(),
@@ -691,6 +707,10 @@ export function registerPersistentAgents(core: Core): void {
   core.router.register('agents.routine.save', p => store.routines.save(p));
   core.router.register('agents.routine.remove', p => store.routines.remove(p));
   core.router.register('agents.routine.run', p => store.routines.run(p));
+  core.router.register('agents.trigger.save', (p, ctx) => store.triggers.save(p, ctx.connection.encrypted === true));
+  core.router.register('agents.trigger.remove', p => store.triggers.remove(p));
+  core.router.register('agents.trigger.test', p => store.triggers.test(p));
+  core.router.register('agents.trigger.rotateSecret', (p, ctx) => store.triggers.rotateSecret(p, ctx.connection.encrypted === true));
   core.router.register('agents.watch', p => store.watch(p));
   core.router.register('agents.event', (p, ctx) => store.outsideEvent(p, ctx.connection));
   core.router.register('agents.limits.set', p => store.setLimits(p));

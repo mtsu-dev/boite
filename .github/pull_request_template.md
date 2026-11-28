@@ -15,11 +15,14 @@ Describe the problem and the resulting behavior. Link the issue it closes.
 ## Verification
 
 List the commands run, their results, and anything not verified.
-Include desktop and phone captures for visual changes.
+Put desktop and phone captures for visual changes here, before the PR is
+marked ready.
 
 <!--
 When CI's Bundle size job reports a measure growing more than 0.1 %, add a
 "## Bundle size" section saying what grows and why, then rerun that job.
+When its Thread transfer job reports bytes growing more than 1 % or one message
+more, do the same under "## Thread transfer".
 -->
 
 ## Affected paths

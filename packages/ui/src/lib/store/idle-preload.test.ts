@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { Thread, ThreadId } from '@boite/contracts';
 import { FakeClient } from '../fake-client';
 import { Store } from '../store.svelte';
-import { READING_CACHE_THREADS, ReadingCache } from '../reading-cache';
+import { READING_CACHE_BYTES, READING_CACHE_THREADS, ReadingCache } from '../reading-cache';
 import { IDLE_PRELOAD_WAIT_MS } from './thread-preload';
 
 /** A gate the test opens. */
@@ -209,4 +209,66 @@ test('a page read ahead goes into the reading cache only where it fits, never ov
   expect(cache.prefill('b', thread('b'), 10)).toBe(false);
   expect(cache.size).toBe(READING_CACHE_THREADS);
   expect(cache.get('v0')).toBeDefined();
+});
+
+test('a departure delays its projection, a quick return reuses it, and a forgotten visit stays gone', () => {
+  const cache = new ReadingCache();
+  const thread = { id: 'left', messages: [] } as unknown as Thread;
+  const prepare = vi.fn(() => thread);
+  const copy = (held: Thread) => held;
+  cache.defer(thread, 0, prepare, copy, () => false);
+  expect(cache.has(thread.id)).toBe(true);
+  expect(cache.prefill(thread.id, thread, 0)).toBe(false);
+  expect(prepare).not.toHaveBeenCalled();
+  expect(cache.get(thread.id)).toBe(thread);
+  expect(prepare).toHaveBeenCalledOnce();
+  cache.defer(thread, 0, prepare, copy, () => false);
+  cache.forget(thread.id);
+  expect(cache.get(thread.id)).toBeUndefined();
+  expect(prepare).toHaveBeenCalledOnce();
+});
+
+test('ready visits and visits waiting for idle share the same byte budget', () => {
+  const waiting = new Map<number, IdleRequestCallback>();
+  let sequence = 0;
+  vi.stubGlobal('requestIdleCallback', (run: IdleRequestCallback) => { waiting.set(++sequence, run); return sequence; });
+  vi.stubGlobal('cancelIdleCallback', (id: number) => waiting.delete(id));
+  const cache = new ReadingCache();
+  const page = (id: string) => ({ id, messages: [{ parts: [{ type: 'text', text: 'x'.repeat(READING_CACHE_BYTES / 2) }] }] }) as Thread;
+  try {
+    cache.remember('first', page('first'), READING_CACHE_BYTES, thread => thread);
+    for (const id of ['second', 'third', 'fourth']) expect(cache.defer(page(id), READING_CACHE_BYTES, thread => thread, thread => thread, () => true)).toBe(true);
+    const mark = cache.mark('second');
+    expect(cache.get('second')?.id).toBe('second');
+    expect(mark.dropped).toBe(false);
+    mark.release();
+    expect(cache.defer(page('fifth'), READING_CACHE_BYTES, thread => thread, thread => thread, () => true)).toBe(true);
+    expect(cache.has('first')).toBe(false);
+    expect(waiting.size).toBe(4);
+  } finally {
+    cache.clear();
+    expect(waiting.size).toBe(0);
+    vi.unstubAllGlobals();
+  }
+});
+
+test('a press waits for a same-thread idle transfer, and releasing it before that transfer never unsubscribes', async () => {
+  const { calls, ahead, release } = await machine(true);
+  await vi.waitFor(() => expect(ahead()).toEqual(['t-trace']), { timeout: 3500 });
+  const end = store.preload('t-trace');
+  expect(calls().filter(([method, params]) => method === 'threads.get' && params.threadId === 't-trace')).toHaveLength(1);
+  end();
+  release();
+  await vi.waitFor(() => expect(ahead().length).toBeGreaterThan(1), { timeout: 3500 });
+  expect(calls().filter(([method, params]) => method === 'threads.unsubscribe' && params.threadId === 't-trace')).toEqual([]);
+});
+
+test('idle reads wait for a hidden document to become visible', async () => {
+  const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+  const { ahead } = await machine();
+  await new Promise(resolve => setTimeout(resolve, IDLE_PRELOAD_WAIT_MS + 50));
+  expect(ahead()).toEqual([]);
+  hidden.mockReturnValue(false);
+  document.dispatchEvent(new Event('visibilitychange'));
+  await vi.waitFor(() => expect(ahead()).toContain('t-trace'), { timeout: 3500 });
 });

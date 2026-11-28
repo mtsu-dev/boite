@@ -58,6 +58,30 @@ test('an added account is named after its provider, numbered from the second', (
   expect(nextAccountLabel(provider({}), [account({ label: 'Claude' })])).toBe('Claude 2');
 });
 
+test('the account default saves the effort encoded by the picked old model ID', async ({ ready }) => {
+  const { store } = await ready({ delayMs: 0 });
+  const model = {
+    id: 'gemini-4-neon', name: 'Gemini 4 Neon', aliases: [{ id: 'gemini-4-neon-xhigh', effort: 'xhigh' }],
+    effort: { default: 'low', levels: [{ id: 'low', label: 'Low' }, { id: 'xhigh', label: 'Extra high' }] },
+  };
+  store.providers = [provider({ id: 'antigravity', protocol: 'acp', models: [model] })];
+  store.accounts = [account({ id: 'a-antigravity', providerId: 'antigravity' })];
+  vi.spyOn(store, 'probeModels').mockResolvedValue(undefined);
+  vi.spyOn(store, 'catalogHas').mockReturnValue(true);
+  mounted = mount(AccountsPage, { target: document.body, props: { store } });
+  flushSync();
+  row('antigravity')!.querySelector<HTMLButtonElement>('[data-testid=provider-details-toggle]')!.click();
+  flushSync();
+  document.querySelector<HTMLButtonElement>('[data-testid=model-default] [data-testid=composer-picker]')!.click();
+  const search = () => document.querySelector<HTMLInputElement>('[data-testid=picker-search]');
+  await vi.waitFor(() => expect(search()).not.toBeNull());
+  search()!.value = 'gemini-4-neon-xhigh';
+  search()!.dispatchEvent(new Event('input', { bubbles: true }));
+  flushSync();
+  document.querySelector<HTMLButtonElement>('[data-model="gemini-4-neon"]')!.click();
+  await vi.waitFor(() => expect(store.modelDefaults['antigravity']).toEqual({ model: model.id, effort: 'xhigh' }));
+});
+
 
 test('checking a signed-out account reports its connection without probing models', async ({ ready }) => {
   const { store, client } = await ready({ delayMs: 0 });

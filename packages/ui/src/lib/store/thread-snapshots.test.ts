@@ -46,7 +46,7 @@ async function until(check: () => boolean | Promise<boolean>, ms = 4000): Promis
   }
 }
 
-test('a thread opened before a reload opens from its snapshot, then asks only for what came after it', async () => {
+test('a thread opened before a reload paints a summary and starts the network before its snapshot is ready', async () => {
   const db = new MemorySnapshotDb();
   setThreadSnapshots(new ThreadSnapshots({ db, subtle: crypto.subtle }));
   const first = await load();
@@ -60,30 +60,57 @@ test('a thread opened before a reload opens from its snapshot, then asks only fo
   let release!: () => void;
   const second = await load(new Promise<void>(resolve => { release = resolve; }));
   const opening = second.store.open('t-descriptors');
-  await until(() => second.gets.some(params => params.threadId === 't-descriptors'));
+  expect(second.gets.some(params => params.threadId === 't-descriptors')).toBe(true);
+  expect(second.store.loadingThreadId).toBeNull();
+  await until(() => (second.store.openThread?.messages.length ?? 0) > 0);
   expect(second.store.openThread?.id).toBe('t-descriptors');
   expect(second.store.loadingThreadId).toBeNull();
   expect(second.store.openThread!.messages.map(message => message.id)).toEqual(shown);
   release();
   await opening;
   const ask = second.gets.find(params => params.threadId === 't-descriptors')!;
-  expect(ask.after).toBe(shown.at(-1));
+  expect(ask.after).toBeUndefined();
   expect(second.store.openThread!.messages.map(message => message.id)).toEqual(shown);
+});
+
+test('a device snapshot can still fill the summary after a network failure', async () => {
+  const { store, client } = await load();
+  const threadId = 't-descriptors';
+  const cached = await client.call('threads.get', { threadId });
+  let resolveSnapshot!: (thread: Thread) => void;
+  vi.spyOn(DeviceSnapshots.prototype, 'mayHold').mockReturnValue(true);
+  vi.spyOn(DeviceSnapshots.prototype, 'read').mockImplementation(() => new Promise(resolve => { resolveSnapshot = resolve; }));
+  const call = FakeClient.prototype.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation(((method: string, params: Params, options?: unknown) => {
+    if (method === 'threads.get' && params.threadId === threadId) return Promise.reject(new Error('Request timed out'));
+    return call(method as never, params as never, options as never);
+  }) as typeof client.call);
+
+  await store.open(threadId);
+  expect(store.openThread?.messages).toHaveLength(0);
+  resolveSnapshot(cached);
+  await until(() => !!store.openThread?.messages.length);
+  expect(store.openThread?.messages).toEqual(cached.messages);
 });
 
 test('a snapshot whose cursor the core does not know is dropped, and the thread shows only what the core sent', async () => {
   const db = new MemorySnapshotDb();
   const snapshots = new ThreadSnapshots({ db, subtle: crypto.subtle });
   setThreadSnapshots(snapshots);
-  const { store, gets } = await load();
-  const page = await store.client!.call('threads.get', { threadId: 't-descriptors' });
-  const gone = { ...page.messages.at(-1)!, id: 'm-rewound-away' } as Thread['messages'][number];
-  const stale = { ...page, messages: [...page.messages.slice(0, -1), gone] } as Thread;
-  await snapshots.write('core-fixture', null, stale, 'm-rewound-away' as never);
+  const previous = await load();
+  await previous.client.call('turns.start', { threadId: 't-descriptors', prompt: 'This turn will be rewound' });
+  const stale = await previous.client.call('threads.get', { threadId: 't-descriptors', sync: true });
+  const cursor = stale.messagesSync!.from;
+  await snapshots.write('core-fixture', null, stale, cursor);
+
+  // The new fake core has the same identity and the history before the extra turn.
+  const { store, client, gets } = await load();
+  const page = await client.call('threads.get', { threadId: 't-descriptors' });
+  expect(page.messages.map(message => message.id)).not.toContain(cursor);
   gets.length = 0;
+  store.preload('t-descriptors');
   await store.open('t-descriptors');
-  expect(gets.find(params => params.threadId === 't-descriptors')?.after).toBe('m-rewound-away');
-  expect(store.openThread!.messages.map(message => message.id)).not.toContain('m-rewound-away');
+  expect(gets.find(params => params.threadId === 't-descriptors')?.after).toBeUndefined();
   expect(store.openThread!.messages.map(message => message.id)).toEqual(page.messages.map(message => message.id));
   await snapshots.purgeMachine('none');
   expect(await db.data('core-fixture', 't-descriptors')).toBeUndefined();
@@ -162,6 +189,53 @@ test('a snapshot read that fails, the database blocked, opens the thread from th
   expect(store.openThread?.id).toBe('t-descriptors');
   expect(store.openThread!.messages.length).toBeGreaterThan(0);
   expect(store.loadingThreadId).toBeNull();
+});
+
+test('a slow snapshot mark cannot start history projection outside a new idle turn', async () => {
+  vi.useFakeTimers();
+  const idle = new Map<number, IdleRequestCallback>();
+  let next = 0;
+  vi.stubGlobal('requestIdleCallback', (callback: IdleRequestCallback) => { idle.set(++next, callback); return next; });
+  vi.stubGlobal('cancelIdleCallback', (id: number) => { idle.delete(id); });
+  const snapshots = new ThreadSnapshots({ db: new MemorySnapshotDb(), subtle: crypto.subtle, channel: null });
+  const marked = await snapshots.mark('core-a', 't1');
+  let release!: (mark: typeof marked) => void;
+  const gate = new Promise<typeof marked>(resolve => { release = resolve; });
+  vi.spyOn(snapshots, 'mark').mockReturnValue(gate);
+  setThreadSnapshots(snapshots);
+  const read = new Set<number>();
+  const messages = Array.from({ length: 33 }, (_, index) => ({
+    id: `m${index}`, state: 'complete',
+    get parts() { read.add(index); return [{ type: 'text', text: 'History' }]; },
+  }));
+  const page = { id: 't1', messages, turns: [] } as unknown as Thread;
+  const ctx = { store: { core: { coreId: 'core-a' }, principal: 'owner' }, connection: { endpointUrl: null } } as unknown as StoreContext;
+  const device = new DeviceSnapshots(ctx, { openThread: page, readingThreads: new Map(), readingPositions: new Map() }, new Set());
+  const runIdle = () => {
+    for (const [id, callback] of [...idle]) {
+      idle.delete(id);
+      callback({ didTimeout: false, timeRemaining: () => 50 });
+    }
+  };
+  try {
+    device.schedule('t1');
+    await vi.advanceTimersByTimeAsync(SNAPSHOT_WRITE_DELAY_MS);
+    runIdle();
+    release(marked);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read.size).toBe(0);
+    expect(idle.size).toBeGreaterThan(0);
+    runIdle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read.size).toBe(16);
+    expect(idle.size).toBeGreaterThan(0);
+    runIdle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read.size).toBe(32);
+  } finally {
+    device.stop();
+    vi.useRealTimers();
+  }
 });
 
 test('a thread left away from its end, out of memory, reopens around the reader\'s message, not from its snapshot', async () => {

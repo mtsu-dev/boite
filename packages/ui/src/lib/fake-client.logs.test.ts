@@ -128,7 +128,7 @@ test('fake diagnostics: summary, export and issue for the owner; report for the 
 
     client.becomes('session');
     expect(await client.call('diagnostics.report', { records: [{ level: 'warn', at: Date.now(), source: 'connection', event: 'ui.reconnected', message: 'Back after 3 s', durationMs: 3000 }] })).toEqual({ accepted: 1 });
-    for (const method of ['diagnostics.summary', 'diagnostics.export', 'diagnostics.logs', 'core.logs'] as const) await expect(client.call(method, {} as never)).rejects.toMatchObject({ code: RpcErrorCode.Refused });
+    for (const method of ['diagnostics.summary', 'diagnostics.export', 'diagnostics.exportFile', 'diagnostics.logs', 'core.logs'] as const) await expect(client.call(method, {} as never)).rejects.toMatchObject({ code: RpcErrorCode.Refused });
     await expect(client.call('diagnostics.issue', { title: 'The window froze', description: 'x' })).rejects.toMatchObject({ code: RpcErrorCode.Refused });
 
     client.becomes('agent');

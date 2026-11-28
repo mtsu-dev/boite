@@ -9,7 +9,7 @@ import { threadTone, workflowTone } from '../lib/status-tone';
 import { workingChildren, type WorkingChildren } from '../lib/thread-rows';
 import { SIDEBAR_DEFAULT } from '../lib/prefs';
 
-type Shown = Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'lastUserMessageAt' | 'createdAt' | 'backgroundWait'> & { archived?: boolean };
+type Shown = Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'lastUserMessageAt' | 'createdAt' | 'backgroundWait' | 'pullRequestWatches'> & { archived?: boolean };
 
 const NOW = Date.UTC(2026, 8, 28, 10, 0, 0);
 let running: Record<string, unknown> | null = null;
@@ -43,10 +43,11 @@ test('a parent whose turn ended waits on its working sub-agents, their count in 
 
   const state = draw({ status: 'idle', unread: true, backgroundWork: { kinds: ['shell'], since: NOW } }, working.get('parent' as ThreadId)!);
   expect(state.dataset['state']).toBe('delegating');
-  // Work of any kind is the turning ring; its word says what it waits on, its clock how long.
-  expect(state.querySelector('.work-ring.turning')).not.toBeNull();
+  // Passive waits never spin: delegating pulses its bot icon beside the clock (with no chip passed here).
+  expect(state.querySelector('.work-ring')).toBeNull();
   expect(state.querySelector('.dot')).toBeNull();
-  expect(state.querySelector('.word')?.textContent).toBe('Sub-agents');
+  expect(state.querySelector('.lucide-bot.pulse')).not.toBeNull();
+  expect(state.querySelector('.word')).toBeNull();
   expect(state.querySelector('[data-testid="thread-elapsed"]')?.textContent).toBe('1m 30s');
   expect(state.getAttribute('role')).toBe('img');
   expect(state.getAttribute('title')).toBe('Waiting on 2 sub-agents\n1m 30s');
@@ -86,20 +87,25 @@ test('a finished turn whose agent still runs something is not at rest, read or n
 test('a parent row shows how many sub-agents it has at work, in every state, and only its children ask in the chip', () => {
   vi.useFakeTimers({ now: NOW });
   const two: WorkingChildren = { count: 2, since: NOW - 90_000, asking: 0 };
-  // Idle, waiting on them: the chip after the word, the robot and the number, the sentence in the tooltip.
+  // Idle, waiting on them: the elapsed clock and the pulsing robot chip, no spinner or redundant word.
   let state = draw({ status: 'idle' }, two, { team: two });
   let chip = state.querySelector<HTMLElement>('[data-testid="thread-subagents"]');
   expect(chip?.dataset['count']).toBe('2');
   expect(chip?.textContent?.trim()).toBe('2');
+  expect(chip?.classList.contains('pulse')).toBe(true);
+  expect(state.querySelector('.work-ring')).toBeNull();
   // The chip stands for the word: no "Sub-agents" beside the robot.
   expect(state.querySelector('.word')).toBeNull();
   expect(state.getAttribute('title')).toBe('Waiting on 2 sub-agents\n1m 30s\n2 sub-agents at work');
-  // Its own turn running beside them still counts them.
+  // Its own turn running beside them still counts them, and the chip stays still while the ring turns.
   unmount(running!, { outro: false });
   document.body.innerHTML = '';
   state = draw({ status: 'running', runningSince: NOW - 5_000 }, two, { team: two });
   expect(state.dataset['state']).toBe('working');
-  expect(state.querySelector('[data-testid="thread-subagents"]')?.getAttribute('data-count')).toBe('2');
+  expect(state.querySelector('.work-ring.turning')).not.toBeNull();
+  const runningChip = state.querySelector<HTMLElement>('[data-testid="thread-subagents"]');
+  expect(runningChip?.getAttribute('data-count')).toBe('2');
+  expect(runningChip?.classList.contains('pulse')).toBe(false);
   // The thread's own question is folded into `subagents` (rowAsks), never into the chip: it counts its children only.
   unmount(running!, { outro: false });
   document.body.innerHTML = '';
@@ -115,42 +121,73 @@ test('a parent row shows how many sub-agents it has at work, in every state, and
   chip = state.querySelector<HTMLElement>('[data-testid="thread-subagents"]');
   expect(chip?.dataset['count']).toBe('1');
   expect(chip?.classList.contains('asking')).toBe(true);
-  // A list that holds the mark alone (Activity, the palette) leaves the chip out.
+  // A list that holds the mark alone (Activity, the palette) leaves the chip out and pulses the bot icon instead.
   unmount(running!, { outro: false });
   document.body.innerHTML = '';
   state = draw({ status: 'idle' }, two, { team: two, mark: true });
   expect(state.querySelector('[data-testid="thread-subagents"]')).toBeNull();
+  expect(state.querySelector('.lucide-bot.pulse')).not.toBeNull();
 });
 
-test('work names what it waits on: the heaviest background task, CI or the merge queue; the turn\'s clock stands for Working', () => {
+test('passive waits pulse a state-specific icon beside the clock; words stay for non-live states and paused or untimed waits', () => {
   vi.useFakeTimers({ now: NOW });
-  const word = (thread: Partial<Shown> & Record<string, unknown>) => {
-    const state = draw(thread as Partial<Shown>);
-    const text = state.querySelector('.word')?.textContent;
+  const inspect = (thread: Partial<Shown>) => {
+    const state = draw(thread);
+    const out = {
+      word: state.querySelector('.word')?.textContent,
+      elapsed: state.querySelector('[data-testid="thread-elapsed"]')?.textContent,
+      ring: state.querySelector('.work-ring') !== null,
+      turning: state.querySelector('.work-ring.turning') !== null,
+      pulse: state.querySelector('.pulse')?.getAttribute('class') ?? null,
+    };
     unmount(running!, { outro: false });
     running = null;
     document.body.innerHTML = '';
-    return text;
+    return out;
   };
-  expect(word({ status: 'running', runningSince: NOW - 5_000 })).toBeUndefined();
-  expect(word({ status: 'running', runningSince: null })).toBe('Working');
-  expect(word({ status: 'queued' })).toBe('Queued');
-  expect(word({ backgroundWork: { kinds: ['shell', 'monitor'], since: NOW } })).toBe('Command');
-  expect(word({ backgroundWork: { kinds: ['shell', 'workflow'], since: NOW } })).toBe('Workflow');
-  expect(word({ backgroundWork: { kinds: ['agent'], since: NOW } })).toBe('Agent');
-  expect(word({ backgroundWork: { kinds: ['other'], since: NOW } })).toBe('Background');
+  expect(inspect({ status: 'running', runningSince: NOW - 5_000 })).toMatchObject({ word: undefined, elapsed: '5s', turning: true, pulse: null });
+  expect(inspect({ status: 'running', runningSince: null })).toMatchObject({ word: 'Working', elapsed: undefined, turning: true, pulse: null });
+  expect(inspect({ status: 'queued' })).toMatchObject({ word: 'Queued', elapsed: undefined, ring: true, turning: false, pulse: null });
+  expect(inspect({ backgroundWork: { kinds: ['shell', 'monitor'], since: NOW } })).toMatchObject({ word: undefined, elapsed: '0s', ring: false });
+  expect(inspect({ backgroundWork: { kinds: ['shell', 'monitor'], since: NOW } }).pulse).toContain('lucide-terminal');
+  expect(inspect({ backgroundWork: { kinds: ['shell', 'workflow'], since: NOW } }).pulse).toContain('bg-dot');
+  expect(inspect({ backgroundWork: { kinds: ['agent'], since: NOW } }).pulse).toContain('lucide-bot');
+  expect(inspect({ backgroundWork: { kinds: ['other'], since: NOW } }).pulse).toContain('bg-dot');
   const seen = { checkedAt: NOW, head: 'abc1234', base: 'def5678', checks: { total: 3, running: 0, failed: 0 }, conflicting: false, queue: { position: 2 } };
   const watch = { url: 'https://github.com/example/repo/pull/7', repository: 'example/repo', number: 7, since: NOW - 300_000, seen, paused: null };
-  expect(word({ requestSince: NOW - 60_000, pullRequestWatches: [watch] })).toBe('Merge queue');
-  expect(word({ requestSince: NOW - 60_000, pullRequestWatches: [{ ...watch, seen: { ...seen, checks: { total: 3, running: 1, failed: 0 }, queue: undefined } }] })).toBe('CI running');
+  const mq = inspect({ requestSince: NOW - 60_000, pullRequestWatches: [watch] });
+  expect(mq).toMatchObject({ word: undefined, elapsed: '1m 00s', ring: false });
+  expect(mq.pulse).toContain('lucide-git-merge');
+  const ci = inspect({ requestSince: NOW - 60_000, pullRequestWatches: [{ ...watch, seen: { ...seen, checks: { total: 3, running: 1, failed: 0 }, queue: undefined } }] });
+  expect(ci).toMatchObject({ word: undefined, elapsed: '1m 00s', ring: false });
+  expect(ci.pulse).toContain('lucide-git-pull-request');
+  const paused = draw({ pullRequestWatches: [{ ...watch, paused: { reason: 'rate-limit', until: NOW + 60_000, message: 'limit' } }] });
+  expect(paused.querySelector('.word')?.textContent).toBe('Watching PR');
+  expect(paused.querySelector('[data-testid=thread-elapsed]')).toBeNull();
+  expect(paused.querySelector('.lucide-git-pull-request')).not.toBeNull();
+  expect(paused.querySelector('.pulse')).toBeNull();
+  expect(paused.title).toContain('GitHub rate limit');
+  unmount(running!, { outro: false });
+  running = null;
+  const mixed = draw({ pullRequestWatches: [
+    { ...watch, paused: { reason: 'unreachable', until: NOW + 60_000, message: 'no response' } },
+    { ...watch, url: 'https://github.com/example/repo/pull/34', number: 34, since: NOW - 120_000, seen: { ...seen, checks: { total: 3, running: 1, failed: 0 }, queue: undefined } },
+  ] });
+  expect(mixed.querySelector('.word')).toBeNull();
+  expect(mixed.querySelector('.lucide-git-pull-request.pulse')).not.toBeNull();
+  expect(mixed.querySelector('[data-testid=thread-elapsed]')?.textContent).toBe('2m 00s');
+  expect(mixed.title).toContain('#34');
+  expect(mixed.title).not.toContain('#7');
 });
 
-test('a delegated agent waiting on its own background work says what and since when; work that never woke it reads interrupted', () => {
+test('a delegated agent waiting on its own background work pulses its mark and counts time; work that never woke it reads interrupted', () => {
   vi.useFakeTimers({ now: NOW });
   const since = NOW - 12 * 60_000;
   const waiting = draw({ backgroundWork: { kinds: ['shell'], since }, backgroundWait: { state: 'waiting', for: 'test_emotes', since, until: null } });
   expect(waiting.dataset['state']).toBe('background');
-  expect(waiting.textContent?.trim()).toBe('Command 12m 00s');
+  expect(waiting.querySelector('.work-ring')).toBeNull();
+  expect(waiting.querySelector('.lucide-terminal.pulse')).not.toBeNull();
+  expect(waiting.textContent?.trim()).toBe('12m 00s');
   expect(waiting.getAttribute('title')).toBe('In background for 12m 00s\nWaiting on test_emotes');
   // The task just ended and the wake turn has not started: still at work, not done.
   expect(threadState({ status: 'idle', unread: true, backgroundWait: { state: 'waiting', for: 'test_emotes', since, until: NOW + 30_000 } })).toBe('background');
@@ -202,19 +239,19 @@ test('a parent at work reads working, and one whose child asks reads Needs you, 
   expect(projectRollup([{ status: 'running', unread: false }, { status: 'idle', unread: false }], thread => thread.status === 'idle' ? asking : 0)).toEqual({ kind: 'waiting', count: 1 });
 });
 
-test('a monitoring thread counts from its oldest task and says what still runs', () => {
+test('a monitoring thread counts from its oldest task with a pulsing radar and says what still runs in its tooltip', () => {
   vi.useFakeTimers({ now: NOW });
   const state = draw({ status: 'idle', unread: true, backgroundWork: { kinds: ['monitor', 'monitor'], since: NOW - 125_000 } });
   expect(state.dataset['state']).toBe('monitoring');
   expect(state.classList.contains('monitoring')).toBe(true);
-  // One shape for every kind of work: the turning arc; its word names which work it is.
-  expect(state.querySelector('.work-ring')).not.toBeNull();
-  expect(state.textContent?.trim()).toBe('Monitoring 2m 05s');
+  expect(state.querySelector('.work-ring')).toBeNull();
+  expect(state.querySelector('.lucide-radar.pulse')).not.toBeNull();
+  expect(state.textContent?.trim()).toBe('2m 05s');
   expect(state.getAttribute('title')).toBe('Monitoring for 2m 05s\n2 monitors still running');
 
   vi.advanceTimersByTime(1_000);
   flushSync();
-  expect(state.textContent?.trim()).toBe('Monitoring 2m 06s');
+  expect(state.textContent?.trim()).toBe('2m 06s');
   expect(state.getAttribute('title')).toBe('Monitoring for 2m 06s\n2 monitors still running');
 });
 
@@ -240,12 +277,12 @@ test('monitoring and the turn that resumes after it keep counting from the user 
   expect(shell.getAttribute('title')).toBe('In background for 5s\n1 shell still running');
 });
 
-test('a shell left running reads as background work, with a still ring rather than a spinning one', () => {
+test('a shell left running reads as background work, pulsing a terminal icon rather than spinning', () => {
   vi.useFakeTimers({ now: NOW });
   const state = draw({ status: 'idle', backgroundWork: { kinds: ['shell', 'monitor'], since: NOW - 5_000 } });
   expect(state.dataset['state']).toBe('background');
-  expect(state.querySelector('.spinner, .pulse')).toBeNull();
-  expect(state.querySelector('.work-ring')).not.toBeNull();
+  expect(state.querySelector('.work-ring')).toBeNull();
+  expect(state.querySelector('.lucide-terminal.pulse')).not.toBeNull();
   expect(state.getAttribute('title')).toBe('In background for 5s\n1 shell, 1 monitor still running');
 });
 
@@ -333,7 +370,7 @@ test('a desktop list row below its threshold keeps the mark and its clock, the w
   for (const [thread, name, word] of [
     [{ status: 'waiting' }, /^Needs you$/, 'Needs you'],
     [{ status: 'error' }, /^Failed$/, 'Failed'],
-    [{ status: 'idle', backgroundWork: { kinds: ['shell'] as Array<'shell'>, since: NOW - 65_000 } }, /^In background for 1m 05s/, 'Command'],
+    [{ status: 'queued' }, /^Queued$/, 'Queued'],
   ] as const) {
     running = mount(ThreadState, { target: document.body, props: { thread: { unread: false, runningSince: null, backgroundWork: null, lastUserMessageAt: NOW, createdAt: NOW, ...thread }, now: NOW, fit: true } });
     flushSync();
@@ -345,11 +382,18 @@ test('a desktop list row below its threshold keeps the mark and its clock, the w
     const shown = state.querySelector('.word');
     expect(shown?.textContent).toBe(word);
     expect(shown?.getAttribute('aria-hidden')).toBe('true');
-    // Work keeps its clock where the word gives way: only the word sits under the rule.
-    if (word === 'Command') expect(state.querySelector('[data-testid="thread-elapsed"]')?.textContent).toBe('1m 05s');
     unmount(running!, { outro: false });
     running = null;
   }
+  // Timed passive waits keep their pulsing icon and clock without a word, so they never lose information at narrow widths.
+  running = mount(ThreadState, { target: document.body, props: { thread: { status: 'idle', unread: false, runningSince: null, backgroundWork: { kinds: ['shell'], since: NOW - 65_000 }, lastUserMessageAt: NOW, createdAt: NOW }, now: NOW, fit: true } });
+  flushSync();
+  const bg = document.body.firstElementChild as HTMLElement;
+  expect(bg.querySelector('.word')).toBeNull();
+  expect(bg.querySelector('.lucide-terminal.pulse')).not.toBeNull();
+  expect(bg.querySelector('[data-testid="thread-elapsed"]')?.textContent).toBe('1m 05s');
+  unmount(running!, { outro: false });
+  running = null;
 });
 
 test('an archived thread carries no live state, a turn still running included', () => {
@@ -388,7 +432,7 @@ test('threads, workflow runs and steps share one status mark vocabulary', () => 
   expect(workflowTone('skipped').tone).toBe('skipped');
 });
 
-test('a thread at rest watching pull requests counts its time until their checks settle, then reads as finished', () => {
+test('a thread at rest watching pull requests pulses a PR or merge-queue icon with its elapsed time until checks settle', () => {
   vi.useFakeTimers({ now: NOW });
   const watch = { url: 'https://github.com/example/repo/pull/7', repository: 'example/repo', number: 7, since: NOW - 300_000, seen: null, paused: null };
   const shown = { status: 'idle' as const, unread: true, runningSince: null, backgroundWork: null, lastUserMessageAt: NOW - 120_000, createdAt: NOW - 600_000 };
@@ -396,9 +440,10 @@ test('a thread at rest watching pull requests counts its time until their checks
   flushSync();
   const state = document.body.firstElementChild as HTMLElement;
   expect(state.dataset['state']).toBe('watching');
-  // The row counts from the request, like a monitor; the numbers stay in the tooltip, the card's own line links the PR.
-  expect(state.querySelector('.work-ring')).not.toBeNull();
-  expect(state.textContent?.trim()).toBe('CI running 10m 00s');
+  // The row counts from the request with a pulsing PR icon (no spinner); the numbers stay in the tooltip, the card's own line links the PR.
+  expect(state.querySelector('.work-ring')).toBeNull();
+  expect(state.querySelector('.lucide-git-pull-request.pulse')).not.toBeNull();
+  expect(state.textContent?.trim()).toBe('10m 00s');
   expect(state.getAttribute('title')).toBe('Watching 2 PRs\n#7, #9\n10m 00s');
   // Its own turn still comes first; a finished watch leaves the thread done.
   expect(threadState({ status: 'running', unread: false, pullRequestWatches: [watch] })).toBe('working');
@@ -409,14 +454,18 @@ test('a thread at rest watching pull requests counts its time until their checks
   const settled = { ...watch, seen: { ...seen, checks: { total: 20, running: 0, failed: 0 } } };
   expect(threadState({ status: 'idle', unread: true, pullRequestWatches: [settled] })).toBe('done');
   expect(threadState({ status: 'idle', unread: false, pullRequestWatches: [settled] })).toBeNull();
-  // In the merge queue its checks run on the merge group: still watching until it merges or leaves the queue.
+  // In the merge queue its checks run on the merge group: still watching with a pulsing merge icon until it merges or leaves the queue.
   const queued = { ...watch, seen: { ...settled.seen, queue: { position: 2 } } };
   expect(threadState({ status: 'idle', unread: false, pullRequestWatches: [queued] })).toBe('watching');
   expect(threadState({ status: 'idle', unread: false, pullRequestWatches: [{ ...queued, seen: { ...queued.seen, queue: null } }] })).toBeNull();
   unmount(running, { outro: false });
   running = mount(ThreadState, { target: document.body, props: { thread: { ...shown, requestSince: NOW - 600_000, pullRequestWatches: [queued] }, now: NOW } });
   flushSync();
-  expect((document.body.firstElementChild as HTMLElement).getAttribute('title')).toBe('Watching PR\n#7 (Merge queue, position 2)\n10m 00s');
+  const mqState = document.body.firstElementChild as HTMLElement;
+  expect(mqState.querySelector('.work-ring')).toBeNull();
+  expect(mqState.querySelector('.lucide-git-merge.pulse')).not.toBeNull();
+  expect(mqState.textContent?.trim()).toBe('10m 00s');
+  expect(mqState.getAttribute('title')).toBe('Watching PR\n#7 (Merge queue, position 2)\n10m 00s');
   expect(projectRollup([{ status: 'idle', unread: true }, { status: 'idle', unread: false, pullRequestWatches: [watch] }])).toEqual({ kind: 'watching', count: 1 });
 });
 

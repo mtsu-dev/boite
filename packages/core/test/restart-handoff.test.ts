@@ -1,7 +1,10 @@
 import { afterEach, expect, spyOn, test } from 'bun:test';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Message, Turn } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { Core } from '../src/core.ts';
+import { profileFor } from '../src/providers/resolve.ts';
 import { startServer, type RunningServer } from '../src/server.ts';
 import { HANDOFF } from '../src/threads/handoff.ts';
 import { echoThread, holdAccountTurns, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -10,6 +13,27 @@ import { thrown } from './settle.ts';
 const DEFAULTS = { ...HANDOFF };
 afterEach(() => { Object.assign(HANDOFF, DEFAULTS); });
 
+test('a committed async answer is delivered once after its scheduler admission fails', async () => {
+  const h = await startTestCore();
+  try {
+    const client = await h.connect();
+    const { threadId } = await echoThread(h, client);
+    const { journal, scheduler, threads } = h.core;
+    const initial = await client.call('turns.start', { threadId, prompt: 'Plan the migration' });
+    await waitFor(() => journal.getTurn(initial.id)?.status === 'done');
+    const { questionId } = await client.call('questions.ask', { threadId, text: 'Which database?', options: ['SQLite'] });
+    const enqueue = spyOn(scheduler, 'enqueue').mockImplementation(() => { throw new Error('synthetic failure after durable admission'); });
+    try {
+      await client.call('questions.answer', { threadId, questionId, optionIds: ['1'] });
+    } finally { enqueue.mockRestore(); }
+    const accepted = journal.lastTurn(threadId)!;
+    expect(accepted.status).toBe('queued');
+    scheduler.enqueue(accepted, threads.require(threadId).accountId);
+    await waitFor(() => journal.getTurn(accepted.id)?.status === 'done');
+    expect(journal.listMessages(threadId).filter(message => message.role === 'user').map(textOf)).toEqual(['Plan the migration', '> Which database?\n\nSQLite']);
+  } finally { await h.stop(); }
+});
+
 function ask(h: TestCore): Promise<Response> {
   return fetch(`${h.url}/shutdown-for-update?pid=${process.pid}`, { method: 'POST', headers: { authorization: `Bearer ${h.token}` } });
 }
@@ -17,8 +41,9 @@ function ask(h: TestCore): Promise<Response> {
 interface Next { core: Core; server: RunningServer; stop(): Promise<void> }
 
 /** The same data directory under a new core and server, the way the next process finds it. */
-function startNext(h: TestCore): Next {
+function startNext(h: TestCore, beforeListen?: (core: Core) => void): Next {
   const core = new Core({ dataDir: h.dataDir, token: h.token });
+  beforeListen?.(core);
   const server = startServer({ core, host: '127.0.0.1', port: 0 });
   return {
     core,
@@ -77,6 +102,94 @@ test('constructing and losing a replacement core before listening keeps the hand
     await waitFor(() => next!.core.journal.listTurns(turns[0]!.threadId).length === 2);
     expect(next.core.journal.listTurns(turns[0]!.threadId)[1]!.execution?.operation).toBe('resume');
   } finally { await first?.close(); await next?.stop(); await h.stop().catch(() => undefined); }
+});
+
+test.each([
+  { stage: 'planned', action: 'resume' },
+  { stage: 'admitted', action: 'resume' },
+  { stage: 'planned', action: 'stop' },
+  { stage: 'planned', action: 'replace' },
+])('a $stage update handoff waits past the provider-list deadline ($action)', async ({ stage, action }) => {
+  const { h, turns: [source] } = await stoppedHandoff();
+  const threadId = source!.threadId;
+  let admitted: string | undefined;
+  if (stage === 'admitted') {
+    const preflight = new Core({ dataDir: h.dataDir, token: h.token });
+    preflight.plugins.blocksAccount = () => true;
+    try {
+      expect(preflight.threads.handoff.resume()).toBe(1);
+      admitted = preflight.scheduler.state().queued[0]!.turnId;
+    } finally { await preflight.close(); }
+  }
+  const release = Promise.withResolvers<string>();
+  let listSettled = false;
+  const next = startNext(h, core => {
+    const program = join(h.dataDir, 'handoff-probe.exe');
+    writeFileSync(program, '', { mode: 0o755 });
+    profileFor(core.providers.require('echo'))!.executable = [{ kind: 'file', value: program, major: 2 }];
+    core.providers.attachVersions(() => release.promise, () => {});
+    const settle = core.providers.settle.bind(core.providers);
+    spyOn(core.providers, 'settle').mockImplementation(async () => { await settle(40); listSettled = true; });
+  });
+  try {
+    await waitFor(() => listSettled);
+    expect(next.core.journal.getSetting('restart-handoff')).toBeTruthy();
+    if (admitted) expect(next.core.journal.getTurn(admitted)?.status).toBe('queued');
+    else expect(next.core.journal.listTurns(threadId)).toHaveLength(1);
+    if (action === 'stop') expect(next.core.threads.stopTurn(threadId)).toBe(true);
+    if (action === 'replace') {
+      // The profile can resolve again while the earlier probe is still in flight.
+      profileFor(next.core.providers.require('echo'))!.executable = [];
+      const ping = next.core.threads.startTurn(threadId, 'keep the cache warm', { kind: 'keepalive' });
+      await waitFor(() => next.core.journal.getTurn(ping.id)?.status === 'done' && !next.core.threads.isBusy(threadId));
+      expect(next.core.journal.getSetting('restart-handoff')).toBeTruthy();
+
+      const client = await connect(next.server.url, h.token);
+      try {
+        const fresh = await client.call('turns.start', { threadId, prompt: 'Replace the previous request' });
+        await waitFor(() => next.core.journal.getTurn(fresh.id)?.status === 'done');
+        const pendingAfterFresh = next.core.journal.getSetting('restart-handoff');
+        release.resolve('handoff-probe 2.0.0');
+        await next.core.providers.settle();
+        expect(next.core.journal.listTurns(threadId).map(turn => turn.id)).toEqual([source!.id, ping.id, fresh.id]);
+        expect(pendingAfterFresh).toBeFalsy();
+        expect(next.core.journal.getSetting('restart-handoff')).toBeFalsy();
+      } finally { client.close(); }
+      return;
+    }
+    release.resolve('handoff-probe 2.0.0');
+    if (action === 'stop') {
+      await waitFor(() => next.core.providers.summary('echo')?.available === true);
+      expect(next.core.journal.listTurns(threadId)).toHaveLength(1);
+      expect(next.core.journal.getSetting('restart-handoff')).toBeFalsy();
+      return;
+    }
+    await waitFor(() => next.core.journal.listTurns(threadId)[1]?.status === 'done');
+    const turns = next.core.journal.listTurns(threadId);
+    expect(turns).toHaveLength(2);
+    if (admitted) expect(turns[1]!.id).toBe(admitted);
+    expect(next.core.journal.getSetting('restart-handoff')).toBeFalsy();
+  } finally { release.resolve('handoff-probe 2.0.0'); await next.stop(); }
+});
+
+test('a stale handoff record cannot resume a thread with a newer turn in the journal', async () => {
+  const { h, turns: [source] } = await stoppedHandoff();
+  const threadId = source!.threadId;
+  let core = new Core({ dataDir: h.dataDir, token: h.token });
+  try {
+    const stale = core.journal.getSetting('restart-handoff');
+    expect(stale).toBeTruthy();
+    const fresh = core.threads.startTurn(threadId, 'Answer this request instead');
+    await waitFor(() => core.journal.getTurn(fresh.id)?.status === 'done');
+    // Simulate an older core that committed the replacement without clearing the plan.
+    core.journal.setSetting('restart-handoff', stale);
+    await core.close();
+
+    core = new Core({ dataDir: h.dataDir, token: h.token });
+    expect(core.threads.handoff.resume()).toBe(0);
+    expect(core.journal.listTurns(threadId).map(turn => turn.id)).toEqual([source!.id, fresh.id]);
+    expect(core.journal.getSetting('restart-handoff')).toBeFalsy();
+  } finally { await core.close(); await h.stop().catch(() => undefined); }
 });
 
 test('partial resume keeps failed admissions and reuses a durably accepted queued continuation after another restart', async () => {
@@ -230,13 +343,13 @@ test('a restart lets the running tool call finish, stops the turn and resumes th
 
     next = startNext(h);
     const core = next.core;
-    // The scripted agent replays the quoted directives, so the resumed turn is read while it runs.
-    await waitFor(() => core.journal.listTurns(threadId).length === 2 && core.journal.listTurns(threadId)[1]!.status === 'running');
+    await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');
     const resumed = core.journal.listTurns(threadId)[1]!;
     expect(resumed.execution?.operation).toBe('resume');
     const opening = messagesOf(core, resumed).find(message => message.role === 'system');
     expect(opening?.parts[0]).toMatchObject({ type: 'text', displayText: 'Resumed after a restart' });
-    expect(textOf(opening)).toContain('The request that turn was answering:\n\nbuild it');
+    expect(textOf(opening)).toContain('<interrupted-user-messages>\nbuild it [tool:300] [sleep:60000] never written');
+    expect(messagesOf(core, resumed).flatMap(message => message.parts).some(part => part.type === 'tool')).toBe(false);
     expect(core.journal.getSetting('restart-handoff')).toBeFalsy();
     // Once: a later start has nothing to resume.
     expect(core.threads.handoff.resume()).toBe(0);

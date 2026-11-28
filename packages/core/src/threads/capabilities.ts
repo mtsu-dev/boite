@@ -1,4 +1,4 @@
-import { deriveThreadCapabilities, protocolSupportsSteering, threadActive, type ThreadCapabilities, type ThreadCapabilityReason } from '@boite/contracts';
+import { acpSteeringKind, deriveThreadCapabilities, providerSupportsSteering, threadActive, type ThreadCapabilities, type ThreadCapabilityReason } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable, getDriver } from '../drivers/index.ts';
 import { userSteeringUnavailable } from './user-steering.ts';
@@ -26,8 +26,7 @@ export function threadCapabilities(core: Core, threadId: string): ThreadCapabili
   const active = thread.status === 'running' ? core.journal.db.query("SELECT id FROM turns WHERE thread_id = ? AND status = 'running' ORDER BY rowid DESC LIMIT 1").get(threadId) as { id: string } | null : null;
   const activeTurn = active ? core.journal.getTurn(active.id) : null;
   const steeringReason = userSteeringUnavailable(core, core.threads, threadId, activeTurn);
-  // Only implemented handle methods prove steering. Idle known protocols describe their next runtime.
-  const steeringSupported = Boolean(handle?.steerUser || handle?.steer) || protocolSupportsSteering(protocol);
+  const steeringSupported = providerSupportsSteering(provider && { protocol: provider.protocol, acpSteering: acpSteeringKind(provider) !== null });
   let compactionReason: ThreadCapabilityReason | null = null;
   if (provider) {
     const refusal = core.threads.compactRefusal(thread);

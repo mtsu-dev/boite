@@ -1,6 +1,7 @@
 // Owns command labels and actions shared by the palette and keyboard settings.
 import type { KeybindingCommand } from '@boite/contracts';
 import { archiveThread, reopenLastArchived } from './archive';
+import { openArchived } from './archived-view.svelte';
 import { lastAnswer } from './message-display';
 import { sidebarRows } from './sidebar-rows.svelte';
 import { workspace } from './workspace.svelte';
@@ -9,6 +10,7 @@ import { openTour } from './onboarding.svelte';
 import { fill, strings } from './strings';
 import type { Store } from './store.svelte';
 import { setTheme } from './theme';
+import { openThreadExport } from './thread-export-request.svelte';
 
 type CommandDefinition = {
   id: string;
@@ -48,6 +50,7 @@ const commandTable: readonly CommandDefinition[] = [
   { id: 'pin', label: () => strings.keyboard.commands.pin, run: (store) => { const open = store.openThread; if (open) void store.pin(open.id, !open.pinned); } },
   { id: 'rename', label: () => strings.palette.rename, run: (store) => { store.showChat(); store.renameRequested = true; } },
   { id: 'retitle', label: () => strings.palette.retitle, run: (store) => { const open = store.openThread; if (open) void store.retitle(open.id); } },
+  { id: 'export-thread', run: (store) => { const thread = store.openThread; if (thread && !thread.councilId) openThreadExport(store, thread); } },
   { id: 'trace', label: () => strings.palette.trace, ownerOnly: true, run: (store) => { store.showChat(); store.panel.toggleKind('trace'); } },
   { id: 'appearance', label: () => strings.palette.appearance, run: (store) => { store.showSettings('appearance'); } },
   { id: 'providers', label: () => strings.palette.providers, ownerOnly: true, run: (store) => { store.showSettings('accounts'); } },
@@ -61,6 +64,8 @@ const commandTable: readonly CommandDefinition[] = [
     const projectId = store.openThread?.projectId ?? store.draft?.projectId ?? store.projects[0]?.id;
     if (projectId !== undefined) void store.openImports(projectId);
   } },
+  // Runs on the wheel, not here: `lib/zoom.ts` listens for its chord.
+  { id: 'zoom-wheel', label: () => strings.keyboard.commands.zoomWheel },
   // The drawer's: the terminal, or the project board a paired device opens too.
   { id: 'terminal', label: () => strings.palette.terminal, run: (store) => {
     if (!drawerCommandAvailable(store)) return;
@@ -85,7 +90,7 @@ const commandTable: readonly CommandDefinition[] = [
   } },
   { id: 'subagents', run: (store) => { store.showChat(); store.panel.toggleKind('agents'); } },
   { id: 'task-manager', run: (store) => { store.showSettings('task-manager'); } },
-  { id: 'archived', run: (store) => { store.showSettings('general', 'archived'); } },
+  { id: 'archived', run: (store) => openArchived(store) },
   { id: 'tour', run: (store) => { store.showChat(); openTour(); } },
 ];
 const commandsById = new Map(commandTable.map(command => [command.id, command]));

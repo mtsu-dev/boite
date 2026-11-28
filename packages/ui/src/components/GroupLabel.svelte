@@ -30,9 +30,12 @@
     font-weight: 500;
     border-top: 1px solid var(--color-border);
   }
-  .glyph { display: inline-flex; flex: none; }
+  /* On the rows' columns (ThreadCard.svelte's classic row): the glyph in the agent mark's 14 px slot, the name on the
+     titles' edge, the count where their times end. */
+  .glyph { display: inline-flex; flex: none; justify-content: center; width: 14px; margin: 0 4px 0 -3px; }
   .working .glyph { color: var(--color-muted-foreground); }
   .done .glyph { color: var(--color-success); }
   .count { margin-left: auto; font-variant-numeric: tabular-nums; }
-  @media (max-width: 720px) { .group-label { padding: 8px 12px; } }
+  /* A phone's rows (MobileThreadRow.svelte) start their titles 4 px further in. */
+  @media (max-width: 720px) { .group-label { padding: 8px 14px 8px 16px; } }
 </style>

@@ -5,19 +5,23 @@ works on its own, wakes on a schedule or when something happens in its
 projects, and tells you what matters. Teams put a few mochis and you in one
 chat.
 
-On the desktop, each mochi shows as a picture in the app rail, the column down
-the window's left edge, and the phone shows a Mochis tab in its bottom bar.
-Teams come first; drag a picture up or down to put mochis and teams in your own
-order, which this device keeps. A small mark on a picture says the mochi needs
-you, failed or is at work; a mochi with unread answers shows how many, and a
-team shows a dot. A circle runs around the picture while the mochi works. Point
-at the picture to read it in words beside the mochi's name.
+On the desktop, each mochi and team shows as a picture in the app rail, the
+column down the window's left edge. With Mochi layout turned off under Filter,
+Display, open Mochis from the button at the foot of the sidebar to list them in
+the left column instead. A phone shows a Mochis tab in its bottom bar. In the app rail, teams come first; drag a
+picture up or down to put mochis and teams in your own order, which this device
+keeps. A small mark on a picture says the mochi needs you, failed or is at
+work; a mochi with unread answers shows how many, and a team shows a dot. A
+circle runs around the picture while the mochi works. Point at the picture to
+read it in words beside the mochi's name. A faded edge means there are more
+pictures to scroll to.
 
 ## Create a mochi
 
-1. On the desktop, press the `+` under the mochis in the app rail and pick a
-   new mochi. Under a mouse, the `+` fades in when the pointer comes to the
-   rail. On a phone, open Mochis and press New mochi.
+1. On the desktop, press the `+` under the mochis in the app rail (under a
+   mouse, it fades in when the pointer comes to the rail), or with Mochi layout
+   off, open Mochis and press `+` in the column head, and pick New mochi. On a phone,
+   open Mochis and press New mochi.
 2. Give it a name and, under What it does, its standing instructions, for
    example "every morning, read the new issues and sum them up in five lines".
 3. Its robot, model and projects come filled in; change them if you like. It
@@ -92,17 +96,56 @@ stays readable.
   Limits), a routine or event that failed on a spent limit runs again once
   the limit resets.
 
+## Triggers
+
+Open **Triggers** below a mochi's routines. Use **Add trigger** to choose
+the event that should wake it and say what to do when it wakes.
+
+- **Webhook** gives another service a URL to POST to. Copy the secret when
+  you create the trigger. **Rotate secret** gives you a new one and disables
+  the old one immediately. Use the local app or an encrypted connection to
+  create or rotate it. Use HTTPS when sending events over the internet.
+  Boite's built-in Tailscale Funnel routes expose contacts and coordination
+  only; to receive webhooks from the internet, configure a public URL or a
+  Tailscale Funnel route to Boite's server.
+- **Project files** watches a project you granted to the mochi on this
+  machine. Enter comma-separated paths or patterns such as `src/**/*.{ts,tsx}`,
+  or leave them blank for all source paths. Boite groups changes before
+  waking the mochi, skips ignored, dependency, build and Git folders, and
+  ignores changes in that project while one of that mochi's file-trigger turns
+  on that project is running (edits during chat, routine or pull-request turns
+  still trigger, and two mochis watching the same project can wake each other up
+  to their cooldown and daily budget).
+  The trigger shows when Boite cannot watch the project (for example, if it
+  has more than 512 watchable folders) and is retrying.
+- **Pull requests** listens to pull requests that Boite already watches in a
+  granted project. Choose failed CI, review requests, requests for changes,
+  merge conflicts or merges.
+
+Use **Test** to send a sample event without affecting real events or cooldowns.
+The trigger shows when it received an event and whether the mochi woke, waited
+or skipped it. A cooldown limits how often a trigger wakes it: project file
+and pull request changes that arrive during cooldown wait and combine until it
+ends, while webhooks receive a retry delay (a webhook received while the mochi
+is paused or over budget still starts its cooldown). A busy mochi takes the waiting
+event for each trigger after its turn (for webhooks, the first request waits
+and additional ones receive a cooldown or busy retry response until it finishes).
+External services such as GitHub do not automatically retry rejected webhook
+deliveries, so use a short cooldown when back-to-back events matter. Paused or archived mochis and
+mochis over their daily budget do not wake. Triggers stay owner-only, belong
+to their machine and are removed when a mochi moves to another one.
+
 ## The info panel
 
 The info button in the window's top bar opens the mochi's info panel on the
 right, in one column with no tabs: its picture, name and description with its
 model, machine and age; while it works, a Now card with the step, a timer and
-its last steps; its routines; and its memory, with the note count and the
+its last steps; its routines and triggers; and its memory, with the note count and the
 first three notes. A warning mark there means a memory update failed; its
 tooltip holds the error.
 
 The mochi's column starts with its name and one status: the step it is on, what
-it waits for, why it failed, or, at rest, its next routine and when. The "i"
+it waits for and how long it has waited, why it failed, or, at rest, its next routine and when. The "i"
 beside its name says how often it woke on its own today and what it spent
 today in all, your messages included, beside its daily budget when it has one.
 

@@ -5,6 +5,7 @@
 
 <script lang="ts">
   import { tick, type Snippet } from 'svelte';
+  import { on } from 'svelte/events';
   import { Archive, Check, ChevronDown, ChevronRight, Folder, FolderPlus, Layers } from '@lucide/svelte';
   import type { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
@@ -21,11 +22,13 @@
   import ProjectTile from './ProjectTile.svelte';
   import MachineIcon from './MachineIcon.svelte';
   import { openArchived } from '../lib/archived-view.svelte';
+  import { mochiLayout } from '../lib/mochi-layout.svelte';
 
   /**
    * The display menu over the thread list (DisplayOptions.svelte loads it on
    * its own, out of the entry chunk), one named group after another, each a
-   * label over rows of one height: the project Recent lists, the project
+   * label over rows of one height: the view (Projects or Recent, on a phone
+   * named in its title instead), the project Recent lists, the project
    * order, the machine, what the list folds away (Display), the open project's
    * own switches, then the two ways out of the list on its last lines, the
    * archive and Add a project. It stays open while the user adjusts it; a
@@ -73,6 +76,16 @@
     void tick().then(() => panel?.focus({ preventScroll: true }));
   });
 
+  $effect(() => {
+    const node = panel;
+    if (!node) return;
+    return on(node, 'animationcancel', event => {
+      if (event.target !== node) return;
+      // A resize can replace the exit animation. A hidden menu cannot finish its exit and would strand the backdrop.
+      if (node.checkVisibility?.({ visibilityProperty: true }) === false || !node.getAnimations?.().length) popover.end(event);
+    });
+  });
+
   function onkeydown(event: KeyboardEvent): void {
     if (event.key === 'Escape' && popover.open) {
       event.stopPropagation();
@@ -89,6 +102,10 @@
     next?.click();
     next?.focus();
   }
+  function setView(view: 'projects' | 'recent'): void {
+    if (workspace.view === view) return;
+    workspace.setView(view);
+  }
   function setOrder(order: 'recent' | 'manual'): void {
     if (projectView.order !== order) projectView.toggle(entries);
   }
@@ -102,11 +119,11 @@
     onclose(true);
     onaddproject?.();
   }
-  /** The archive takes the list's place (a page of its own on a phone), on the project Recent lists when one is picked. */
+  /** The archive opens in Settings, on the project Recent lists when one is picked, else on the machine the list shows. */
   function showArchived(): void {
     onclose();
-    if (selected && !projects) openArchived(selected.machine.store, selected.project.id);
-    else openArchived(owner);
+    if (selected && !projects) void openArchived(selected.machine.store, selected.project.id);
+    else void openArchived(machines.find(machine => machine.id === shownMachine)?.store ?? owner);
   }
 </script>
 
@@ -136,7 +153,16 @@
   use:floating={{ anchor, placement: 'bottom', align: 'end', cap: 640, dismiss: () => onclose() }}
   onanimationend={popover.end}
 >
-  <!-- No view switch here: both views are named in the list's own head (ViewSwitch.svelte). -->
+  <!-- A phone names both views in its title (ViewSwitch.svelte); the desktop head holds Back and Forward instead. -->
+  {#if !compact}
+    <section class="group">
+      <h3 class="ui-label" id="{uid}-view">{strings.sidebar.displayView}</h3>
+      <div role="radiogroup" aria-labelledby="{uid}-view" data-testid={`${prefix}view-switch`} data-view={workspace.view}>
+        {@render choice('view:projects', strings.sidebar.projectsView, projects, () => setView('projects'))}
+        {@render choice('view:recent', strings.sidebar.recentView, !projects, () => setView('recent'))}
+      </div>
+    </section>
+  {/if}
   {#if !projects && entries.length}
     <!-- The project Recent lists: its own menu, so a long list of projects scrolls there and not here. -->
     <section class="group">
@@ -184,6 +210,10 @@
       {@render toggle('other', strings.sidebar.groupIdleRow, recentPreferences.groupOtherProjects, strings.settings.groupOtherProjectsHint,
         () => recentPreferences.setGroupOtherProjects(!recentPreferences.groupOtherProjects))}
     {/if}
+    {#if !compact}
+      {@render toggle('mochi-layout', strings.sidebar.mochiLayoutRow, mochiLayout.on, strings.sidebar.mochiLayoutHint,
+        () => mochiLayout.toggle())}
+    {/if}
   </section>
   {#if merged}
     {@const project = merged}
@@ -206,7 +236,7 @@
       </button>
     {/if}
     {#if onaddproject}
-      <button type="button" class="row" data-testid="add-project" onclick={addProject}>
+      <button type="button" class="row" data-testid="add-project" data-preload-view="project" onclick={addProject}>
         <span class="glyph" aria-hidden="true"><FolderPlus size={16} /></span><span class="ui-label">{strings.sidebar.addProject}</span>
       </button>
     {/if}
@@ -290,7 +320,13 @@
   .filter :global(.trigger:hover) { background: var(--color-active); }
   .filter :global(.trigger .ui-label) { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .filter :global(.trigger svg) { flex: none; color: var(--color-muted-foreground); }
-  @media (prefers-reduced-motion: reduce) { .row, .switch, .switch::after { transition: none; } }
+  /* Close in the same tick on desktop and mobile when motion is reduced. A desktop exit must not
+     survive long enough to acquire a sheet backdrop after the viewport changes. */
+  @media (prefers-reduced-motion: reduce) {
+    .panel.closing { animation: none !important; }
+    .row, .switch, .switch::after { transition: none; }
+  }
+  :global(html[data-motion='reduced']) .panel.closing { animation: none !important; }
   @media (max-width: 720px) {
     .panel { width: auto; padding: 8px 6px max(8px, env(safe-area-inset-bottom)); }
     .row, .filter :global(.trigger) { height: var(--touch-target); }

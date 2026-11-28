@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { MESSAGE_PAGE, MESSAGE_PAGE_MAX, MESSAGE_PAGE_MAX_BYTES, RPC_MAX_FRAME_BYTES } from '@boite/contracts';
 import type { Message, MessagePart } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
+import { noisyPng } from './fixtures/noisy-png.ts';
 import { echoThread, startTestCore } from './harness.ts';
 import type { TestCore } from './harness.ts';
 
@@ -391,7 +392,7 @@ describe('opening where the reader was', () => {
     const parts: MessagePart[] = [
       { type: 'text', text: 'look' },
       { type: 'image', mimeType: 'image/png', data: big, alt: null },
-      { type: 'image', mimeType: 'image/png', data: 'B'.repeat(16), alt: 'icon' },
+      { type: 'image', mimeType: 'image/png', data: noisyPng(16, 16), alt: 'icon' },
     ];
     harness.core.journal.putMessage({ id: 'msg_pictures', threadId, turnId: 'trn_seed', role: 'user', parts, state: 'complete', createdAt: 5_000 });
 

@@ -109,6 +109,9 @@ async function fitsConversation() {
 test('The limits glance pins the quotas, and all Claude gateway accounts share a translucent card in every chat corner', async () => {
   await boot();
   await enableAndPin();
+  // The fake fixture seeds a pending contact request toast in the top-right corner; dismiss it before dragging the card there.
+  await page.evaluate(`document.querySelector('[data-testid="contact-request-dismiss"]')?.click()`);
+  await page.waitFor(`!document.querySelector('[data-testid="contact-request-notice"]')`);
   expect(await page.evaluate(`JSON.parse(localStorage.getItem('boite.pinned-quotas.v1'))`)).toEqual({ pinned: true, position: 'bottom-left' });
   expect(await page.evaluate(`Array.from(document.querySelectorAll('${account}')).map(row => [row.dataset.provider, row.dataset.accountId])`)).toEqual([
     ['claude', 'proxy:claude:orchard'], ['claude', 'proxy:claude:harbor'],
@@ -195,6 +198,9 @@ test.each([1024, 390])('pinning quotas preserves the empty draft layout without 
   await page.evaluate('globalThis.__boiteTest.workspace.active.sidebarCollapsed = true');
   await page.send('Emulation.setDeviceMetricsOverride', { width, height: width === 390 ? 844 : 1000, deviceScaleFactor: 1, mobile: width === 390 });
   await page.send('Emulation.setTouchEmulationEnabled', { enabled: width === 390, maxTouchPoints: 1 });
+  await page.waitFor(`innerWidth === ${width}`);
+  // Resizing from desktop loads the phone's header, which takes up a grid row.
+  if (width === 390) await page.waitFor(`document.querySelector('[data-testid="mobile-back"]')`);
   await page.evaluate(`(async () => { const { pinnedQuotas } = await import('/src/lib/pinned-quotas.svelte.ts'); pinnedQuotas.set(false); })()`);
   await page.waitFor(`!document.querySelector('${card}')`);
   await page.settleAnimations();
@@ -241,7 +247,7 @@ test('dock reserves rail space above the foot and leaves the final thread reacha
     const q = document.querySelector('${card}'), list = document.querySelector('[data-project-list]');
     // The limits moved to the app rail (LimitsButton.svelte): the dock is the column's last part (the width grip aside), inside it.
     const column = q.parentElement.getBoundingClientRect();
-    return { outside: !list.contains(q), after: q.previousElementSibling === list, last: !q.nextElementSibling || q.nextElementSibling.classList.contains('resize'),
+    return { outside: !list.contains(q), after: q.previousElementSibling === list, last: !q.nextElementSibling || q.nextElementSibling.classList.contains('resize') || q.nextElementSibling.matches('[data-testid="sidebar-foot"]'),
       below: list.getBoundingClientRect().bottom <= q.getBoundingClientRect().top, inside: q.getBoundingClientRect().bottom <= column.bottom };
   })()`)).toEqual({ outside: true, after: true, last: true, below: true, inside: true });
   await page.evaluate(`document.querySelector('[data-project-list]').scrollTop = document.querySelector('[data-project-list]').scrollHeight`);

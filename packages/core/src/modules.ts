@@ -5,14 +5,15 @@ import { registerPersistentAgents } from './agents/store.ts';
 import { approveAgent, createAgent } from './agents/create.ts';
 import { registerAccountMethods } from './accounts.ts';
 import { registerHookMethods } from './hooks.ts';
+import { registerMcpMethods } from './mcp/rpc.ts';
 import { registerSecretMethods } from './secrets/rpc.ts';
 import { registerAgentMethods } from './agent.ts';
 import { registerImportMethods } from './imports.ts';
+import { registerTranscriptMethods } from './transcripts/rpc.ts';
 import { registerKeybindingMethods } from './keybindings.ts';
 import { registerProjectMethods } from './projects.ts';
-import { registerProviderMethods } from './providers/loader.ts';
+import { registerProviderMethods, registerUpdateMethods } from './providers/loader.ts';
 import { registerProbeMethods } from './providers/probe.ts';
-import { registerUpdateMethods } from './providers/updates.ts';
 import { registerSchedulerMethods } from './scheduler.ts';
 import { registerSessionMethods } from './sessions.ts';
 import { registerTailscaleMethods } from './tailscale.ts';
@@ -57,6 +58,8 @@ export function registerModules(core: Core): void {
   core.router.register('diagnostics.logs', (params, ctx) => core.diagnostics.logs(params, ctx.connection));
   core.router.register('diagnostics.summary', (params, ctx) => core.diagnostics.summary(params ?? {}, ctx.connection));
   core.router.register('diagnostics.export', (params, ctx) => core.diagnostics.export(params, ctx.connection));
+  // Owner only: creates a bearer ticket for a report of the whole machine.
+  core.router.register('diagnostics.exportFile', (params, ctx) => core.diagnostics.exportFile(params, ctx.connection));
   core.router.register('diagnostics.issue', (params, ctx) => core.diagnostics.issue(params, ctx.connection));
   core.router.register('diagnostics.report', (params, ctx) => core.diagnostics.report(params, ctx.connection));
   core.router.register('core.updateStatus', params => core.serverUpdates.status(params.refresh));
@@ -73,6 +76,7 @@ export function registerModules(core: Core): void {
   core.router.register('brain.sync', () => core.brain.sync());
   registerHookMethods(core);
   registerSecretMethods(core);
+  registerMcpMethods(core);
   registerTelemetry(core);
   registerCoordination(core);
   registerContactMethods(core);
@@ -160,6 +164,7 @@ export function registerModules(core: Core): void {
   registerTailscaleMethods(core);
   registerFirewallMethods(core);
   registerImportMethods(core);
+  registerTranscriptMethods(core);
   registerTerminalMethods(core);
   registerWorktreeMethods(core);
   // The agent's own door, and the thread surfaces a client shares with it.

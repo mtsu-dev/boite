@@ -5,6 +5,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import type { PullRequestBaseFailure } from '@boite/contracts';
 
 type Row = Record<string, unknown>;
 const row = (value: unknown): Row => value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
@@ -32,22 +33,41 @@ state isDraft mergeable mergeStateStatus headRefOid updatedAt mergeQueueEntry{po
 comments(first:50,orderBy:{field:UPDATED_AT,direction:DESC}){totalCount nodes{lastEditedAt}}
 reviews(last:50){totalCount nodes{lastEditedAt}}
 reviewThreads{totalCount}
-commits(last:1){nodes{commit{statusCheckRollup{state contexts{checkRunCountsByState{state count} statusContextCountsByState{state count}}}}}}
+reviewRequests(first:100){nodes{id}} changeReviews:reviews(last:100,states:[CHANGES_REQUESTED]){nodes{id}}
+baseRef{target{... on Commit{oid statusCheckRollup{contexts(last:100){checkRunCountsByState{state count} statusContextCountsByState{state count} nodes{... on CheckRun{completedAt} ... on StatusContext{createdAt}}}}}}}
+commits(last:1){nodes{commit{statusCheckRollup{state contexts(last:100){checkRunCountsByState{state count} statusContextCountsByState{state count} nodes{... on CheckRun{completedAt} ... on StatusContext{createdAt}}}}}}}
 }}}`;
+
+const CHECK_FIELDS = `nodes{__typename
+... on CheckRun{name status conclusion detailsUrl startedAt completedAt %REQ% checkSuite{workflowRun{workflow{name}}}}
+... on StatusContext{context state targetUrl createdAt %REQ%}
+}`;
+
+const CHECK_NODES = (required: string, paged = false) => {
+  const fields = CHECK_FIELDS.replaceAll('%REQ%', required);
+  const page = paged ? 'totalCount pageInfo{hasNextPage endCursor} ' : '';
+  return `contexts(first:100){${page}${fields}} latestContexts:contexts(last:100){${fields}}`;
+};
 
 /** The detailed read, made only when the fingerprint moved: the checks one by one, with whether the base branch requires each. */
 export const DETAIL_QUERY = `query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){pullRequest(number:$number){
 url state isDraft mergeable mergeStateStatus headRefOid headRefName headRepository{nameWithOwner} baseRefName mergeQueueEntry{position}
-commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){totalCount nodes{__typename
-... on CheckRun{name status conclusion detailsUrl startedAt completedAt isRequired(pullRequestNumber:$number) checkSuite{workflowRun{workflow{name}}}}
-... on StatusContext{context state targetUrl createdAt isRequired(pullRequestNumber:$number)}
-}}}}}}
+baseRef{target{... on Commit{oid statusCheckRollup{${CHECK_NODES('')}}}}}
+commits(last:1){nodes{commit{oid statusCheckRollup{${CHECK_NODES('isRequired(pullRequestNumber:$number)', true)}}}}}
+}}}`;
+
+/** Follow-up page read when a pull request has over 200 check contexts so middle-page checks are not missed. */
+export const CONTEXT_PAGE_QUERY = `query($owner:String!,$name:String!,$number:Int!,$after:String!){repository(owner:$owner,name:$name){pullRequest(number:$number){
+commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100,after:$after){pageInfo{hasNextPage endCursor} ${CHECK_FIELDS.replaceAll('%REQ%', 'isRequired(pullRequestNumber:$number)')}}}}}}
 }}}`;
 
 export interface Fingerprint {
   state: 'OPEN' | 'CLOSED' | 'MERGED';
   status: string;
   remarks: string;
+  baseOid?: string;
+  reviewRequests?: string[];
+  changeReviews?: string[];
 }
 
 /** Who merged or closed the pull request, and when, read once when it stops being open. */
@@ -90,18 +110,26 @@ function prState(value: unknown): Fingerprint['state'] {
 
 const counts = (value: unknown): string => list(value).map(row).filter(entry => Number(entry.count) > 0)
   .map(entry => `${text(entry.state)}:${Number(entry.count)}`).sort().join(',');
+const baseTip = (pr: Row): Row => row(row(pr.baseRef).target);
+const contextsOf = (commit: Row): Row => row(row(commit.statusCheckRollup).contexts);
 // An edit only moves `lastEditedAt` forward, so the newest stands for them all.
 const newestEdit = (connection: Row): string => list(connection.nodes).map(row)
   .reduce((newest, node) => { const at = text(node.lastEditedAt); return at > newest ? at : newest; }, '');
+const newestCheck = (connection: Row): string => list(connection.nodes).map(row)
+  .reduce((newest, node) => { const at = text(node.completedAt) || text(node.createdAt); return at > newest ? at : newest; }, '');
 
 export function parseFingerprint(raw: string): Fingerprint {
   const pr = pullRequestOf(graphqlData(raw));
-  const contexts = row(row(row(row(list(row(pr.commits).nodes)[0]).commit).statusCheckRollup).contexts);
+  const contexts = contextsOf(row(row(list(row(pr.commits).nodes)[0]).commit));
+  const base = baseTip(pr), baseContexts = contextsOf(base);
   const comments = row(pr.comments), reviews = row(pr.reviews);
+  const reviewIds = (value: unknown) => list(row(value).nodes).map(node => text(row(node).id, 128)).filter(Boolean).sort();
+  const reviewRequests = reviewIds(pr.reviewRequests), changeReviews = reviewIds(pr.changeReviews);
   return {
     state: prState(pr.state),
-    status: [pr.state, pr.isDraft, pr.mergeable, pr.mergeStateStatus, pr.headRefOid, queuePosition(pr), counts(contexts.checkRunCountsByState), counts(contexts.statusContextCountsByState)].map(String).join(' '),
-    remarks: [comments.totalCount, newestEdit(comments), reviews.totalCount, newestEdit(reviews), row(pr.reviewThreads).totalCount, pr.updatedAt].map(String).join(' '),
+    status: [pr.state, pr.isDraft, pr.mergeable, pr.mergeStateStatus, pr.headRefOid, queuePosition(pr), counts(contexts.checkRunCountsByState), counts(contexts.statusContextCountsByState), newestCheck(contexts), base.oid, counts(baseContexts.checkRunCountsByState), counts(baseContexts.statusContextCountsByState), newestCheck(baseContexts)].map(String).join(' '),
+    remarks: [comments.totalCount, newestEdit(comments), reviews.totalCount, newestEdit(reviews), row(pr.reviewThreads).totalCount, pr.updatedAt, reviewRequests, changeReviews].map(String).join(' '),
+    baseOid: text(base.oid, 64), reviewRequests, changeReviews,
   };
 }
 
@@ -112,6 +140,8 @@ export interface WatchCheck {
   job: string;
   /** A commit status a service posted rather than a CI job: one may stay pending as long as it likes. */
   context: boolean;
+  /** When a service posted a commit status. CI jobs use the run times below. */
+  createdAt?: string;
   /** The workflow a CI job belongs to, its start and its end: empty for a commit status or what did not happen yet. */
   workflow: string; started: string; finished: string;
 }
@@ -122,6 +152,9 @@ export interface WatchDetail {
   branch?: string;
   headRepository?: string;
   base: string;
+  baseFailure?: PullRequestBaseFailure;
+  /** When the first failing base CI check started or finished. Omitted for commit statuses so unchanged reposts do not re-wake. */
+  baseFailureAt?: string;
   /** A draft cannot merge: a required context it never reports does not hold its verdict. */
   draft: boolean;
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
@@ -130,6 +163,10 @@ export interface WatchDetail {
   /** Its place in the merge queue, 1 next to merge; null out of it. Its checks run on the queue's merge group, not on the head. */
   queue: number | null;
   checks: WatchCheck[];
+  /** Cursor for follow-up context pages when a commit has more than 200 check contexts. */
+  contextsCursor?: string;
+  /** Total reported check contexts when over 200, used to stop pagination before re-reading the trailing 100. */
+  contextsTotal?: number;
   /** The account `gh` signs in as: what it writes is the agent's own. */
   viewer: string;
 }
@@ -153,10 +190,68 @@ export function parseDetail(raw: string): WatchDetail {
   const data = graphqlData(raw);
   const pr = pullRequestOf(data);
   const commit = row(row(list(row(pr.commits).nodes)[0]).commit);
-  const nodes = list(row(row(commit.statusCheckRollup).contexts).nodes).map(row);
+  const firstContexts = contextsOf(commit);
+  const pageInfo = row(firstContexts.pageInfo);
+  const endCursor = text(pageInfo.endCursor, 256);
+  const totalCount = Number(firstContexts.totalCount);
+  const contextsCursor = totalCount > 200 && pageInfo.hasNextPage === true && endCursor ? endCursor : undefined;
+  const base = baseTip(pr), sha = text(base.oid, 64);
+  const first = checksOf(base).filter(({ check }) => check.status === 'failed')
+    .sort((a, b) => (a.at || '9999').localeCompare(b.at || '9999'))[0]?.check;
+  const baseFailureAt = first && !first.context ? (first.finished || first.started || first.createdAt || undefined) : undefined;
+  const mergeable = String(pr.mergeable);
+  const mergeState = typeof pr.mergeStateStatus === 'string' ? pr.mergeStateStatus : 'UNKNOWN';
+  return {
+    state: prState(pr.state),
+    head: text(pr.headRefOid, 64) || text(commit.oid, 64),
+    branch: text(pr.headRefName, 255),
+    headRepository: text(row(pr.headRepository).nameWithOwner, 200),
+    base: text(pr.baseRefName, 255),
+    ...(sha && first ? { baseFailure: { sha, name: first.name, conclusion: first.conclusion, url: first.url } } : {}),
+    ...(sha && baseFailureAt ? { baseFailureAt } : {}),
+    draft: pr.isDraft === true,
+    mergeable: mergeable === 'MERGEABLE' || mergeable === 'CONFLICTING' ? mergeable : 'UNKNOWN',
+    behind: mergeState === 'UNKNOWN' ? null : mergeState === 'BEHIND',
+    queue: queuePosition(pr),
+    checks: checksOf(commit).map(({ check }) => check),
+    ...(contextsCursor ? { contextsCursor, contextsTotal: totalCount } : {}),
+    viewer: text(row(data.viewer).login, 100),
+  };
+}
+
+export function parseContextPage(raw: string): { head: string; checks: WatchCheck[]; count: number; cursor: string | null } {
+  const commit = row(row(list(row(pullRequestOf(graphqlData(raw)).commits).nodes)[0]).commit);
+  const contexts = contextsOf(commit);
+  const pageInfo = row(contexts.pageInfo);
+  const endCursor = text(pageInfo.endCursor, 256);
+  return {
+    head: text(commit.oid, 64),
+    checks: checksOf(commit).map(({ check }) => check),
+    count: list(contexts.nodes).length,
+    cursor: pageInfo.hasNextPage === true && endCursor ? endCursor : null,
+  };
+}
+
+const checkAt = (check: WatchCheck): string =>
+  check.status === 'pending' ? '9999' : check.context ? (check.createdAt || '9999') : check.finished;
+
+export function mergeWatchChecks(existing: WatchCheck[], incoming: WatchCheck[]): WatchCheck[] {
+  const runs = new Map<string, { check: WatchCheck; at: string }>();
+  for (const check of [...existing, ...incoming]) {
+    const at = checkAt(check);
+    const held = runs.get(check.name);
+    if (!held || at > held.at) runs.set(check.name, { check: { ...check, required: check.required || held?.check.required === true }, at });
+    else if (check.required) held.check.required = true;
+  }
+  return [...runs.values()].map(({ check }) => check);
+}
+
+function checksOf(commit: Row): { check: WatchCheck; at: string }[] {
+  const rollup = row(commit.statusCheckRollup);
+  const nodes = [...list(row(rollup.contexts).nodes), ...list(row(rollup.latestContexts).nodes)].map(row);
   const runs = new Map<string, { check: WatchCheck; at: string }>();
   for (const node of nodes) {
-    let name: string, job: string, status: CheckStatus, conclusion: string, url: string, at: string, workflow = '', started = '', finished = '';
+    let name: string, job: string, status: CheckStatus, conclusion: string, url: string, at: string, createdAt = '', workflow = '', started = '', finished = '';
     if (node.__typename === 'CheckRun') {
       workflow = text(row(row(row(node.checkSuite).workflowRun).workflow).name, 200);
       job = text(node.name, 200);
@@ -173,29 +268,19 @@ export function parseDetail(raw: string): WatchDetail {
       conclusion = text(node.state, 50);
       status = conclusion === 'PENDING' || conclusion === 'EXPECTED' ? 'pending' : FAILED.has(conclusion) ? 'failed' : 'passed';
       url = safeUrl(node.targetUrl);
-      at = status === 'pending' ? '9999' : text(node.createdAt, 50);
+      createdAt = text(node.createdAt, 50);
+      at = status === 'pending' ? '9999' : createdAt || '9999';
     } else continue;
     if (!name) continue;
-    const check: WatchCheck = { name, status, conclusion, required: node.isRequired === true, url, job, context: node.__typename === 'StatusContext', workflow, started, finished };
+    const check: WatchCheck = {
+      name, status, conclusion, required: node.isRequired === true, url, job, context: node.__typename === 'StatusContext', workflow, started, finished,
+      ...(createdAt ? { createdAt } : {}),
+    };
     const held = runs.get(name);
     if (!held || at > held.at) runs.set(name, { check: { ...check, required: check.required || held?.check.required === true }, at });
     else if (check.required) held.check.required = true;
   }
-  const mergeable = String(pr.mergeable);
-  const mergeState = typeof pr.mergeStateStatus === 'string' ? pr.mergeStateStatus : 'UNKNOWN';
-  return {
-    state: prState(pr.state),
-    head: text(pr.headRefOid, 64) || text(commit.oid, 64),
-    branch: text(pr.headRefName, 255),
-    headRepository: text(row(pr.headRepository).nameWithOwner, 200),
-    base: text(pr.baseRefName, 255),
-    draft: pr.isDraft === true,
-    mergeable: mergeable === 'MERGEABLE' || mergeable === 'CONFLICTING' ? mergeable : 'UNKNOWN',
-    behind: mergeState === 'UNKNOWN' ? null : mergeState === 'BEHIND',
-    queue: queuePosition(pr),
-    checks: [...runs.values()].map(entry => entry.check),
-    viewer: text(row(data.viewer).login, 100),
-  };
+  return [...runs.values()];
 }
 
 export type RemarkKind = 'comment' | 'review' | 'review-comment';
@@ -253,8 +338,13 @@ export function parseRemarks(kind: RemarkKind, raw: string): { remarks: Remark[]
 /** What the agent was last told about one pull request. */
 export interface WatchMemory {
   head: string | null;
+  baseFailure?: string;
+  /** When the last reported base failure ran, so a new failure with the same name is news again. */
+  baseFailureAt?: string;
   /** The failures told on this head and still failing. */
   failed: string[];
+  /** The run identity of each check in `failed`, so a new failed run with the same name between reads is news again. */
+  failedRuns?: Record<string, string>;
   /** The checks that made "passed" when it was told; empty until it is, and again once one of them fails. */
   passed: string[];
   conflicting: boolean;
@@ -270,6 +360,7 @@ export interface WatchMemory {
 
 export type WatchChange =
   | { kind: 'failed'; head: string; checks: Pick<WatchCheck, 'name' | 'conclusion' | 'url'>[] }
+  | { kind: 'base-failed'; base: string; check: PullRequestBaseFailure }
   | { kind: 'passed'; head: string; count: number; required: boolean }
   | { kind: 'remarks'; remarks: Pick<Remark, 'id' | 'author' | 'body' | 'url' | 'path' | 'state'>[] }
   | { kind: 'conflict'; base: string }
@@ -343,18 +434,36 @@ export function actionable(remark: Remark, edited: boolean): boolean {
  * (`actionable`) and its body was not read before. `remarks` null leaves
  * remarks for a later read.
  */
+const failedRunKey = (check: WatchCheck) => check.context
+  ? JSON.stringify([check.conclusion, check.url])
+  : JSON.stringify([check.conclusion, check.url, check.createdAt ?? check.started, check.finished]);
+
 export function evaluate(memory: WatchMemory, detail: WatchDetail, remarks: Remark[] | null): { changes: WatchChange[]; next: WatchMemory } {
   const changes: WatchChange[] = [];
+  const baseCheck = detail.baseFailure;
+  const baseFailure = baseCheck ? failureKey(baseCheck) : undefined;
+  const baseFailureAt = baseCheck ? detail.baseFailureAt : undefined;
+  if (baseCheck && (memory.baseFailure !== baseFailure || (baseFailureAt !== undefined && memory.baseFailureAt !== undefined && baseFailureAt !== memory.baseFailureAt))) {
+    changes.push({ kind: 'base-failed', base: detail.base, check: baseCheck });
+  }
   const moved = detail.head !== memory.head;
   let failed = moved ? [] : memory.failed;
+  let failedRuns: Record<string, string> = moved ? {} : { ...memory.failedRuns };
   let passed = moved ? [] : memory.passed;
   if (detail.checks.length > 0) {
     // Commit statuses count as CI only where no job runs: a review bot's may stay pending for good.
     const jobs = detail.checks.some(check => !check.context) ? detail.checks.filter(check => !check.context) : detail.checks;
     const running = jobs.some(check => check.status === 'pending');
     const failing = detail.checks.filter(check => check.status === 'failed');
-    // A check that runs again leaves the list, so failing again is news again.
-    failed = failed.filter(name => failing.some(check => check.name === name));
+    const failingByName = new Map(failing.map(check => [check.name, check]));
+    // A check that runs again leaves the list, so failing again is news again even without an observed pending read.
+    failed = failed.filter(name => {
+      const check = failingByName.get(name);
+      if (!check) return false;
+      const previous = failedRuns[name];
+      return previous === undefined || previous === failedRunKey(check);
+    });
+    for (const name of Object.keys(failedRuns)) if (!failed.includes(name)) delete failedRuns[name];
     const fresh = failing.filter(check => !failed.includes(check.name));
     // An aggregate gate (CI required) is a required job that started once every other job of its workflow ended.
     const aggregate = (check: WatchCheck) => check.required && !check.context && check.started !== ''
@@ -362,6 +471,7 @@ export function evaluate(memory: WatchMemory, detail: WatchDetail, remarks: Rema
     if (fresh.length && (!failed.length || !running)) {
       if (!failed.length || !fresh.every(aggregate)) changes.push({ kind: 'failed', head: detail.head, checks: fresh.map(({ name, conclusion, url }) => ({ name, conclusion, url })) });
       failed = failing.map(check => check.name);
+      failedRuns = Object.fromEntries(failing.map(check => [check.name, failedRunKey(check)]));
     }
     const required = detail.checks.filter(check => check.required);
     const gate = required.length ? required : jobs;
@@ -409,7 +519,8 @@ export function evaluate(memory: WatchMemory, detail: WatchDetail, remarks: Rema
   return {
     changes,
     next: {
-      head: detail.head, failed, passed, conflicting, behind, queued,
+      head: detail.head, failed, ...(Object.keys(failedRuns).length ? { failedRuns } : {}), passed, conflicting, behind, queued,
+      ...(baseFailure === undefined ? {} : { baseFailure, ...(baseFailureAt === undefined ? {} : { baseFailureAt }) }),
       remarksThrough: latest === through ? memory.remarksThrough : new Date(latest).toISOString(),
       remarkIds: latest === through ? [...memory.remarkIds, ...atLatest] : atLatest,
       bodies: [...bodies.values()].slice(-BODIES),
@@ -443,9 +554,12 @@ export function mergeChanges(held: WatchChange[], next: WatchChange[]): WatchCha
   return out.filter(change => !(change.kind === 'failed' && passed && change.head !== passed.head) && !((change.kind === 'dequeued' || change.kind === 'behind') && closed));
 }
 
-/** Held changes a later read made untrue: falling behind, once the branch was updated or entered the merge queue. */
+const failureKey = (check: PullRequestBaseFailure) => JSON.stringify([check.sha, check.name, check.conclusion]);
+
+/** Discard reports that a later read made untrue. */
 export function stillTrue(held: WatchChange[], memory: WatchMemory): WatchChange[] {
-  return memory.behind && !memory.queued ? held : held.filter(change => change.kind !== 'behind');
+  return held.filter(change => change.kind === 'behind' ? memory.behind && !memory.queued
+    : change.kind !== 'base-failed' || memory.baseFailure === failureKey(change.check));
 }
 
 function snippet(body: string): string {
@@ -463,6 +577,10 @@ function changeLines(change: WatchChange): string[] {
   switch (change.kind) {
     case 'failed':
       return [`- Checks failed on ${change.head.slice(0, 7)}:`, ...listed(change.checks, check => `  - ${check.name}${check.conclusion === 'FAILURE' ? '' : ` (${check.conclusion.toLowerCase()})`}${check.url ? ` ${check.url}` : ''}`)];
+    case 'base-failed': {
+      const { sha, name, conclusion, url } = change.check;
+      return [`- Base ${change.base} (${sha.slice(0, 7)}): ${name} failed (${conclusion.toLowerCase()})${url ? ` ${url}` : ''}`];
+    }
     case 'passed':
       return [`- All ${change.count} ${change.required ? 'required ' : ''}${change.count === 1 ? 'check' : 'checks'} passed on ${change.head.slice(0, 7)}.`];
     case 'remarks':
@@ -481,7 +599,7 @@ function changeLines(change: WatchChange): string[] {
   }
 }
 
-const SUMMARY: Record<WatchChange['kind'], string> = { failed: 'checks failed', passed: 'checks passed', remarks: 'new comments', conflict: 'merge conflict', behind: 'behind base', dequeued: 'left the merge queue', closed: 'closed' };
+const SUMMARY: Record<WatchChange['kind'], string> = { failed: 'checks failed', 'base-failed': 'base check failed', passed: 'checks passed', remarks: 'new comments', conflict: 'merge conflict', behind: 'behind base', dequeued: 'left the merge queue', closed: 'closed' };
 
 /** The message that wakes the agent, and the short line the conversation shows for it. */
 /**

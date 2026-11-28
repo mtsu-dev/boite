@@ -1,13 +1,15 @@
 import type { SDKAssistantMessage, SDKMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentTotals, MessageId, MessagePart, ToolDocument, ToolStatus, Usage } from '@boite/contracts';
+import type { AgentTotals, MessagePart, ToolDocument, ToolStatus, Usage } from '@boite/contracts';
 import type { PromptCacheLife, StepBoundary, StepDecision, ToolPatch, TurnContext, TurnRefusal, TurnResult } from '../types.ts';
+import { TurnParts } from '../turn-parts.ts';
 import { sumUsage } from '../../usage.ts';
-import { isoTime } from './diagnostics.ts';
+import { parseUsageLimitReset } from '../usage-limit.ts';
 import {
   agentTotalsOf,
   accountVendor,
   apiErrorReason,
   apiErrorStatusOf,
+  apiRefusal,
   cacheLifeOf,
   commandsOf,
   contentBlocks,
@@ -18,6 +20,7 @@ import {
   forbiddenReason,
   mapUsage,
   NOTHING_HELD,
+  RejectedWindows,
   requestTokens,
   subagentOf,
   toolResultOf,
@@ -26,7 +29,7 @@ import type { HeldUsage, StreamEvent } from './mapping.ts';
 import { CONTEXT_FULL, contextFullReason } from './context-full.ts';
 import { hookEndPart } from './hooks.ts';
 import { noticePart } from './notices.ts';
-import { PROMPT_EFFORT } from './query.ts';
+import { PROMPT_EFFORT } from './config.ts';
 import type { ClaudeSession } from './session.ts';
 import { claudeProgress } from './progress.ts';
 
@@ -41,6 +44,13 @@ const IMAGE_CONTEXT_CHARS = 1600 * CHARS_PER_TOKEN;
 
 /** What the CLI answers a `resume` whose transcript is gone (CLI 2.1.282, probed offline). */
 const MISSING_SESSION = /^No conversation found with session ID: /;
+
+/** The maximum number of consumed prompt UUIDs a Claude SDK result carries. */
+const RESULT_PROMPT_IDS_LIMIT = 64;
+
+function resultPromptIds(result: SDKResultMessage): string[] {
+  return result.user_message_uuids ?? (result.user_message_uuid === undefined ? [] : [result.user_message_uuid]);
+}
 
 interface ToolEntry {
   index: number;
@@ -89,11 +99,7 @@ function writesProgressAsThinking(model: string | null): boolean {
 }
 
 /** One turn: what it wrote, what it cost, and the promise the scheduler waits on. */
-export class ClaudeTurn {
-  #messageId: MessageId | null = null;
-  #nextIndex = 0;
-  #textIndex: number | null = null;
-  #thinkingIndex: number | null = null;
+export class ClaudeTurn extends TurnParts {
   #apiMessageId = '';
   /** Parts of the current API attempt, until a message_delta confirms its completion. */
   #attemptStart: number | null = null;
@@ -131,6 +137,7 @@ export class ClaudeTurn {
   #lastIsResult = false;
   /** The tool calls whose result entry the turn read on its current session. */
   readonly #answered = new Set<string>();
+  readonly #pendingPromptIds = new Set<string>();
   #entryWaiters: (() => void)[] = [];
   /** What the CLI wrote since the request `contextTokens` measured, in characters. */
   #addedChars = 0;
@@ -168,33 +175,16 @@ export class ClaudeTurn {
   #refusal: TurnRefusal | undefined;
   /** The CLI gave up compacting: what every request carries fills the limit (`TurnResult.contextFull`). */
   #contextFull = false;
-  /** When the window the CLI reported rejected resets (`rate_limit_event`), in milliseconds. */
-  #rejectedUntil: number | null = null;
-  #resolve: (result: TurnResult) => void = () => undefined;
-  #wake: () => void = () => undefined;
-
-  readonly done: Promise<TurnResult>;
-  /** Resolves on a stop and on the settle, so a card still waiting can answer "cancelled". */
-  readonly stopped: Promise<void>;
-  isStopped = false;
-  settled = false;
+  /** Rejected rate-limit windows reported by `rate_limit_event`, tracked per window type. */
+  readonly #rejected = new RejectedWindows();
   /** The CLI refused to resume: the transcript this turn asked for is gone. */
   sessionLost = false;
   /** The session holding it right now: a stranded turn moves to another one. */
   session: ClaudeSession | null = null;
 
-  /** The core's context, or after a swap the same one on the compacted session with the tail as prompt. */
-  ctx: TurnContext;
-
   constructor(ctx: TurnContext) {
-    this.ctx = ctx;
+    super(ctx);
     this.#sessionId = ctx.sessionId;
-    this.done = new Promise<TurnResult>((resolve) => {
-      this.#resolve = resolve;
-    });
-    this.stopped = new Promise<void>((resolve) => {
-      this.#wake = resolve;
-    });
   }
 
   /** `ultrathink` is not an option of the CLI: the word in the prompt is what asks for it. */
@@ -241,6 +231,34 @@ export class ClaudeTurn {
     this.#swap = swap;
   }
 
+  promptSent(id: string): void {
+    this.#pendingPromptIds.add(id);
+  }
+
+  /** The result names a prompt the CLI folded into the run that just ended. */
+  answersPrompt(result: Extract<SDKMessage, { type: 'result' }>): boolean {
+    return resultPromptIds(result).some(id => this.#pendingPromptIds.has(id));
+  }
+
+  waitsForPromptResult(result: Extract<SDKMessage, { type: 'result' }>): boolean {
+    if (this.isStopped || this.failed) return false;
+    const answered = resultPromptIds(result);
+    // A result naming none of this turn's prompts ends it like an unnamed one: nothing says another is coming.
+    if (!answered.some(id => this.#pendingPromptIds.has(id))) return false;
+    if (result.user_message_uuids == null || answered.length >= RESULT_PROMPT_IDS_LIMIT) {
+      // A legacy or capped result can cover earlier prompts it does not name.
+      // The host consumes prompts in send order, including a merged batch.
+      const last = answered.findLast(id => this.#pendingPromptIds.has(id));
+      if (last !== undefined) for (const id of this.#pendingPromptIds) {
+        this.#pendingPromptIds.delete(id);
+        if (id === last) break;
+      }
+    } else {
+      for (const id of answered) this.#pendingPromptIds.delete(id);
+    }
+    return this.#pendingPromptIds.size > 0;
+  }
+
   /**
    * The turn goes on with the compacted session: the CLI that takes it over
    * resumes `swap.sessionId` on the thread's next generation, and its first
@@ -253,8 +271,9 @@ export class ClaudeTurn {
     this.#swap = null;
     const { prompt: _prompt, attachments: _attachments, continuation: _continuation, ...kept } = this.ctx;
     const generation = (kept.thread.sessionGeneration ?? 0) + 1;
+    // Keep the same turn context with the compacted session and its tail as the prompt.
     this.ctx = {
-      ...kept, prompt: swap.tail, attachments: [], sessionId: swap.sessionId, resumeAt: null,
+      ...kept, prompt: swap.tail, attachments: swap.attachments, sessionId: swap.sessionId, resumeAt: null,
       // The CLI resuming the copy restores the totals the copy's compaction left; a copy that
       // reported none leaves the new generation with no finished turn yet (`sessionUsage`).
       sessionBefore: swap.totals ?? { costUsd: 0, tokens: 0 },
@@ -265,6 +284,7 @@ export class ClaudeTurn {
     this.#lastEntry = null;
     this.#lastIsResult = false;
     this.#answered.clear();
+    this.#pendingPromptIds.clear();
     this.#contextTokens = swap.postTokens;
     this.#addedChars = 0;
     this.#measuredFor = '';
@@ -273,20 +293,18 @@ export class ClaudeTurn {
     this.#heldBefore = NOTHING_HELD;
   }
 
-  markStopped(): void {
-    this.isStopped = true;
-    this.#wake();
-  }
+  get failed(): boolean { return this.#status === 'error'; }
 
   settle(): void {
     if (this.settled) return;
     this.settled = true;
-    this.#wake();
+    this.wake();
     if (this.isStopped) this.#status = 'stopped';
-    if (this.#messageId !== null) {
-      this.ctx.emit.complete(this.#messageId, this.#status === 'error' ? 'error' : 'complete');
+    if (this.#status === 'error' && this.#refusal?.kind === 'usage-limit') {
+      const resetsAt = this.#rejected.latest() ?? this.#refusal.resetsAt ?? parseUsageLimitReset(this.#error);
+      if (resetsAt !== this.#refusal.resetsAt) this.#refusal = { kind: 'usage-limit', resetsAt };
     }
-    this.#resolve({
+    this.resolve(this.#status, () => ({
       status: this.#status,
       sessionId: this.#sessionId,
       usage: this.#usage,
@@ -298,7 +316,7 @@ export class ClaudeTurn {
       ...(this.#status === 'error' && this.#contextFull ? { contextFull: true as const } : {}),
       ...(this.#sessionId !== null && this.#lastEntry !== null ? { checkpoint: { sessionId: this.#sessionId, entry: this.#lastEntry } } : {}),
       ...(this.#agentTotals !== null ? { agentTotals: this.#agentTotals } : {}),
-    });
+    }));
   }
 
   // -- messages -------------------------------------------------------------
@@ -419,9 +437,9 @@ export class ClaudeTurn {
     switch (event.type) {
       case 'message_start':
         // Give each request its own parts so a retry can replace just its failed attempt.
-        this.#textIndex = null;
-        this.#thinkingIndex = null;
-        this.#attemptStart = this.#nextIndex;
+        this.textIndex = null;
+        this.thinkingIndex = null;
+        this.#attemptStart = this.nextIndex;
         this.#requestAt = Date.now();
         this.#apiMessageId = event.message?.id ?? '';
         this.#streamedText = '';
@@ -446,7 +464,7 @@ export class ClaudeTurn {
         }
         if (block.type === 'tool_use') this.#progressBeforeTool();
         this.#logBlock('other', null, '');
-        if (block.type === 'text' && event.index !== undefined) this.#textBlocks.set(event.index, this.#openText());
+        if (block.type === 'text' && event.index !== undefined) this.#textBlocks.set(event.index, this.openText());
         else if (block.type === 'tool_use' && typeof block.id === 'string') {
           // The input arrives as `input_json_delta` after this: an empty object now,
           // and an empty `inputText` the deltas grow until the parsed input lands.
@@ -491,11 +509,11 @@ export class ClaudeTurn {
   #discardAttempt(): void {
     const start = this.#attemptStart;
     if (start === null) return;
-    for (let index = start; index < this.#nextIndex; index += 1) this.part(index, { type: 'text', text: '' });
+    for (let index = start; index < this.nextIndex; index += 1) this.part(index, { type: 'text', text: '' });
     for (const [id, tool] of this.#tools) if (tool.index >= start) this.#tools.delete(id);
-    this.#nextIndex = start;
-    this.#textIndex = null;
-    this.#thinkingIndex = null;
+    this.nextIndex = start;
+    this.textIndex = null;
+    this.thinkingIndex = null;
     this.#attemptStart = null;
   }
 
@@ -503,7 +521,7 @@ export class ClaudeTurn {
     if (!text.length) return;
     const blocks = kind === 'text' ? this.#textBlocks : this.#thinkingBlocks;
     const known = blockIndex === undefined ? undefined : blocks.get(blockIndex);
-    const index = known ?? (kind === 'text' ? this.#openText() : this.#openThinking());
+    const index = known ?? (kind === 'text' ? this.openText() : this.openThinking());
     if (blockIndex !== undefined) blocks.set(blockIndex, index);
     this.#write(index, text);
     if (kind === 'text') this.#streamedText += text;
@@ -529,13 +547,9 @@ export class ClaudeTurn {
     this.ctx.log('warn', `claude: the subagent of ${parentToolId} hit an error: ${errorSentence(message.error)}`);
   }
 
-  /** A rejected window's reset, kept for a usage limit failure that follows; an allowed one clears it. */
-  #noteRateLimit(info: { status?: unknown; resetsAt?: unknown } | null | undefined): void {
-    if (info === null || info === undefined) return;
-    if (info.status === 'allowed') { this.#rejectedUntil = null; return; }
-    if (info.status !== 'rejected') return;
-    const at = isoTime(info.resetsAt);
-    if (at !== null) this.#rejectedUntil = Date.parse(at);
+  /** A rejected window's reset, tracked per window type for a usage limit failure that follows. */
+  #noteRateLimit(info: { status?: unknown; resetsAt?: unknown; rateLimitType?: unknown; overageStatus?: unknown; overageResetsAt?: unknown } | null | undefined): void {
+    this.#rejected.note(info);
   }
 
   #handleAssistant(message: SDKAssistantMessage): void {
@@ -547,8 +561,9 @@ export class ClaudeTurn {
         else this.#authFrame = { content };
         return;
       }
-      if (this.#status !== 'error') this.#refusal = message.error === 'overloaded' ? { kind: 'capacity' } : message.error === 'rate_limit' ? { kind: 'usage-limit', resetsAt: this.#rejectedUntil } : undefined;
-      this.fail(apiErrorReason(message.error, content, accountVendor(this.ctx.thread.model)));
+      const reason = apiErrorReason(message.error, content, accountVendor(this.ctx.thread.model));
+      if (this.#status !== 'error') this.#refusal = apiRefusal(message.error, reason, this.#rejected.latest(), this.#rejected.hasRejected);
+      this.fail(reason);
       return;
     }
     const body = message.message as { id?: string; model?: string; content?: unknown; usage?: unknown } | undefined;
@@ -574,7 +589,7 @@ export class ClaudeTurn {
         // With includePartialMessages the deltas already carried this block.
         if (text.length === 0 || this.#streamed('text', apiId).includes(text)) continue;
         if (logs) this.#logBlock('other', null, text);
-        this.#write(this.#openText(), text);
+        this.#write(this.openText(), text);
         continue;
       }
       if (block.type === 'thinking') {
@@ -610,6 +625,7 @@ export class ClaudeTurn {
   #handleResult(message: SDKResultMessage): void {
     const usage = mapUsage(message, this.#costBefore, this.#heldBefore);
     this.#usage = this.#usageBefore === null ? usage : sumUsage(this.#usageBefore, usage);
+    this.#usageBefore = this.#usage;
     const totals = agentTotalsOf(message, this.#restores);
     // Totals of the compacted session are what the next turn on its generation resumes from.
     this.#agentTotals = totals !== null && this.#swappedTo !== null ? { ...totals, sessionGeneration: this.#swappedTo } : totals;
@@ -635,10 +651,14 @@ export class ClaudeTurn {
         ? forbiddenReason(message.subtype === 'success' && message.result.length > 0 ? message.result : apiErrorReason('unknown', auth.content))
         : apiErrorReason('authentication_failed', auth.content));
     }
-    if (message.subtype !== 'success') {
-      this.fail(message.errors.length > 0 ? message.errors.join('; ') : message.subtype);
-    } else if (message.is_error) {
-      this.fail(message.result.length > 0 ? message.result : 'the turn ended on an API error');
+    const failure = message.subtype !== 'success'
+      ? (message.errors.length > 0 ? message.errors.join('; ') : message.subtype)
+      : (message.is_error ? (message.result.length > 0 ? message.result : 'the turn ended on an API error') : null);
+    if (failure !== null) {
+      if (this.#status !== 'error' && this.#refusal === undefined) {
+        this.#refusal = apiRefusal(null, failure, this.#rejected.latest(), this.#rejected.hasRejected);
+      }
+      this.fail(failure);
     }
   }
 
@@ -648,7 +668,7 @@ export class ClaudeTurn {
    * other failure keeps the session.
    */
   #resumeRefused(message: SDKResultMessage): string | null {
-    if (message.subtype !== 'error_during_execution' || this.ctx.sessionId === null || this.#messageId !== null) return null;
+    if (message.subtype !== 'error_during_execution' || this.ctx.sessionId === null || this.messageId !== null) return null;
     // A resume cut at an entry (a rewind or a fork) that failed before writing
     // anything: whatever the CLI's words, the core must not keep the whole
     // session, which still holds the part the user removed. It starts fresh
@@ -659,34 +679,21 @@ export class ClaudeTurn {
 
   // -- parts ----------------------------------------------------------------
 
-  #message(): MessageId {
-    if (this.#messageId === null) this.#messageId = this.ctx.emit.startMessage('assistant');
-    return this.#messageId;
-  }
-
   /**
    * Nothing is drawn once the turn has settled: `message.completed` and
    * `turn.finished` are already out, so a part written here lands behind both
    * and reopens a closed message. What used to write one is the `canUseTool`
    * continuation of a CLI that died with its card open.
    */
-  part(index: number, part: MessagePart): void {
+  override part(index: number, part: MessagePart): void {
     if (this.settled) return;
-    this.ctx.emit.part(this.#message(), index, part);
+    super.part(index, part);
   }
 
   /** The same guard as `part`, for the text and thinking the stream appends. */
   #write(index: number, text: string): void {
     if (this.settled) return;
-    this.ctx.emit.delta(this.#message(), index, text);
-  }
-
-  #openText(): number {
-    if (this.#textIndex !== null) return this.#textIndex;
-    const index = this.takeIndex();
-    this.#textIndex = index;
-    this.part(index, { type: 'text', text: '' });
-    return index;
+    this.ctx.emit.delta(this.message(), index, text);
   }
 
   #startBlocks(apiId: string): void {
@@ -707,8 +714,8 @@ export class ClaudeTurn {
    * in one part.
    */
   #openThinkingBlock(): number {
-    if (writesProgressAsThinking(this.#apiModel ?? this.ctx.thread.model)) this.#thinkingIndex = null;
-    return this.#openThinking();
+    if (writesProgressAsThinking(this.#apiModel ?? this.ctx.thread.model)) this.thinkingIndex = null;
+    return this.openThinking();
   }
 
   /**
@@ -725,25 +732,8 @@ export class ClaudeTurn {
     if (!writesProgressAsThinking(this.#apiModel ?? this.ctx.thread.model)) return;
     this.part(last.index, { type: 'text', text: last.text });
     // The text the next block writes must not land in this part.
-    this.#textIndex = null;
-    this.#thinkingIndex = null;
-  }
-
-  /** The reasoning of one block, folded in the UI. Text after it opens its own part. */
-  #openThinking(): number {
-    if (this.#thinkingIndex !== null) return this.#thinkingIndex;
-    const index = this.takeIndex();
-    this.#thinkingIndex = index;
-    this.part(index, { type: 'thinking', text: '' });
-    return index;
-  }
-
-  takeIndex(): number {
-    this.#textIndex = null;
-    this.#thinkingIndex = null;
-    const index = this.#nextIndex;
-    this.#nextIndex += 1;
-    return index;
+    this.textIndex = null;
+    this.thinkingIndex = null;
   }
 
   /**
@@ -802,8 +792,8 @@ export class ClaudeTurn {
   }
 
   #patchTool(entry: ToolEntry, fields: ToolPatch): void {
-    if (this.settled || this.#messageId === null) return;
-    this.ctx.emit.patchTool(this.#messageId, entry.index, fields);
+    if (this.settled || this.messageId === null) return;
+    this.ctx.emit.patchTool(this.messageId, entry.index, fields);
   }
 
   #newTool(name: string): ToolEntry {

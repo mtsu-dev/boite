@@ -79,7 +79,18 @@ export function threadState(thread: ThreadStateFields, delegated: Delegated = 0)
  */
 export type WorkingChildren = { count: number; since: number | null; asking: number };
 
-/** Each parent with a working or asking child, shared by every row of this machine. */
+export function mergeWorkingChildren(local: WorkingChildren | null, remote: WorkingChildren | null): WorkingChildren | null {
+  if (local === null) return remote;
+  if (remote === null) return local;
+  const { since } = local;
+  return {
+    count: local.count + remote.count,
+    asking: local.asking + remote.asking,
+    since: since === null ? remote.since : remote.since === null ? since : Math.min(since, remote.since),
+  };
+}
+
+/** Each parent with a working or asking child in the given rows. */
 export function workingChildren(threads: readonly ThreadSummary[]): Map<ThreadId, WorkingChildren> {
   const parents = new Map<ThreadId, WorkingChildren>();
   for (const thread of threads) {
@@ -120,7 +131,18 @@ export const NEEDS_RANK = 1;
 
 type Asks = readonly { threadId?: ThreadId | null }[];
 /** What a row reads from its machine besides the summary: its delegated agents and the requests held for it. */
-export type RowSource<D> = { subagents(threadId: ThreadId): D; pendingQuestions?: Asks; pendingPermissions?: Asks };
+export type RowSource<D> = {
+  subagents(threadId: ThreadId): D;
+  pendingQuestions?: Asks;
+  pendingPermissions?: Asks;
+  hasRequest?(kind: 'question' | 'permission', threadId: ThreadId): boolean;
+};
+
+function held(store: RowSource<Delegated>, kind: 'question' | 'permission', threadId: ThreadId): boolean {
+  if (store.hasRequest) return store.hasRequest(kind, threadId);
+  const asks = kind === 'question' ? store.pendingQuestions : store.pendingPermissions;
+  return asks?.some(request => request.threadId === threadId) ?? false;
+}
 
 /**
  * A row's delegated agents, plus one asking when the machine holds a question
@@ -131,8 +153,7 @@ export function rowAsks(store: RowSource<WorkingChildren | null>, threadId: Thre
 export function rowAsks(store: RowSource<Delegated>, threadId: ThreadId): Delegated;
 export function rowAsks(store: RowSource<Delegated | WorkingChildren>, threadId: ThreadId): Delegated | WorkingChildren {
   const children = store.subagents(threadId);
-  const held = (asks: Asks | undefined) => asks?.some(request => request.threadId === threadId) ?? false;
-  if (!held(store.pendingQuestions) && !held(store.pendingPermissions)) return children;
+  if (!held(store, 'question', threadId) && !held(store, 'permission', threadId)) return children;
   if (typeof children === 'number') return { count: children, asking: 1 };
   return { count: children?.count ?? 0, since: children && 'since' in children ? children.since : null, asking: (children?.asking ?? 0) + 1 };
 }
@@ -158,9 +179,27 @@ export type ActivityEvent<E> = { lead: E; helpers: E[]; rank: number };
  * or the state itself (a failure, a stop, news). Two threads share a row only when this is the same.
  */
 function eventKind(store: RowSource<Delegated>, thread: ThreadSummary, kind: ThreadState): string {
-  if (kind !== 'waiting') return kind;
-  const held = (asks: RowSource<Delegated>['pendingQuestions']) => asks?.some(ask => ask.threadId === thread.id) ?? false;
-  return held(store.pendingPermissions) && !held(store.pendingQuestions) ? 'allow' : 'answer';
+  return kind === 'waiting' ? activityKind(store, thread.id, kind)! : kind;
+}
+
+/** The stop shown in Activity, using message unread state only for older cores. */
+export function unreadInterruptionAt(thread: ThreadSummary): number | undefined {
+  const wait = thread.backgroundWait;
+  if (wait?.state !== 'interrupted') return undefined;
+  const read = thread.interruptionReadAt === undefined ? !thread.unread : thread.interruptionReadAt === wait.at;
+  return read ? undefined : wait.at;
+}
+
+/** Acknowledging an interruption leaves any unread reply in Activity. */
+export function activityThreadState(thread: ThreadSummary, delegated: Delegated): ThreadState | null {
+  // A remote child's request is actionable on its own machine. The parent still counts as busy.
+  const remoteAsks = thread.remoteSubagents?.asking ?? 0;
+  if (remoteAsks > 0 && delegated && typeof delegated !== 'number') {
+    delegated = { ...delegated, asking: Math.max(0, delegated.asking - remoteAsks) };
+  }
+  const kind = threadState(thread, delegated);
+  return kind === 'interrupted' && unreadInterruptionAt(thread) === undefined
+    ? threadState({ ...thread, backgroundWait: null }, delegated) : kind;
 }
 
 /**
@@ -173,15 +212,14 @@ function eventKind(store: RowSource<Delegated>, thread: ThreadSummary, kind: Thr
  */
 export function activityEvents<E extends ActivitySource<{ id: string; store: RowSource<Delegated> }>>(all: readonly E[]): ActivityEvent<E>[] {
   const entries = all.filter(entry => feedThread(entry.thread) && !entry.thread.agentSessionId);
-  const stateOf = (entry: E) => threadState(entry.thread, rowAsks(entry.machine.store, entry.thread.id));
+  const stateOf = (entry: E) => activityThreadState(entry.thread, rowAsks(entry.machine.store, entry.thread.id));
   const key = (entry: E, id = entry.thread.id) => `${entry.machine.id}\n${id}`;
   const byKey = new Map(entries.map(entry => [key(entry), entry]));
   const parentOf = (entry: E) => entry.thread.parentThreadId ? byKey.get(key(entry, entry.thread.parentThreadId)) : undefined;
   const listedKind = (entry: E): ThreadState | null => {
     const kind = stateOf(entry);
     if (kind === null || !LISTED.has(kind)) return null;
-    // A failure or a stop is news until it is read, as a finish is: opening the thread or Mark all as read clears it.
-    return (kind === 'error' || kind === 'interrupted') && !entry.thread.unread ? null : kind;
+    return kind === 'error' && !entry.thread.unread ? null : kind;
   };
   // A sub-agent that failed while its parent still works is the parent's to handle: nothing asks the user yet.
   const listed = entries.filter(entry => {
@@ -197,8 +235,11 @@ export function activityEvents<E extends ActivitySource<{ id: string; store: Row
   for (const entry of listed) {
     const parent = parentOf(entry);
     if (!parent) { tops.set(key(entry), entry); continue; }
-    children.set(key(parent), [...children.get(key(parent)) ?? [], entry]);
-    if (!tops.has(key(parent))) tops.set(key(parent), parent);
+    const parentKey = key(parent);
+    const group = children.get(parentKey);
+    if (group) group.push(entry);
+    else children.set(parentKey, [entry]);
+    if (!tops.has(parentKey)) tops.set(parentKey, parent);
   }
   const events: ActivityEvent<E>[] = [];
   for (const top of tops.values()) {
@@ -207,7 +248,9 @@ export function activityEvents<E extends ActivitySource<{ id: string; store: Row
     const byKind = new Map<string, E[]>();
     for (const entry of own ? [top, ...children.get(key(top)) ?? []] : children.get(key(top)) ?? []) {
       const kind = eventKind(entry.machine.store, entry.thread, listedKind(entry)!);
-      byKind.set(kind, [...byKind.get(kind) ?? [], entry]);
+      const group = byKind.get(kind);
+      if (group) group.push(entry);
+      else byKind.set(kind, [entry]);
     }
     [...byKind.values()].forEach((members, index) => {
       const rank = statusRank(listedKind(members[0]!));
@@ -226,8 +269,7 @@ export type ActivityKind = 'permission' | 'question' | 'failed' | 'stopped' | 'd
 /** A row's kind from its state and the requests held for it: a permission alone is allowed, any question answered. */
 export function activityKind(store: RowSource<Delegated>, threadId: ThreadId, state: ThreadState | null): ActivityKind | null {
   if (state === 'waiting') {
-    const held = (asks: RowSource<Delegated>['pendingQuestions']) => asks?.some(ask => ask.threadId === threadId) ?? false;
-    return held(store.pendingPermissions) && !held(store.pendingQuestions) ? 'permission' : 'question';
+    return held(store, 'permission', threadId) && !held(store, 'question', threadId) ? 'permission' : 'question';
   }
   return state === 'error' ? 'failed' : state === 'interrupted' ? 'stopped' : state === 'done' ? 'done' : null;
 }

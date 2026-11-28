@@ -8,6 +8,7 @@ import { experimentOn } from './experiments.svelte';
 import { noteUpkeep } from './agent-upkeep';
 import { agentDirectory } from './agent-directory.svelte';
 import { confirm } from './confirm.svelte';
+import { pendingWait } from './background';
 
 /**
  * A persistent agent is a thread with an identity: its conversation is its
@@ -136,11 +137,7 @@ export function liveStep(status: AgentStatus | null, thread: ThreadSummary | nul
 
 /** What the agent's thread waits on: the question it asked, else the permission it needs. */
 export function waitingOn(store: Pick<Store, 'pendingQuestions' | 'pendingPermissions'>, threadId: string | null | undefined): string | null {
-  if (!threadId) return null;
-  const question = store.pendingQuestions.find(q => q.threadId === threadId);
-  if (question) return question.text.split('\n')[0]!.trim();
-  const permission = store.pendingPermissions.find(p => p.threadId === threadId);
-  return permission ? permission.description ?? permission.toolName : null;
+  return pendingWait(store, threadId)?.what ?? null;
 }
 
 /**
@@ -159,7 +156,12 @@ export function liveState(agent: Pick<AgentProfile, 'status'>, status: AgentStat
 }
 
 /** The newest `openAgent` per machine: an older answer arriving after it opens nothing. */
-const agentOpens = new WeakMap<Store, number>();
+const agentOpens = new WeakMap<Store, {
+  client: NonNullable<Store['client']>;
+  navigation: number;
+  threadId: string | null;
+  rollback: (() => void) | undefined;
+}>();
 
 /**
  * Opens an agent's thread on the machine that owns it: the core hands the
@@ -170,21 +172,36 @@ const agentOpens = new WeakMap<Store, number>();
 export async function openAgent(store: Store, agentId: string): Promise<string | null> {
   const client = store.client;
   if (!client) return null;
-  const request = (agentOpens.get(store) ?? 0) + 1;
+  const known = threadOfAgent(AgentsView.of(store).snapshot, agentId) ?? threadOfAgent(agentDirectory(store).snapshot, agentId);
+  const previous = agentOpens.get(store);
+  const preview = previous?.client === client && previous.navigation === store.navigationGeneration ? previous : undefined;
+  // A second press can share the preview. A different target starts from the last confirmed conversation.
+  if (preview && preview.threadId !== known) preview.rollback?.();
+  const rollback = (preview?.threadId === known ? preview.rollback : undefined) ?? (known ? store.previewAgentThread(known) : undefined);
+  const request = { client, navigation: store.navigationGeneration, threadId: known, rollback };
   agentOpens.set(store, request);
-  const navigation = store.navigationGeneration;
-  const known = threadOfAgent(AgentsView.of(store).snapshot, agentId);
+  const current = () => store.client === client && agentOpens.get(store) === request && store.navigationGeneration === request.navigation;
+  const release = known && typeof store.preload === 'function' ? store.preload(known) : null;
   let threadId = known;
   try {
-    threadId = (await client.call('agents.open', { agentId })).threadId;
-  } catch (error) {
-    // An older core without `agents.open` still lists the thread in its sessions; any other refusal is the answer.
-    if (!known || !(error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound)) { store.error = errorText(error); return null; }
+    try {
+      threadId = (await client.call('agents.open', { agentId })).threadId;
+    } catch (error) {
+      // An older core without `agents.open` still lists the thread in its sessions; any other refusal is the answer.
+      if (!known || !(error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound)) {
+        if (current()) { rollback?.(); store.error = errorText(error); }
+        return null;
+      }
+    }
+    if (!current()) return null;
+    if (!threadId) { rollback?.(); return null; }
+    lastAgent.set(store, agentId);
+    await store.open(threadId);
+    return threadId;
+  } finally {
+    if (agentOpens.get(store) === request) agentOpens.delete(store);
+    release?.();
   }
-  if (!threadId || store.client !== client || agentOpens.get(store) !== request || store.navigationGeneration !== navigation) return null;
-  lastAgent.set(store, agentId);
-  await store.open(threadId);
-  return threadId;
 }
 
 const DESK_SEEN_KEY = 'boite:agent-desk-seen';
@@ -240,7 +257,11 @@ export class AgentsView {
   private users = 0;
   /** The agent whose desk the snapshot carries, null for none. */
   private desk: string | null = null;
-  constructor(readonly store: Store) {}
+  constructor(readonly store: Store) {
+    // Reuse the directory's snapshot (already populated for the rail) so the first visit draws profiles immediately.
+    const directory = agentDirectory(store).snapshot;
+    if (directory) this.snapshot = directory;
+  }
   /**
    * The view of this store, kept between visits: the page draws the last
    * snapshot at once and refreshes it, instead of starting from "loading".
@@ -255,7 +276,15 @@ export class AgentsView {
   start(): void {
     this.users++;
     // A failure of an earlier visit is not news on this one.
-    if (this.users === 1) { this.error = ''; this.loadError = ''; agentDirectory(this.store).feed(true); }
+    if (this.users === 1) {
+      this.error = '';
+      this.loadError = '';
+      if (!this.snapshot) {
+        const directory = agentDirectory(this.store).snapshot;
+        if (directory) this.snapshot = directory;
+      }
+      agentDirectory(this.store).feed(true);
+    }
     this.listen();
     void this.refresh();
   }
@@ -266,6 +295,10 @@ export class AgentsView {
     if (this.users > 0) return;
     this.off?.(); this.off = null;
     agentDirectory(this.store).feed(false);
+  }
+  /** Sets the initial desk before `start()` so the first snapshot carries it in one RPC. */
+  primeDesk(agentId: string | null): void {
+    if (this.users === 0) this.desk = agentId;
   }
   /** The agent whose desk is on screen, or null: a change reads the snapshot again with that desk only. */
   showDesk(agentId: string | null): void {
@@ -309,7 +342,13 @@ export class AgentsView {
       const result = await this.store.client.call(method, $state.snapshot(params) as RpcParams<M>);
       await this.refresh();
       return result;
-    } catch (error) { this.error = errorText(error); return null; }
+    } catch (error) {
+      const details = error instanceof RpcFailure && error.data && typeof error.data === 'object' ? error.data as Record<string, unknown> : null;
+      this.error = details?.kind === 'trigger' && typeof details.expectedRevision === 'number'
+        ? strings.agents.triggers.conflict
+        : errorText(error);
+      return null;
+    }
     finally { this.pending = false; }
   }
   private saves: Promise<unknown> = Promise.resolve();

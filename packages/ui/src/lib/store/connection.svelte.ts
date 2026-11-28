@@ -3,8 +3,7 @@ import { parseGroupRelayUrl, RpcErrorCode, type CoreInfo, type ListCursor, type 
 import { RpcFailure, WsClient, type Client, type ClientState, type ObservableClient } from '../client';
 import { confirm } from '../confirm.svelte';
 import { deviceLabel, noteThisComputer } from '../device';
-import { appPage } from '../app-origin';
-import { deviceKey, dropDeviceKey } from '../device-key';
+import { deviceKey, dropDeviceKey, heldDeviceKey } from '../device-key';
 import { clearStoredEndpoint, droppedSince, relayKeyFor, rememberDevice, forgetGroupOf, readStoredEndpoint, rememberSession, refreshLocalEnvironment, removeBrought, fromTauri, shellEndpointError, takeShellRestartGeneration, restartTauriCore, parsePairingLink, readEnvironments, removeEnvironment, resolveEndpoint, servesThisPage, storeEndpoint, upsertEnvironment, type Endpoint, type StoredEnvironment } from '../endpoint';
 import { onboardingSeen } from '../onboarding';
 import { rightPanel } from '../right-panel.svelte';
@@ -17,7 +16,7 @@ import { heardBuild } from '../experiments';
 import { SETTINGS_TABS, type SettingsTab } from '../settings-tabs';
 import { retainRows } from './snapshot-reads';
 import { applyThreadChanges, readThreadList } from './thread-list';
-import { desktopShell } from '../shell-platform';
+import { desktopShell, mobileApp } from '../shell-platform';
 
 /**
  * The version a paired device reports in `hello` and Settings lists beside it.
@@ -82,6 +81,7 @@ export class Connection {
   environments = $state<StoredEnvironment[]>([]);
   machineStates = $state<Record<string, { state: ClientState; error?: string }>>({});
   booted = $state(false);
+  threadListIssue = $state<'failed' | 'retrying' | null>(null);
   /** The load in flight and the client it speaks to, so the two callers of `reload()` share one. */
   reloading: { client: Client; generation: number; epoch: number; promise: Promise<void>; essential: Promise<void>; release: () => void } | null = null;
   #composerSync: { client: Client; generation: number; promise: Promise<void> } | null = null;
@@ -96,6 +96,7 @@ export class Connection {
   #threadList: { client: Client; generation: number; cursor: ListCursor } | null = null;
   /** Moves each time a list keeps no cursor, so a list asked before then keeps none either. */
   #listDrops = 0;
+  #threadRead: { epoch: number; promise: Promise<void> } | null = null;
   #localRecovery: ReturnType<typeof setTimeout> | null = null;
   #restartOfferTimer: ReturnType<typeof setTimeout> | null = null;
   #restartOffer = $state<number | null>(null);
@@ -242,8 +243,8 @@ export class Connection {
           // printed, or a start that never answered.
           const refusal = desktopShell() ? shellEndpointError() : null;
           if (refusal) s.error = fill(strings.errors.coreStart, { reason: refusal });
-          // The phone app before any machine: its screen is the way in.
-          if (appPage()) this.pairingRequired = true;
+          // The Android app before any machine: its screen is the way in.
+          if (mobileApp()) this.pairingRequired = true;
           this.booted = true;
           return;
         }
@@ -322,12 +323,22 @@ export class Connection {
     const began = Date.now();
     // A phone or a browser is a device of its group: one key, signed for each machine. The desktop app is its machine's own.
     const admitting = !desktopShell() && endpoint.grant !== undefined;
+    const knownCore = admitting ? readEnvironments().find(env => env.url === url)?.signs : undefined;
     this.#signed = endpoint.signs !== undefined || admitting;
     const client = new WsClient({
       url,
       token: endpoint.token,
       monitorLocal: this.localCore && desktopShell(),
-      ...(endpoint.signs !== undefined || admitting ? { signer: { key: deviceKey, coreId: endpoint.signs ?? null } } : {}),
+      ...(endpoint.signs !== undefined || admitting ? { signer: {
+        key: deviceKey,
+        coreId: endpoint.signs ?? knownCore ?? null,
+        replaceRevokedKey: async (id) => {
+          dropDeviceKey(id);
+          const replacement = await deviceKey();
+          if (replacement.id === id) throw new Error(strings.errors.revoked);
+          return replacement;
+        },
+      } } : {}),
       onDevice: (_device, coreId) => {
         if (this.ctx.client !== client) return;
         this.environments = rememberDevice(url, coreId);
@@ -367,7 +378,21 @@ export class Connection {
         if (this.ctx.client !== client) return;
         // Only the key this connection presented is dead: another window may have paired this machine anew meanwhile.
         // A device key a machine of its group refuses was removed from that group: the app makes a new one when it is added again.
-        if (client.deviceId !== null) dropDeviceKey(client.deviceId);
+        const deviceId = client.deviceId;
+        if (deviceId !== null) {
+          dropDeviceKey(deviceId);
+          const held = heldDeviceKey();
+          if (held !== null && held.id !== deviceId) {
+            this.environments = readEnvironments();
+            const coreId = endpoint.signs ?? client.core?.coreId;
+            const saved = coreId === undefined ? undefined : this.environments.find(env => env.url === url && env.signs === coreId);
+            if (saved !== undefined) {
+              this.attachEndpoint(saved, rememberActive);
+              void this.ctx.store.connect();
+              return;
+            }
+          }
+        }
         const stored = readStoredEndpoint();
         if (rememberActive && stored?.url === url && stored.token === key) clearStoredEndpoint();
         this.environments = removeEnvironment(url, key);
@@ -711,6 +736,53 @@ export class Connection {
     return promise;
   }
 
+  retryThreadList(): Promise<void> {
+    const client = this.ctx.client;
+    if (!client || client.state !== 'ready' || this.threadListIssue !== 'failed') return Promise.resolve();
+    return this.#loadThreads(client, this.ctx.clientGeneration, this.#readEpoch, null);
+  }
+
+  #loadThreads(client: Client, generation: number, epoch: number, reopened: Promise<unknown> | null): Promise<void> {
+    if (this.#threadRead?.epoch === epoch) return this.#threadRead.promise;
+    const s = this.ctx.store;
+    const current = () => this.ctx.currentClient(client, generation) && this.#readEpoch === epoch;
+    const threadRead = this.ctx.threadReads.begin();
+    const lastList = this.#threadList;
+    const listDrops = this.#listDrops;
+    const since = lastList?.client === client && lastList.generation === generation ? lastList.cursor : null;
+    const previewList = since === null && s.threads.length === 0 && this.threadListIssue === null;
+    if (this.threadListIssue !== null) this.threadListIssue = 'retrying';
+    const promise = readThreadList(client, this.core, since, rows => {
+      if (current() && previewList) s.threads = reconcileRows(s.threads, threadRead.preview(rows, s.threads));
+    }, current).then(answer => {
+      if (!current()) return;
+      const fresh = answer.kind === 'full' ? answer.threads : applyThreadChanges(s.threads, answer.threads, answer.removed);
+      const applied = threadRead.active;
+      s.threads = reconcileRows(s.threads, threadRead.apply(fresh, s.threads));
+      const kept = applied && answer.cursor && !threadRead.deferred && listDrops === this.#listDrops;
+      this.#threadList = kept ? { client, generation, cursor: answer.cursor! } : null;
+      if (!kept) this.#listDrops += 1;
+      this.threadListIssue = null;
+      const read = reopened && s.openThread?.unread === false ? s.threads.find(t => t.id === s.openThread?.id) : undefined;
+      if (read) read.unread = false;
+      const listed = new Set(s.threads.map(t => s.threadKey(t.id)));
+      const stale = unlistedPanels(s.machineId, listed, s.openThread ? s.threadKey(s.openThread.id) : null);
+      rightPanel.prune(key => stale(key) && !rightPanel.documents.drafted(key));
+      work.settle(s.threads.length > 0 || onboardingSeen());
+    }).catch(error => {
+      if (!current()) return;
+      this.#threadList = null;
+      this.#listDrops += 1;
+      this.threadListIssue = 'failed';
+      console.error('Could not load the thread list', error);
+    }).finally(() => {
+      threadRead.cancel();
+      if (this.#threadRead?.promise === promise) this.#threadRead = null;
+    });
+    this.#threadRead = { epoch, promise };
+    return promise;
+  }
+
   async #load(client: Client, generation: number, epoch: number, ready: () => void): Promise<void> {
     const s = this.ctx.store;
     const { accounts, requests } = this.ctx;
@@ -722,9 +794,6 @@ export class Connection {
     if (this.#signed) s.ungrouped = false;
     const revisions = { ...this.ctx.metadataRevision };
     const projectRead = this.ctx.projectReads.begin();
-    const threadRead = this.ctx.threadReads.begin();
-    const lastList = this.#threadList;
-    const listDrops = this.#listDrops;
     const accountRead = this.ctx.accountReads.begin();
     // The global reads also serve the reopen, avoiding duplicate per-thread reads.
     const permissionRead = requests.permissionRead(client, 'all');
@@ -749,20 +818,7 @@ export class Connection {
         this.ctx.projects.bootListAt = Date.now();
         void this.ctx.projects.sendPendingArchives(rows);
       }, () => projectRead.cancel()),
-      slice(readThreadList(client, this.core, lastList?.client === client && lastList.generation === generation ? lastList.cursor : null), answer => {
-        const fresh = answer.kind === 'full' ? answer.threads : applyThreadChanges(s.threads, answer.threads, answer.removed);
-        const applied = threadRead.active;
-        s.threads = reconcileRows(s.threads, threadRead.apply(fresh, s.threads));
-        const kept = applied && answer.cursor && !threadRead.deferred && listDrops === this.#listDrops;
-        this.#threadList = kept ? { client, generation, cursor: answer.cursor! } : null;
-        if (!kept) this.#listDrops += 1;
-        const read = reopened && s.openThread?.unread === false ? s.threads.find(t => t.id === s.openThread?.id) : undefined;
-        if (read) read.unread = false;
-        const listed = new Set(s.threads.map(t => s.threadKey(t.id)));
-        const stale = unlistedPanels(s.machineId, listed, s.openThread ? s.threadKey(s.openThread.id) : null);
-        rightPanel.prune(key => stale(key) && !rightPanel.documents.drafted(key));
-        work.settle(s.threads.length > 0 || onboardingSeen());
-      }, () => threadRead.cancel()),
+      this.#loadThreads(client, generation, epoch, reopened),
       slice(client.call('providers.list', {}), value => {
         if (revisions.providers !== this.ctx.metadataRevision.providers) return;
         s.providers = value.loaded; s.rejectedProviders = value.rejected; s.installStates = installStatesOf(value.loaded);
@@ -808,7 +864,7 @@ export class Connection {
         if (held || !s.openThread.agentSessionId) void s.loadCoordination(open.id, held && s.coordinationDirectory !== null);
       }
     } finally {
-      projectRead.cancel(); threadRead.cancel(); accountRead.cancel(); permissionRead.cancel(); questionRead.cancel(); secretRead.cancel();
+      projectRead.cancel(); accountRead.cancel(); permissionRead.cancel(); questionRead.cancel(); secretRead.cancel();
     }
   }
 }

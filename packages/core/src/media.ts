@@ -1,7 +1,8 @@
-import { DISPLAY_IMAGE_MAX, DISPLAY_THUMB_MAX, type ImagePreviews } from '@boite/contracts';
+import { DISPLAY_IMAGE_MAX, DISPLAY_THUMB_MAX, FILE_ROUTE, IMAGE_INLINE_CHARS, decodedBytes, imageSize, type ChatPreviewSize, type ImageAttachment } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { messageOf } from './errors.ts';
 import { mediaDisplay, mediaPreviews, putMediaDisplay, putMediaPreview } from './journal/media-previews.ts';
+import type { AttachmentPreviewLookup, PreviewSource } from './journal/attachment-previews.ts';
 
 /** Past this many pixels a picture gets no blur: decoding it costs more memory than the blur is worth. */
 const PREVIEW_MAX_PIXELS = 7680 * 4320;
@@ -16,8 +17,10 @@ const DISPLAY_CONCURRENCY = 2;
 export const DISPLAY_TYPES = /^image\/(png|jpeg|webp)$/;
 
 /** Which copy: the one the timeline draws, or the one a prompt's thumbnail draws. */
-export type DisplaySize = 'large' | 'thumb';
-const DISPLAY_SIZES: Record<DisplaySize, { max: number; quality: number }> = {
+export type DisplaySize = 'large' | 'thumb' | ChatPreviewSize;
+type ImageSource = string | Uint8Array | Blob;
+type ChatImageSource = { data: ImageSource; mimeType: string };
+const DISPLAY_SIZES = {
   large: { max: DISPLAY_IMAGE_MAX, quality: 80 },
   thumb: { max: DISPLAY_THUMB_MAX, quality: 75 },
 };
@@ -29,7 +32,11 @@ const DISPLAY_SIZES: Record<DisplaySize, { max: number; quality: number }> = {
  * take both. An older core reads only indexes from 0 and never sees them.
  */
 function slotOf(partIndex: number, size: DisplaySize): number {
-  return size === 'large' ? partIndex : -2 - partIndex;
+  if (size === 'large') return partIndex;
+  if (size === 'thumb') return -2 - partIndex;
+  // Ordinary part indexes are JavaScript array indexes. Keep preview slots above them and
+  // give each size a stable offset, independent of new presets added later.
+  return 2 ** 32 + partIndex * 4096 + size;
 }
 
 /**
@@ -40,24 +47,49 @@ function slotOf(partIndex: number, size: DisplaySize): number {
  * bytes of a larger copy. Null when Bun cannot decode it or refuses its size;
  * AVIF would be smaller still, but Bun's Linux build cannot encode it.
  */
-async function makeDisplay(source: string | Uint8Array, size: DisplaySize = 'large'): Promise<Uint8Array | null> {
+async function makeDisplay(source: ImageSource, size: DisplaySize = 'large'): Promise<Uint8Array | null> {
   if (typeof Bun.Image !== 'function') return null;
-  const { max, quality } = DISPLAY_SIZES[size];
+  const { max, quality } = typeof size === 'number' ? { max: size, quality: 75 } : DISPLAY_SIZES[size];
   try {
-    return await new Bun.Image(typeof source === 'string' ? Buffer.from(source, 'base64') : source, { maxPixels: PREVIEW_MAX_PIXELS })
-      .resize(max, max, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality })
-      .bytes();
+    const image = new Bun.Image(typeof source === 'string' ? Buffer.from(source, 'base64') : source, { maxPixels: PREVIEW_MAX_PIXELS });
+    return await image.resize(max, max, { fit: 'inside', withoutEnlargement: true }).webp({ quality }).bytes();
   } catch {
     return null;
   }
+}
+
+/** A historical image travels at preview size, with its original available as a file. */
+export async function historyImagePreview(image: ImageAttachment): Promise<ImageAttachment | null> {
+  if (typeof Bun.Image !== 'function') return null;
+  try {
+    const source = new Bun.Image(Buffer.from(image.data, 'base64'), { maxPixels: PREVIEW_MAX_PIXELS });
+    const { width, height, format } = await source.metadata();
+    // A JPEG's orientation can exchange its axes at the receiving provider.
+    if (width <= (format === 'jpeg' ? 720 : 1280) && height <= 720) return image;
+    const bytes = await source.resize(1280, 720, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 80 }).bytes();
+    return { ...image, mimeType: 'image/webp', data: Buffer.from(bytes).toString('base64') };
+  } catch {
+    return null;
+  }
+}
+
+/** A codec the browser supports can pass through when the source already fits the preview. */
+async function smallChatSource(source: ChatImageSource | null, size: ChatPreviewSize): Promise<string | null> {
+  if (source === null) return null;
+  const { data } = source;
+  const bytes = typeof data === 'string' ? Math.ceil(data.length / 4) * 3 : data instanceof Blob ? data.size : data.length;
+  if (bytes > IMAGE_INLINE_CHARS / 4 * 3) return null;
+  const encoded = typeof data === 'string' ? data : Buffer.from(data instanceof Blob ? new Uint8Array(await data.arrayBuffer()) : data).toString('base64');
+  const dimensions = imageSize(encoded);
+  return dimensions && Math.max(dimensions.width, dimensions.height) <= size ? encoded : null;
 }
 
 interface Job {
   threadId: string;
   messageId: string;
   partIndex: number;
-  data: string;
+  source: PreviewSource;
+  chars: number;
 }
 
 /** A ThumbHash render of the picture as a PNG data URL, or null when Bun cannot decode it or refuses its size. */
@@ -93,7 +125,7 @@ export class MediaPreviews {
     this.#core = core;}
 
   /** What a projection of `threadId`'s messages asks for each deferred picture. */
-  lookup(threadId: string): ImagePreviews {
+  lookup(threadId: string): AttachmentPreviewLookup {
     let known: { messageId: string; parts: Map<number, string | null> } | null = null;
     return (messageId, partIndex, data) => {
       if (known?.messageId !== messageId) {
@@ -120,16 +152,18 @@ export class MediaPreviews {
    * `kept` is false when the journal could not keep it (a full disk, a
    * message that left its thread): only these bytes hold it then.
    */
-  async display(threadId: string, messageId: string, partIndex: number, size: DisplaySize, source: string | Uint8Array): Promise<{ data: Uint8Array; kept: boolean }> {
+  async display(threadId: string, messageId: string, partIndex: number, size: DisplaySize, read: () => ImageSource | null): Promise<{ data: Uint8Array; kept: boolean }> {
     const kept = this.kept(threadId, messageId, partIndex, size);
     if (kept !== null) return { data: kept, kept: true };
-    const key = `${messageId}\0${partIndex}\0${size}`;
+    const key = `${threadId}\0${messageId}\0${partIndex}\0${size}`;
     let made = this.#displays.get(key);
     if (made === undefined) {
-      const sourceBytes = typeof source === 'string' ? source.length * 3 / 4 : source.length;
-      made = this.#displayTurn(() => makeDisplay(source, size)).then(copy => {
-        // The source wins when it is already as light: a small PNG icon, a WebP sent as one.
-        const light = copy !== null && copy.length < sourceBytes ? copy : new Uint8Array(0);
+      made = this.#displayTurn(async () => {
+        const source = read();
+        if (source === null) return { data: new Uint8Array(0), kept: false };
+        const sourceBytes = typeof source === 'string' ? source.length * 3 / 4 : source instanceof Blob ? source.size : source.length;
+        const copy = await makeDisplay(source, size);
+        const light = copy !== null && (typeof size === 'number' || copy.length < sourceBytes) ? copy : new Uint8Array(0);
         let kept = false;
         try {
           if (!this.#core.journal.isClosed()) {
@@ -146,6 +180,29 @@ export class MediaPreviews {
       this.#displays.set(key, made);
     }
     return await made;
+  }
+
+  /** A chat preview can only serve its own bounded copy, including when the original compresses better. */
+  async chatPreview(threadId: string, messageId: string, partIndex: number, size: ChatPreviewSize, source: () => ChatImageSource | null,
+    options: { ticket: boolean; permit?: { check(): void }; noStore?: boolean }): Promise<{ data: string; url?: string; bytes: number; mimeType: string }> {
+    const cached = this.kept(threadId, messageId, partIndex, size);
+    const copy = cached === null ? await this.display(threadId, messageId, partIndex, size, () => source()?.data ?? null) : { data: cached, kept: true };
+    options.permit?.check();
+    const mimeType = 'image/webp';
+    const bytes = copy.data.length;
+    if (!bytes) {
+      const fallback = source();
+      const data = await smallChatSource(fallback, size);
+      options.permit?.check();
+      return data && fallback ? { data, bytes: decodedBytes(data), mimeType: fallback.mimeType } : { data: '', bytes, mimeType };
+    }
+    if (!options.ticket || !copy.kept) return { data: Buffer.from(copy.data).toString('base64'), bytes, mimeType };
+    const ticket = this.#core.fileTickets.mintBytes(`${threadId}:${messageId}:${partIndex}:preview:${size}`, () => {
+      options.permit?.check();
+      const data = this.kept(threadId, messageId, partIndex, size);
+      return data?.length ? { data, mime: mimeType, ...((options.noStore || options.permit) ? { noStore: true as const } : {}) } : null;
+    });
+    return { data: '', url: `${FILE_ROUTE}/${ticket}`, bytes, mimeType };
   }
 
   /**
@@ -165,23 +222,25 @@ export class MediaPreviews {
   /** Runs `work` once fewer than `DISPLAY_CONCURRENCY` copies are being made. */
   async #displayTurn<T>(work: () => Promise<T>): Promise<T> {
     if (this.#displaying >= DISPLAY_CONCURRENCY) await new Promise<void>(resolve => this.#displayTurns.push(resolve));
-    this.#displaying += 1;
+    else this.#displaying += 1;
     try {
       return await work();
     } finally {
-      this.#displaying -= 1;
-      this.#displayTurns.shift()?.();
+      const next = this.#displayTurns.shift();
+      if (next) next();
+      else this.#displaying -= 1;
     }
   }
 
   /** Queue a missing blur; a full queue leaves it for a later read. */
-  private enqueue(threadId: string, messageId: string, partIndex: number, data: string): void {
-    const key = `${messageId}\0${partIndex}`;
+  private enqueue(threadId: string, messageId: string, partIndex: number, source: PreviewSource): void {
+    const key = `${threadId}\0${messageId}\0${partIndex}`;
     const existing = this.#waiting.get(key) ?? this.running.get(key);
     if (existing !== undefined) return;
-    if (this.#queuedChars + data.length > PREVIEW_QUEUE_CHARS && this.#waiting.size + this.running.size > 0) return;
-    this.#queuedChars += data.length;
-    this.#waiting.set(key, { threadId, messageId, partIndex, data });
+    const chars = typeof source === 'string' ? source.length : source.chars;
+    if (this.#queuedChars + chars > PREVIEW_QUEUE_CHARS && this.#waiting.size + this.running.size > 0) return;
+    this.#queuedChars += chars;
+    this.#waiting.set(key, { threadId, messageId, partIndex, source, chars });
     this.#pump();
   }
 
@@ -190,13 +249,18 @@ export class MediaPreviews {
       const [key, job] = this.#waiting.entries().next().value as [string, Job];
       this.#waiting.delete(key);
       this.running.set(key, job);
-      void makePreview(job.data).then(preview => {
+      // Defer the read even for a free slot, so page hydration never has to inflate the stored picture.
+      void Promise.resolve().then(async () => {
+        if (this.#core.journal.isClosed()) return;
+        const data = typeof job.source === 'string' ? job.source : job.source.read();
+        if (data === null) return;
+        const preview = await makePreview(data);
         if (!this.#core.journal.isClosed()) putMediaPreview(this.#core.journal.db, job.threadId, job.messageId, job.partIndex, preview);
       }).catch((error: unknown) => {
         this.#core.log('warn', `media preview for ${job.messageId} part ${job.partIndex} failed: ${messageOf(error)}`);
       }).finally(() => {
         this.running.delete(key);
-        this.#queuedChars -= job.data.length;
+        this.#queuedChars -= job.chars;
         this.#pump();
       });
     }

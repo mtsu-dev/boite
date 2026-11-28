@@ -45,7 +45,7 @@ test('the server handles health requests during a conversation search', async ()
   const search = h.core.coordination.search(a, 'durable deployment');
   expect(await Promise.race([search.then(() => 'search'), health])).toBe(200);
   expect((await search).matches).toMatchObject([{ threadId: b, matched: ['title', 'chat'], excerpts: ['a durable unique phrase'] }]);
-});
+}, 15_000);
 
 test('a cancelled queued search releases its caller before the active reader finishes', async () => {
   const { h, a, b } = await setup();

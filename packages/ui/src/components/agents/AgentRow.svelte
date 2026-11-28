@@ -3,6 +3,7 @@
   import { ArrowRightLeft, Pin } from '@lucide/svelte';
   import { focusOnMount } from '../../lib/actions';
   import { longPress } from '../../lib/long-press';
+  import type { ThreadWait } from '../../lib/background';
   import { fill, strings } from '../../lib/strings';
   import { ago, elapsed, exactTime } from '../../lib/format';
   import { secondClock } from '../../lib/clock.svelte';
@@ -12,6 +13,7 @@
   import MachinePlace from '../MachinePlace.svelte';
   import { hostMark } from '../../lib/machine-host';
   import StatusMark from '../StatusMark.svelte';
+  import WaitLine from '../WaitLine.svelte';
   import BuiltinBadge from './BuiltinBadge.svelte';
 
   /**
@@ -27,7 +29,7 @@
    * One signal per state: a coloured mark leads the line under the name (the
    * thread rows' shapes, StatusMark.svelte) and the words stay neutral ink.
    */
-  let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename, pending = null }: {
+  let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wait = null, wake = null, machine, machineId, testid, preloadThread = null, preloadView = "agents", onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename, pending = null }: {
     title: string;
     /** A bot Boite ships: a small badge after its name. */
     builtin?: boolean;
@@ -47,11 +49,17 @@
     icon?: Component<{ size?: number; strokeWidth?: number }>;
     /** When its work started, while it works: the right side counts from it. */
     since?: number | null;
+    wait?: ThreadWait | null;
     /** When it next wakes on its own, while it rests. */
     wake?: { at: number; label: string } | null;
     /** The machine it runs on, drawn before the picture once there are two, as on a thread's row. */
     machine?: Machine;
+    /** Owning machine id for press-preload routing even when the machine badge is omitted on the primary machine. */
+    machineId?: string;
     testid?: string;
+    /** Thread id to warm on pointerdown before the click opens the agent. */
+    preloadThread?: string | null;
+    preloadView?: "agents" | "team";
     onclick: () => void;
     picture: Snippet;
     /** Replaces the state on the right, for a row that is not an agent's. */
@@ -124,18 +132,18 @@
         {#if marked}<StatusMark tone="unread" label={strings.sidebar.unread} />{/if}
       {/if}
     </span>
-    {#if detail}
+    {#if detail || wait}
       <span class="detail-line">
         {#if mark}<span class="state-mark" data-testid="agent-row-mark"><StatusMark tone={mark} label={markLabel} /></span>
         {:else if icon}{@const Glyph = icon}<span class="glyph" data-testid="agent-row-glyph"><Glyph size={13} strokeWidth={2} /></span>{/if}
-        <span class="detail" data-testid="agent-row-detail" use:wordFit={detail}></span>
+        {#if wait}<WaitLine {wait} />{:else}<span class="detail" data-testid="agent-row-detail" use:wordFit={detail}></span>{/if}
       </span>
     {/if}
     {#if pending}<span class="pending" data-testid="agent-row-pending" title={pending}><ArrowRightLeft size={12} /><span class="ui-label">{pending}</span></span>{/if}
   </span>
 {/snippet}
 
-<div class="agent-row" class:open class:away class:unread={unread > 0 || marked} class:on-machine={!!machine} data-machine-id={machine?.id} data-tone={tone}>
+<div class="agent-row" class:open class:away class:unread={unread > 0 || marked} class:on-machine={!!machine} data-machine-id={machineId ?? machine?.id} data-tone={tone}>
   {#if renaming}
     <div class="row">
       {#snippet field()}
@@ -150,7 +158,7 @@
       {@render body(field)}
     </div>
   {:else}
-    <button type="button" class="ghost row" bind:this={row} aria-current={open ? 'page' : undefined} title={wake ? `${title}\n${wakeText}` : title} {onclick} oncontextmenu={onmenu} use:press={!!onmenu} data-testid={testid} data-unread={marked ? 'true' : undefined}>
+    <button type="button" class="ghost row" bind:this={row} aria-current={open ? 'page' : undefined} title={wake ? `${title}\n${wakeText}` : title} {onclick} oncontextmenu={onmenu} use:press={!!onmenu} data-testid={testid} data-preload-view={preloadView} data-preload-thread={preloadThread || undefined} data-unread={marked ? 'true' : undefined}>
       {#snippet name()}
         {#if builtin}<span class="name"><span class="title">{title}</span><BuiltinBadge /></span>{:else}<span class="title">{title}</span>{/if}
       {/snippet}
@@ -185,7 +193,7 @@
   /* Meta under and after the bot's name: a size under it, in the subtle ink, at the body's weight. */
   .when { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .spent { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-  .detail-line { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: var(--text-xs); color: var(--color-subtle); }
+  .detail-line { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; font-size: var(--text-xs); color: var(--color-subtle); }
   .glyph { display: inline-flex; flex: none; }
   .detail { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* An answer not read yet reads like an unread message, in the foreground; a state's own colour wins over it. */
@@ -207,4 +215,9 @@
   .rename { flex: 1; min-width: 0; height: 22px; padding: 0 6px; }
   /* A long press opens the menu, not the system's link and text callout. */
   .row { -webkit-touch-callout: none; }
+  @media (max-width: 720px) {
+    .row { min-height: 60px; padding: 10px 12px 10px 10px; gap: 12px; }
+    .title { font-size: var(--text-reading); }
+    .detail-line { font-size: var(--text-sm); }
+  }
 </style>

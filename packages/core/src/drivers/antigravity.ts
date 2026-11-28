@@ -28,6 +28,11 @@ export function isAntigravity(provider: ProviderDescriptor): boolean {
   return provider.quirks?.includes('antigravity') === true;
 }
 
+/** The signed account can serve the conversation again after a wait. The ACP error text gives no Retry-After value. */
+export function isAntigravityAccountUnavailable(text: string): boolean {
+  return /^\s*Agent execution error: Error 0, Message: the Antigravity account that signed this conversation is temporarily unavailable; retry after Retry-After, Status:\s*$/.test(text);
+}
+
 /**
  * The `clientInfo` Antigravity is sent. The agent offers its Claude and GPT
  * models only to clients it allowlists, Zed among them: named `boite`, 1.4.5
@@ -44,19 +49,6 @@ export const ANTIGRAVITY_CLIENT_INFO = { name: 'zed', version: '0.0.0' } as cons
 export function antigravitySessionMeta(version: string | null): { antigravity: { disabledTools: string[] } } | undefined {
   if (version === null || !/^\d+\.\d+\.\d+/.test(version) || compareVersions(version, '1.4.2') < 0) return undefined;
   return { antigravity: { disabledTools: ['run_workflow'] } };
-}
-
-/**
- * The model family a pre-1.4 id belongs to. 1.3 put the thinking level in the
- * id (`gemini-3.8-flash-low`); 1.4 lists the family (`gemini-3.8-flash`) and
- * its levels as a `thought_level` option, yet still takes the old id as the
- * model and sets the level from it (1.4.5, 2026-11-04). A thread or a bot saved
- * on an old id keeps running on it. Null when `id` is listed or matches no family.
- */
-export function antigravityLegacyFamily(values: readonly string[], id: string): string | null {
-  if (values.includes(id)) return null;
-  const families = values.filter((family) => id.startsWith(`${family}-`));
-  return families.sort((a, b) => b.length - a.length)[0] ?? null;
 }
 
 /** A tool's text is bounded at this, the tail kept: the end of a log is the part that matters. */
@@ -151,6 +143,10 @@ const CWD_KEYS = ['Cwd', 'WorkingDirectory', 'working_dir', 'workingDir', 'cwd']
 const OUTPUT_KEYS = ['combinedOutput', 'combined_output'];
 const EXIT_KEYS = ['exitCode', 'exit_code'];
 
+export function antigravityCommandLine(raw: unknown): string | undefined {
+  return firstString(isPlainObject(raw) ? raw : null, COMMAND_KEYS);
+}
+
 /**
  * A tool call's input and output as the card should show them. `input` gains
  * `command` and `cwd` under one spelling whichever one the agent used; `output`
@@ -168,7 +164,7 @@ export function normalizeAntigravityTool(
 
   if (rawInput !== undefined) {
     const clean = sanitizeAntigravityPayload(rawInput);
-    const command = firstString(input, COMMAND_KEYS) ?? firstString(output, COMMAND_KEYS);
+    const command = antigravityCommandLine(rawInput) ?? antigravityCommandLine(rawOutput);
     const cwd = firstString(input, CWD_KEYS) ?? firstString(output, CWD_KEYS);
     result.input =
       isPlainObject(clean) && (command !== undefined || cwd !== undefined)

@@ -8,6 +8,7 @@ import { RpcErrorCode, delegationReply, type AgentLetter, type DelegatedAgent, t
 import { RpcFailure } from '../client';
 import { fakeCore } from './coordination';
 import type { FakeContext } from './context';
+import { fakeContextMode } from './context-mode';
 import { fakeMember } from './requests';
 import { toSummary } from './shared';
 import { accountFor, chooseModel, machineArg, memberModels } from './thread-models';
@@ -91,6 +92,9 @@ export function spawnThere(ctx: FakeContext, parent: Thread, config: DelegationC
   there.threads.set(id, child);
   if (worktree) there.delegationWorktrees.set(id, worktree);
   there.emit('thread.created', structuredClone(toSummary(child)));
+  there.bus.observe('thread.updated', thread => {
+    if (thread.id === id) ctx.emit('delegation.changed', { threadId: parent.id });
+  });
   for (const event of ['question.asked', 'question.answered'] as const) there.bus.observe(event, request => {
     if (request.threadId === id) ctx.emit('delegation.changed', { threadId: parent.id });
   });
@@ -125,6 +129,8 @@ export function workflowThere(ctx: FakeContext, parent: Thread, config: Delegati
   if (parent.agentSessionId) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'delegation.spawn.machine: a mochi\'s subagents run on its own machine', data: { field: 'machine' } });
   const machine = fakeMember(ctx, step.machine ?? '', 'delegation.spawn');
   const { there, child, worktree } = placeThere(ctx, parent, config, base, machine, { model: step.model, effort: step.effort, project: step.project, worktree: step.worktree, title }, task);
+  const contextMode = fakeContextMode(there.providers.find(entry => entry.id === child.providerId) ?? { protocol: 'echo', name: child.providerId }, step.context);
+  child.contextMode = contextMode;
   const at = there.now();
   const turn: Turn = { id: `turn-${child.id}`, threadId: child.id, status: 'running', queuedAt: at, startedAt: at, finishedAt: null, usage: null, error: null };
   Object.assign(child, { status: 'running', turns: [turn], messages: [{ id: `m-${child.id}-task`, threadId: child.id, turnId: turn.id, role: 'user', parts: [{ type: 'text', text: task }], state: 'complete', createdAt: at }] });
@@ -134,7 +140,7 @@ export function workflowThere(ctx: FakeContext, parent: Thread, config: Delegati
   for (const event of ['question.asked', 'question.answered'] as const) there.bus.observe(event, request => {
     if (request.threadId === child.id) ctx.emit('delegation.changed', { threadId: parent.id });
   });
-  return { machine, childId: child.id, providerId: child.providerId, model: child.model, effort: child.effort ?? null, worktree };
+  return { machine, childId: child.id, providerId: child.providerId, accountId: child.accountId, model: child.model, effort: child.effort ?? null, contextMode, worktree };
 }
 
 /**

@@ -17,7 +17,7 @@
  * settings, and a thread that wrote to it in the last 7 days.
  */
 import { randomUUID } from 'node:crypto';
-import type { AgentContact, AgentLetter, Contact, ContactInvite, ContactRequest, ContactSettings, ContactsState, ContactTailscale, CoordinationPeer, ModelTier, RpcParams, RpcResult } from '@boite/contracts';
+import type { AgentContact, AgentLetter, Contact, ContactInvite, ContactRequest, ContactSettings, ContactsState, ContactTailscale, CoordinationPeer, ModelTier, RpcParams, RpcResult, Settings } from '@boite/contracts';
 import { text } from '../coordination-letter.ts';
 import { PeerRefusal, ROUTE } from '../coordination-wire.ts';
 import type { Core } from '../core.ts';
@@ -44,6 +44,7 @@ import { contactFace, groupFace } from './face.ts';
 import { ContactGroupLink, GROUP_LETTER_TTL_MS } from './group-link.ts';
 import { ContactHostAsks } from './host-asks.ts';
 import { ContactHeld } from './held.ts';
+import { assertContacts, contactsOff } from './switch.ts';
 export { CONTACT_JOIN_ROUTE } from './join.ts';
 const dashedName = (name: string): string => name.replace(/\s+/g, '-').toLowerCase();
 export { CONTACT_LINK_ROUTE } from './link-hello.ts';
@@ -115,7 +116,8 @@ export class ContactStore implements LinkedContacts {
 
   constructor(core: Core) {
     this.#core = core;
-    this.tailscale = new TailscaleClient(core.dataDir, core.policy.fetchUnless(() => core.policy.networkOff('contacts'), 'network.contacts', 'the Tailscale API'));
+    // The policy's refusal first, then the owner's switch: neither lets a stored API key reach Tailscale.
+    this.tailscale = new TailscaleClient(core.dataDir, (input, init) => { assertContacts(core, 'the Tailscale API'); return fetch(input, init); });
     this.requests = new ContactRequests(core, this);
     this.relations = new ContactRelations(core);
     this.flags = new ContactFlags(core);
@@ -129,6 +131,28 @@ export class ContactStore implements LinkedContacts {
     this.held = new ContactHeld(core, this);
     // A member that leaves the group takes the contacts it relayed out of `peers()`; a new Bots host takes this core's contacts.
     core.bus.onAny(name => { if (name === 'group.updated') { this.reset(); if (this.#started) { this.groupLink.sweep(true); this.hostAsks.retry(); } } });
+    // The owner's switch (`switch.ts`): off, the links drop; on again, the stored contacts are dialed.
+    // The policy holds them off too: both events move the one state the links follow.
+    let off = contactsOff(core);
+    core.bus.onAny((name, payload) => {
+      if (name !== 'settings.updated' && name !== 'policy.changed') return;
+      const now = name === 'settings.updated' ? contactsOff(core, payload as Settings) : contactsOff(core);
+      if (now === off) return;
+      off = now;
+      this.#switched(now);
+    });
+  }
+
+  #switched(off: boolean): void {
+    if (this.#closed || !this.#started) return;
+    if (off) this.links.close();
+    else {
+      this.arm();
+      this.links.rested();
+      // A timer already running dials on its next tick; the owner who just turned contacts on gets the links now.
+      for (const contact of this.list()) if (contact.role === 'guest' && this.links.due(contact.coreId)) this.dial(contact);
+    }
+    this.changed();
   }
 
   // -- Storage.
@@ -475,6 +499,8 @@ export class ContactStore implements LinkedContacts {
     if (member === null) return this.grantHere(params);
     if (!this.has(params.coreId)) throw invalidParams('coreId: expected the core id of one of this core\'s contacts', { field: 'coreId' });
     const project = await this.members.project(member, params.projectId);
+    // Read again after the member answered: contacts switched off meanwhile open nothing.
+    assertContacts(this.#core);
     const contact = this.#mutate(params.coreId, entry => {
       const existing = entry.grants.find(grant => grant.projectId === project.projectId && grant.machine === member.coreId);
       if (existing) Object.assign(existing, { readThreads: params.readThreads ?? existing.readThreads, name: project.name });
@@ -568,7 +594,7 @@ export class ContactStore implements LinkedContacts {
   forThread(threadId: string): RpcResult<'collaboration.contacts'> {
     this.#core.threads.require(threadId);
     const config = this.#core.coordination.config(threadId);
-    if (config.mode === 'off' || !config.remote) return [];
+    if (config.mode === 'off' || !config.remote || contactsOff(this.#core)) return [];
     // With a Contacts bot, only it sees what each contact opened: the others ask it by name.
     const bot = contactsBot(this.#core);
     return bot === null || bot.threadId === threadId ? this.available() : this.available().map(contact => ({ ...contact, projects: [] }));
@@ -709,6 +735,7 @@ export class ContactStore implements LinkedContacts {
     this.#started = true;
     this.flags.watch();
     this.#listening = this.wantsTailnet();
+    // Only the policy takes the mounts down: a contact reached through Funnel finds them again once the owner's switch is back on.
     this.funnel.start(this.#listening && !this.#core.policy.networkOff('contacts'));
     if (this.list().length > 0 || this.liveInvites().length > 0 || this.members.behind() || this.hostAsks.waiting() || this.groupLink.resuming()) this.arm();
     this.members.push();

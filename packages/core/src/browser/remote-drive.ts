@@ -7,10 +7,10 @@ import {
 import type { Connection } from '../router.ts';
 import { refused } from '../errors.ts';
 import { captureFrame, ViewerStream, type PageInfo, type StreamOptions } from './frames.ts';
-import { RENDER_SCALE } from './chromium.ts';
 import { DEFAULT_MAX_WIDTH, DEFAULT_QUALITY, MAX_SOCKET_BUFFER_BYTES, PushStream, StreamWire, type Picture, type PushOptions } from './push-stream.ts';
-import { chooseScript, EDITABLE_SCRIPT, KEY_CODES, PAGE_INFO_SCRIPT, pickerScript, selectionScript } from './scripts.ts';
+import { chooseScript, EDITABLE_SCRIPT, KEY_CODES, PAGE_INFO_SCRIPT, selectionScript, tapPickerScript } from './scripts.ts';
 import { press } from './automation.ts';
+import { readsConsole } from './page-runtime.ts';
 import type { Tab } from './types.ts';
 
 const FRAME_REUSE_MS = 150;
@@ -27,8 +27,9 @@ const TICKET_LIFE_MS = 30_000;
 const VIEWERS_MAX = 32;
 
 interface Saved { frame: RemoteBrowserFrame; page: PageInfo; seq: number }
-interface Viewer { requestedAt: number; tabId: string; options: StreamOptions; frames: Saved[] }
+interface Viewer { requestedAt: number; tab: Tab; options: StreamOptions; frames: Saved[] }
 interface StreamEntry { tabId: string; options: StreamOptions; stream: ViewerStream; asking: number; idle?: ReturnType<typeof setTimeout> }
+interface Held { tab: Tab; point: { x: number; y: number } }
 
 /** The socket a viewer's stream is pushed on, as the server gives it. */
 export interface StreamPeer {
@@ -48,7 +49,7 @@ interface Ticket { key: string; connection: Connection; threadId: ThreadId; tabI
 /** A viewer whose frames are pushed. Its last `frames` entry is the page its pictures show now: input may name it for as long as the stream lasts. */
 interface PushViewer { key: string; connection: Connection; threadId: ThreadId; tab: Tab; stream: PushStream; wire: StreamWire; peer: StreamPeer; frames: Saved[]; closed: boolean }
 
-const streamKey = (tabId: string, options: StreamOptions) => `${tabId}:${options.maxWidth ?? 0}:${options.quality}`;
+const streamKey = (tab: Tab, options: StreamOptions) => `${tab.id}:${tab.targetId}:${options.maxWidth ?? 0}:${options.quality}`;
 
 interface RemoteDriveContext {
   require(threadId: ThreadId): { archived: boolean };
@@ -58,6 +59,7 @@ interface RemoteDriveContext {
   send(tab: Tab, method: string, params?: Record<string, unknown>): Promise<unknown>;
   /** `strict`: a size change or a read of the page's size, which no capture may overlap. */
   screen<T>(tab: Tab, run: () => Promise<T>, strict?: boolean): Promise<T>;
+  resize(tab: Tab, size: Tab['viewport']): Promise<void>;
   /** Runs `run` on the tab's page awake (`sleep.ts`). */
   use<T>(tab: Tab, run: () => Promise<T>): Promise<T>;
 }
@@ -77,7 +79,7 @@ export class RemoteDrive {
   /** Per client and conversation, the stream its frames are pushed on (`push-stream.ts`). */
   #pushes = new Map<string, PushViewer>();
   /** Per client and conversation, the left button its viewer holds down on a tab, and where it last was. */
-  #held = new Map<string, { threadId: ThreadId; tabId: string; point: { x: number; y: number } }>();
+  #held = new Map<string, Held>();
   /** Per client and conversation, a press still on its way, and whether its viewer left meanwhile. */
   #pressing = new Map<string, { left: boolean }>();
   #context: RemoteDriveContext;
@@ -87,12 +89,21 @@ export class RemoteDrive {
   }
 
   dropTab(id: string): void {
-    for (const viewer of this.#viewers.values()) viewer.frames = viewer.frames.filter(saved => saved.frame.tabId !== id);
-    for (const [key, entry] of this.#streams) if (entry.tabId === id) this.#stopStream(key);
-    for (const viewer of [...this.#pushes.values()]) if (viewer.tab.id === id) this.#endPush(viewer, BrowserStreamClose.TabGone, 'tab closed');
+    this.#retireTarget(id, BrowserStreamClose.TabGone, 'tab closed');
     for (const [ticket, entry] of this.#tickets) if (entry.tabId === id) this.#tickets.delete(ticket);
     for (const [key, shown] of this.#shown) if (shown.tabId === id) this.#shown.delete(key);
-    for (const [key, held] of this.#held) if (held.tabId === id) this.#held.delete(key);
+  }
+
+  /** The tab survives a profile change, but its old frames and input do not. */
+  replaceTab(id: string): void {
+    this.#retireTarget(id, BrowserStreamClose.Reconnect, 'reconnect');
+  }
+
+  #retireTarget(id: string, code: number, reason: string): void {
+    for (const viewer of this.#viewers.values()) viewer.frames = viewer.frames.filter(saved => saved.frame.tabId !== id);
+    for (const [key, entry] of this.#streams) if (entry.tabId === id) this.#stopStream(key);
+    for (const viewer of [...this.#pushes.values()]) if (viewer.tab.id === id) this.#endPush(viewer, code, reason);
+    for (const [key, held] of this.#held) if (held.tab.id === id) this.#held.delete(key);
   }
 
   /** The tab moved to another document, size or color scheme: no viewer is shown what it was before. */
@@ -121,7 +132,7 @@ export class RemoteDrive {
   watching(tabId: string): boolean {
     for (const entry of this.#streams.values()) if (entry.tabId === tabId) return true;
     for (const viewer of this.#pushes.values()) if (viewer.tab.id === tabId) return true;
-    for (const viewer of this.#viewers.values()) if (viewer.tabId === tabId && Date.now() - viewer.requestedAt < STREAM_IDLE_MS) return true;
+    for (const viewer of this.#viewers.values()) if (viewer.tab.id === tabId && !viewer.tab.sleep.dropped && Date.now() - viewer.requestedAt < STREAM_IDLE_MS) return true;
     for (const shown of this.#shown.values()) if (shown.tabId === tabId && Date.now() - shown.at < REMOTE_WATCH_MS) return true;
     return false;
   }
@@ -134,13 +145,13 @@ export class RemoteDrive {
     for (const [id, shown] of this.#shown) if (Date.now() - shown.at >= REMOTE_WATCH_MS) this.#shown.delete(id);
     if (this.#shown.size >= 32 && !this.#shown.has(key)) throw refused('too many remote browser viewers');
     this.#shown.set(key, { tabId: tab.id, at: Date.now() });
-    await this.#context.use(tab, async () => {});
+    await this.#useCurrent(tab, async () => {});
     return { ok: true };
   }
 
   /** Whether a viewer that asked within `withinMs` is shown this screencast. */
   #watched(key: string, withinMs = Infinity): boolean {
-    for (const viewer of this.#viewers.values()) if (streamKey(viewer.tabId, viewer.options) === key && Date.now() - viewer.requestedAt < withinMs) return true;
+    for (const viewer of this.#viewers.values()) if (streamKey(viewer.tab, viewer.options) === key && Date.now() - viewer.requestedAt < withinMs) return true;
     return false;
   }
 
@@ -168,6 +179,14 @@ export class RemoteDrive {
     return this.#context.screen(tab, () => captureFrame(tab.id, { evaluate: (script, ms) => this.#context.evaluate(tab, script, ms), send: (method, params, ms) => tab.engine.cdp.send(method, params ?? {}, tab.sessionId, ms) }, maxWidth, quality));
   }
 
+  /** A profile switch keeps the public tab ID but retires its target, even during a wake. */
+  #useCurrent<T>(tab: Tab, run: () => Promise<T>): Promise<T> {
+    return this.#context.use(tab, () => {
+      if (this.#context.tabOf(tab.threadId, tab.id) !== tab) throw refused('the browser tab changed profiles');
+      return run();
+    });
+  }
+
   async remoteFrame({ threadId, tabId, maxWidth, quality, after }: RpcParams<'browser.remoteFrame'>, connection: Connection): Promise<RemoteBrowserFrame | RemoteBrowserUnchanged> {
     this.#viewer(threadId, connection);
     const options = { ...(maxWidth === undefined ? {} : { maxWidth }), ...(quality === undefined ? {} : { quality }), ...(after === undefined ? {} : { after }) };
@@ -178,10 +197,10 @@ export class RemoteDrive {
     for (const [id, value] of this.#viewers) if (Date.now() - value.requestedAt > 10_000) this.#viewers.delete(id);
     if (this.#viewers.size + this.#pushes.size >= VIEWERS_MAX && !previous) throw refused('too many remote browser viewers');
     const tab = this.#context.tabOf(threadId, tabId);
-    const viewer: Viewer = { requestedAt: Date.now(), tabId: tab.id, options: { maxWidth, quality: quality ?? 55 }, frames: previous?.frames ?? [] };
+    const viewer: Viewer = { requestedAt: Date.now(), tab, options: { maxWidth, quality: quality ?? 55 }, frames: previous?.frames ?? [] };
     this.#viewers.set(key, viewer);
     // The desktop app's webviews have one DevTools session each, the agent's: no second one to stream on.
-    return this.#context.use(tab, () => tab.engine.hosted ? this.#captured(tab, viewer, maxWidth, quality) : this.#streamed(tab, viewer, after));
+    return this.#useCurrent(tab, () => tab.engine.hosted ? this.#captured(tab, viewer, maxWidth, quality) : this.#streamed(tab, viewer, after));
   }
 
   /** A capture of a tab the desktop app hosts, shared by the viewers that ask within `FRAME_REUSE_MS`. */
@@ -194,6 +213,7 @@ export class RemoteDrive {
       promise.then(() => { if (tab.frame?.promise === promise) tab.frame.at = Date.now(); }, () => { if (tab.frame?.promise === promise) tab.frame = null; });
     }
     const captured = await tab.frame.promise;
+    if (this.#context.tabOf(tab.threadId, tab.id) !== tab) throw refused('the browser tab changed profiles');
     // Each viewer gets its own frame id: input names the frame it was aimed at.
     const frame = { ...captured.frame, id: crypto.randomUUID(), at: Date.now() };
     this.#keep(viewer, { frame: { ...frame, base64: '' }, page: captured.page, seq: -1 });
@@ -245,6 +265,7 @@ export class RemoteDrive {
     let tab: Tab;
     try { this.#viewer(entry.threadId, entry.connection); } catch { peer.close(BrowserStreamClose.Refused, 'not subscribed'); return null; }
     try { tab = this.#context.tabOf(entry.threadId, entry.tabId); } catch { peer.close(BrowserStreamClose.TabGone, 'tab closed'); return null; }
+    if (tab.engine.hosted) { peer.close(BrowserStreamClose.Reconnect, 'reconnect'); return null; }
     const previous = this.#pushes.get(entry.key);
     if (previous) this.#endPush(previous, 1000, 'replaced');
     const stream = new PushStream(tab.engine.cdp, tab.targetId, entry.options, run => this.#context.screen(tab, run));
@@ -255,7 +276,7 @@ export class RemoteDrive {
     this.#pushes.set(entry.key, viewer);
     stream.attach(picture => viewer.wire.offer(picture));
     // The tab is woken for its first picture, and `watching` keeps it awake from here.
-    this.#context.use(tab, () => stream.start()).catch(() => this.#endPush(viewer, BrowserStreamClose.Reconnect, 'reconnect'));
+    this.#useCurrent(tab, () => stream.start()).catch(() => this.#endPush(viewer, BrowserStreamClose.Reconnect, 'reconnect'));
     return {
       message: text => {
         const message = ((): { type?: unknown; maxWidth?: unknown } | null => { try { return JSON.parse(text) as { type?: unknown } | null; } catch { return null; } })();
@@ -315,7 +336,7 @@ export class RemoteDrive {
 
   /** A frame of the tab's screencast newer than the one the viewer holds, or `unchanged` when the page drew nothing new. */
   async #streamed(tab: Tab, viewer: Viewer, after: string | undefined): Promise<RemoteBrowserFrame | RemoteBrowserUnchanged> {
-    const key = streamKey(tab.id, viewer.options);
+    const key = streamKey(tab, viewer.options);
     let entry = this.#streams.get(key);
     if (!entry) {
       const stream = new ViewerStream(tab.engine.cdp, tab.targetId, async () => await this.#context.evaluate(tab, PAGE_INFO_SCRIPT, 5000) as PageInfo | null);
@@ -345,6 +366,7 @@ export class RemoteDrive {
       }
       if (stream.closed) throw refused('that browser tab is closed');
       const page = next ? await stream.info(next) : null;
+      if (stream.closed) throw refused('that browser tab is closed');
       // Looked at, even unusable: Chrome draws the next one.
       if (next) stream.take();
       // Between two documents the page answers nothing yet.
@@ -376,7 +398,7 @@ export class RemoteDrive {
     const tab = this.#context.tabOf(threadId, saved.frame.tabId);
     // The button is held on another tab, the one the viewer showed before: it is let go there,
     // and a release that this ends has nothing left to do on the new tab.
-    if (input.kind === 'pointer' && held && held.tabId !== tab.id) {
+    if (input.kind === 'pointer' && held && held.tab !== tab) {
       this.#held.delete(key);
       await this.#release(held);
       if (input.action === 'up') return { ok: true };
@@ -384,23 +406,22 @@ export class RemoteDrive {
     const pressing = input.kind === 'pointer' && input.action === 'down' ? { left: false } : null;
     if (pressing) this.#pressing.set(key, pressing);
     let result: Awaited<ReturnType<RemoteDrive['remoteInput']>>;
-    try { result = await this.#context.use(tab, () => this.#input(tab, saved, input)); }
+    try { result = await this.#useCurrent(tab, () => this.#input(tab, saved, input)); }
     finally { if (pressing && this.#pressing.get(key) === pressing) this.#pressing.delete(key); }
-    if (input.kind === 'pointer') {
+    if (input.kind === 'pointer' && !tab.sleep.dropped) {
       const point = { x: Math.min(saved.page.width - 1, input.x * saved.page.width), y: Math.min(saved.page.height - 1, input.y * saved.page.height) };
       // The viewer left before its press landed: nobody will let go of it.
-      if (pressing?.left) await this.#release({ threadId, tabId: tab.id, point });
+      if (pressing?.left) await this.#release({ tab, point });
       else if (input.action === 'up') this.#held.delete(key);
-      else if (input.action === 'down' || (input.buttons && held?.tabId === tab.id)) this.#held.set(key, { threadId, tabId: tab.id, point });
+      else if (input.action === 'down' || (input.buttons && held?.tab === tab)) this.#held.set(key, { tab, point });
     }
     return result;
   }
 
   /** Lets go of a button a viewer left held, where it was last seen. A tab already gone has nothing to let go. */
-  async #release(held: { threadId: ThreadId; tabId: string; point: { x: number; y: number } }): Promise<void> {
-    let tab: Tab;
-    try { tab = this.#context.tabOf(held.threadId, held.tabId); } catch { return; }
-    await this.#context.use(tab, () => this.#pointer(tab, 'up', held.point, 0));
+  async #release({ tab, point }: Held): Promise<void> {
+    if (tab.sleep.dropped) return;
+    await this.#context.use(tab, async () => { if (!tab.sleep.dropped) await this.#pointer(tab, 'up', point, 0); });
     tab.frame = null;
   }
 
@@ -413,7 +434,15 @@ export class RemoteDrive {
       for (const viewer of this.#pushes.values()) if (viewer.tab.id === tab.id) viewer.frames = [];
     };
     switch (input.kind) {
-      case 'navigate': retire(); await this.#context.send(tab, 'Page.navigate', { url: input.url }); return { ok: true };
+      case 'navigate': {
+        retire();
+        // Off before the navigation starts, as for the agent's (`#navigate` in browser.ts).
+        if (!readsConsole(input.url)) await tab.page.frames?.runtime?.follow(input.url);
+        const reply = await this.#context.send(tab, 'Page.navigate', { url: input.url }) as { errorText?: string; isDownload?: boolean };
+        if (reply.isDownload || reply.errorText) await tab.page.frames?.runtime?.follow(tab.url || 'about:blank');
+        if (reply.errorText && !reply.isDownload) throw refused(`${input.url} could not be opened: ${reply.errorText}`);
+        return { ok: true };
+      }
       case 'reload': retire(); await this.#context.send(tab, 'Page.reload'); return { ok: true };
       case 'history': {
         retire();
@@ -423,9 +452,9 @@ export class RemoteDrive {
         return { ok: true };
       }
       case 'viewport':
-        retire(); await this.#context.screen(tab, () => this.#context.send(tab, 'Emulation.setDeviceMetricsOverride', { width: input.width, height: input.height, deviceScaleFactor: RENDER_SCALE, mobile: false }), true);
-        tab.preset = null; this.stale(tab); return { ok: true };
-      case 'reset-viewport': retire(); await this.#context.screen(tab, () => this.#context.send(tab, 'Emulation.clearDeviceMetricsOverride'), true); tab.preset = null; this.stale(tab); return { ok: true };
+        retire(); await this.#context.resize(tab, { width: input.width, height: input.height }); this.stale(tab); return { ok: true };
+      case 'reset-viewport':
+        retire(); await this.#context.resize(tab, null); this.stale(tab); return { ok: true };
       default: break;
     }
     // The size the viewer aimed at is known without the page: a tap on another one is refused before a read of it.
@@ -437,19 +466,23 @@ export class RemoteDrive {
       tab.frame = null;
       return { ok: true };
     }
+    const at = (x: number, y: number) => ({ x: Math.min(saved.page.width - 1, x * saved.page.width), y: Math.min(saved.page.height - 1, y * saved.page.height) });
+    // A plain tap can validate the document and find its select in one renderer call.
+    if (input.kind === 'tap' && (input.count ?? 1) === 1 && !input.shift) {
+      const point = at(input.x, input.y);
+      const result = await this.#context.screen(tab, () => this.#context.evaluate(tab, tapPickerScript(point.x, point.y, REMOTE_PICKER_MAX, saved.page), 5000), true) as { picker: RemoteBrowserPicker | null } | null;
+      if (!result) throw changed();
+      if (result.picker) await this.#context.send(tab, 'Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+      else await this.#click(tab, point, 1, false);
+      tab.frame = null;
+      return { ok: true, ...(result.picker ? { picker: result.picker } : {}) };
+    }
     // Read in turn with captures: a scaled one in flight resizes the page for its shot.
     const page = await this.#context.screen(tab, () => this.#context.evaluate(tab, PAGE_INFO_SCRIPT, 5000), true) as PageInfo;
     const same = page.width === saved.page.width && page.height === saved.page.height && page.href === saved.page.href && page.origin === saved.page.origin;
     if (!same) throw changed();
-    const at = (x: number, y: number) => ({ x: Math.min(page.width - 1, x * page.width), y: Math.min(page.height - 1, y * page.height) });
     switch (input.kind) {
-      case 'tap': {
-        const point = at(input.x, input.y);
-        // A plain tap on a <select> focuses it and answers its options: Chrome's own list would open on this machine, in no frame.
-        const picker = (input.count ?? 1) === 1 && !input.shift ? await this.#context.evaluate(tab, pickerScript(point.x, point.y, REMOTE_PICKER_MAX), 5000) as RemoteBrowserPicker | null : null;
-        if (picker) { await this.#context.send(tab, 'Input.dispatchMouseEvent', { type: 'mouseMoved', ...point }); tab.frame = null; return { ok: true, picker }; }
-        await this.#click(tab, point, input.count ?? 1, input.shift === true); break;
-      }
+      case 'tap': await this.#click(tab, at(input.x, input.y), input.count ?? 1, input.shift === true); break;
       case 'choose': {
         const point = at(input.x, input.y);
         if (!await this.#context.evaluate(tab, chooseScript(point.x, point.y, input.index, input.label), 5000)) throw refused('that option cannot be chosen: the list changed or the option is disabled');
@@ -486,7 +519,7 @@ export class RemoteDrive {
     const saved = this.#saved(`${connection.id}:${threadId}`, frameId);
     if (!saved) throw refused('refresh the live browser before copying');
     const tab = this.#context.tabOf(threadId, saved.frame.tabId);
-    const text = String(await this.#context.use(tab, () => this.#context.evaluate(tab, selectionScript(REMOTE_SELECTION_MAX), 5000)) ?? '');
+    const text = String(await this.#useCurrent(tab, () => this.#context.evaluate(tab, selectionScript(REMOTE_SELECTION_MAX), 5000)) ?? '');
     return { text: text.slice(0, REMOTE_SELECTION_MAX), truncated: text.length > REMOTE_SELECTION_MAX };
   }
 

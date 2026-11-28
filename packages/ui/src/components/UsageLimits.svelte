@@ -55,7 +55,8 @@
     {@const at = row.checkedAt}
     {@const observed = row.source === 'observation'}
     {@const pending = loading && !completed.includes(row.accountId)}
-    {@const stale = row.windows.length > 0 && (row.error !== null || row.status === 'unavailable')}
+    {@const hasReading = row.windows.length > 0 || !!row.gateway?.credits.length}
+    {@const stale = hasReading && (row.status === 'unavailable' || row.error !== null)}
     {@const shown = shownWindows(row)}
     <section class="card provider" class:dragging={reorder.dragging === row.accountId} data-testid="usage-limit-provider" data-provider={row.providerId} data-account-id={row.accountId}>
       <!-- The logo below is the focusable handle; the header only widens where a press starts a drag. -->
@@ -74,7 +75,7 @@
           {#if row.gateway && (row.gateway.plan || row.gateway.status !== 'ready')}
             <span class="badges">
               {#if row.gateway.plan}<span class="badge" data-testid="usage-limit-plan"><span class="ui-label">{row.gateway.plan}</span></span>{/if}
-              {#if row.gateway.status !== 'ready'}<span class="badge status-{row.gateway.status}" data-testid="usage-limit-status"><span class="ui-label">{strings.subscriptionProxy.entryStatus[row.gateway.status]}</span></span>{/if}
+              {#if row.gateway.status !== 'ready'}<span class="badge status-{row.gateway.status}" title={row.gateway.statusReason ?? undefined} data-testid="usage-limit-status"><span class="ui-label">{strings.subscriptionProxy.entryStatus[row.gateway.status]}</span></span>{/if}
             </span>
           {/if}
           {#if at !== null}<small class="checked" title={fill(observed ? strings.quotas.observed : strings.quotas.checked, { time: observed ? exactTime(at) : weekdayTime(at) })}><Clock3 size={11} aria-hidden="true" /><span class="ui-label">{observed ? exactTime(at) : weekdayTime(at)}</span></small>{/if}
@@ -116,12 +117,12 @@
             <span class="heading"><Wallet size={13} aria-hidden="true" /><span class="ui-label">{credit.label}</span></span>
             <span class="amount ui-label">{credit.remaining !== null
               ? `${credit.limit !== null ? fill(strings.subscriptionProxy.creditOf, { remaining: creditBalance(credit.remaining), limit: creditBalance(credit.limit) }) : creditBalance(credit.remaining)}${unit}`
-              : credit.used !== null ? `${fill(strings.subscriptionProxy.creditUsed, { used: creditBalance(credit.used) })}${unit}` : '—'}</span>
+              : credit.used !== null ? `${fill(strings.subscriptionProxy.creditUsed, { used: creditBalance(credit.used) })}${unit}` : '–'}</span>
           </div>
         {/each}
         {#if store?.owner}<QuotaReset {row} {store} disabled={pending} />{:else}<QuotaExtras {row} />{/if}
         {#if stale}<small data-testid="usage-limit-stale">{row.checkedAt === null ? strings.quotas.stale : `${strings.quotas.stale} · ${weekdayTime(row.checkedAt)}`}</small>{/if}
-        {#if row.windows.length === 0 && !row.gateway?.credits.length && !row.error}
+        {#if !hasReading && !row.error}
           {#if pending}
             <p class="muted" role="status" data-testid="usage-limit-loading">{strings.quotas.loading}</p>
           {:else}<p class="muted">{strings.quotas.unavailable}</p>{/if}
@@ -185,7 +186,7 @@
   article[aria-busy='true'] .track { filter: saturate(0.15); }
   article[aria-busy='true'] .fill { animation: breathe 1.1s ease-in-out infinite alternate var(--loops); }
   /* Dimmed like the tray's stale meters: a reading, but not a fresh one. */
-  article.stale .track { opacity: 0.45; }
+  article.stale :is(.track, .credit) { opacity: 0.45; }
   @media (prefers-reduced-motion: reduce) {
     .track, .fill { transition: none; }
     article[aria-busy='true'] .fill { animation: none; }

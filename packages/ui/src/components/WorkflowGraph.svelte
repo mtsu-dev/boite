@@ -3,12 +3,9 @@
   import { tick } from 'svelte';
   import { conditionText, type DelegationProfile, type WorkflowNode, type WorkflowRun } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
-  import { edgesOf, fitsPhase, loopsOf, nodeProgress, nodeTiming, nodeTokens, phasesOf, roundLabel, routeOf, type WorkflowLoop } from '../lib/workflow-view';
-  import { formatTokens, levelName } from '../lib/format';
-  import Elapsed from './Elapsed.svelte';
-  import ProviderLogo from './ProviderLogo.svelte';
-  import StatusMark from './StatusMark.svelte';
-  import { workflowTone } from '../lib/status-tone';
+  import type { Store } from '../lib/store.svelte';
+  import { edgesOf, fitsPhase, loopsOf, nodeProgress, phasesOf, roundLabel, stepTitle, type WorkflowLoop } from '../lib/workflow-view';
+  import WorkflowExecutionRow from './WorkflowExecutionRow.svelte';
 
   /**
    * The run top to bottom, one row per dependency level, the steps of a row
@@ -20,11 +17,12 @@
    * closes it back up to the one it starts from, past every card between.
    */
   let {
+    store,
     run,
     profiles,
     selectedId,
     onselect
-  }: { run: WorkflowRun; profiles: DelegationProfile[]; selectedId: string | null; onselect: (nodeId: string) => void } = $props();
+  }: { store: Store; run: WorkflowRun; profiles: DelegationProfile[]; selectedId: string | null; onselect: (nodeId: string) => void } = $props();
 
   const uid = $props.id();
   /**
@@ -141,8 +139,7 @@
 
 {#snippet card(node: WorkflowNode)}
   {@const progress = nodeProgress(node)}
-  {@const route = routeOf(node, profiles, run.plan.steps.find(step => step.id === node.id))}
-  {@const timing = nodeTiming(node)}
+  {@const step = run.plan.steps.find(step => step.id === node.id)}
   {@const note = hint(node)}
   {@const loop = closing.get(node.id)}
   <button
@@ -152,18 +149,15 @@
     data-node-id={node.id}
     data-status={node.status}
     data-testid="workflow-node"
-    title={node.error ?? node.title}
+    title={node.error ?? stepTitle(node)}
     onclick={() => onselect(node.id)}
   >
-    <span class="head">
-      <StatusMark {...workflowTone(node.status)} />
-      <span class="name ui-label">{node.title}</span>
+    <WorkflowExecutionRow {store} {node} {profiles} {step} compact>
+    {#snippet titleAside()}
       {#if node.forEach && progress.total > 0}<span class="count ui-label" data-testid="workflow-node-count">{progress.done}/{progress.total}</span>{/if}
       {#if loop}<span class="round {loop.state}" title={loopTitle(loop)} data-testid="workflow-round"><Repeat size={11} strokeWidth={2} />{roundLabel(loop)}</span>{/if}
-    </span>
-    {#if route}
-      <span class="route"><ProviderLogo providerId={route.providerId} size={12} /><span class="model ui-label">{route.model || route.profile}</span>{#if route.effort}<span class="effort ui-label" data-testid="workflow-effort">{levelName({ id: route.effort, label: route.effort })}</span>{/if}</span>
-    {/if}
+    {/snippet}
+    </WorkflowExecutionRow>
     {#if node.forEach && progress.total > 0}
       <span class="bar" aria-hidden="true">
         {#each node.instances as inst (inst.key)}<i class={inst.status}></i>{/each}
@@ -171,11 +165,6 @@
     {/if}
     {#if note}<span class="note ui-label">{note}</span>{/if}
     {#if loop && !wide}<span class="note ui-label">{fill(strings.workflow.loopsBack, { step: byId.get(loop.from)?.title ?? loop.from })}</span>{/if}
-    {#if node.status === 'skipped'}
-      <span class="note ui-label">{strings.workflow.stepStatus.skipped}</span>
-    {:else if timing.startedAt !== null}
-      <span class="note metrics"><Elapsed startedAt={timing.startedAt} finishedAt={timing.finishedAt} active={timing.active} />{#if node.instances.some(inst => inst.usage !== undefined)}<span>·</span><span data-testid="workflow-node-tokens" title={strings.workflow.tokensHelp}>{fill(strings.workflow.tokens, { tokens: formatTokens(nodeTokens(node)) })}</span>{/if}</span>
-    {/if}
   </button>
 {/snippet}
 
@@ -260,21 +249,13 @@
   .node { position: relative; width: 100%; height: auto; min-height: 0; padding: 9px 10px; display: flex; flex-direction: column; align-items: stretch; gap: 5px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); box-shadow: var(--shadow-e1); color: var(--color-foreground); text-align: left; font-weight: 400; transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint); }
   .node:hover { background: color-mix(in srgb, var(--color-surface-2) 100%, var(--color-foreground) 4%); border-color: var(--color-edge); }
   .node:focus-visible { border-color: var(--color-edge); background: color-mix(in srgb, var(--color-surface-2) 100%, var(--color-foreground) 4%); }
-  .node.selected { border-color: var(--color-foreground); }
-  .node.running { border-color: color-mix(in srgb, var(--color-live) 45%, var(--color-border)); }
-  .node.failed { border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-border)); }
   .node.waiting, .node.skipped { background: var(--color-surface); box-shadow: none; }
   .node.skipped { border-style: dashed; color: var(--color-muted-foreground); }
-  .head { display: flex; align-items: center; gap: 7px; min-width: 0; }
-  .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); font-weight: 500; }
+  .node.selected { background: var(--color-active); }
   .count { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-  .route { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .model { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .effort { flex: none; padding: 2px 5px; border-radius: var(--radius-sm); background: var(--color-surface-3); font-size: var(--text-xs); }
   .note { color: var(--color-subtle); font-size: var(--text-xs); }
-  .metrics { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
   .bar { display: flex; gap: 2px; height: 4px; }
-  .bar i { flex: 1; min-width: 3px; border-radius: 2px; background: var(--color-surface-3); }
+  .bar i { flex: 1; min-width: 3px; border-radius: var(--radius-full); background: var(--color-surface-3); }
   .bar i.running { background: var(--color-live); }
   .bar i.done { background: var(--color-success); }
   .bar i.failed { background: var(--color-danger); }

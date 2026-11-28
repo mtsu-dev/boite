@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { closeSync, copyFileSync, existsSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, copyFileSync, existsSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { posix } from 'node:path';
 const { join } = posix;
 const KEPT_RELEASES = 2;
@@ -87,7 +87,12 @@ export async function managedWorker<Prepared extends { staging: string }>(file: 
     controller.log(`managed update ${result}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (existsSync(directory)) writeFileSync(join(directory, 'error'), message, { mode: 0o600 });
+    if (existsSync(directory)) {
+      // The core reads the error as soon as the marker appears.
+      const temporary = join(directory, 'error.tmp');
+      writeFileSync(temporary, message, { mode: 0o600 });
+      renameSync(temporary, join(directory, 'error'));
+    }
     writeFileSync(join(controller.dataDir, 'server-update-result.json'), JSON.stringify({ error: message }), { mode: 0o600 });
     throw error;
   }

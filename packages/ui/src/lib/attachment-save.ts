@@ -13,11 +13,11 @@ export function decodeBase64(data: string): Uint8Array<ArrayBuffer> {
 }
 
 /** Null outside the shell, where the caller downloads through the browser instead. */
-export async function saveAttachment(name: string, bytes: Uint8Array<ArrayBuffer>, open: boolean): Promise<SavedAttachment | null> {
+export async function saveAttachment(name: string, bytes: Uint8Array<ArrayBuffer>, open: boolean, options?: { export?: boolean }): Promise<SavedAttachment | null> {
   if (!desktopShell()) return null;
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<SavedAttachment>('save_attachment', bytes, {
-    headers: { 'x-boite-name': encodeURIComponent(name), 'x-boite-open': open ? '1' : '0' }
+    headers: { 'x-boite-name': encodeURIComponent(name), 'x-boite-open': open ? '1' : '0', ...(options?.export ? { 'x-boite-export': '1' } : {}) }
   });
 }
 

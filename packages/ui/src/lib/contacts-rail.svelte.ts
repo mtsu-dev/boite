@@ -1,3 +1,5 @@
+import { contactsOn, type Settings } from '@boite/contracts';
+
 /*
  * The contacts column on the window's right edge: whether it is folded, kept
  * on this device. The column itself loads through `contacts-entry.ts`; the Contacts
@@ -5,11 +7,12 @@
  */
 
 /**
- * The rail is available to the owner.
- * A paired device can send a human reply from a shared conversation.
+ * The rail is available to the owner of a machine whose contacts are on
+ * (`contacts` in its settings, off unless turned on). A paired device can send
+ * a human reply from a shared conversation.
  */
-export function contactsShown(store: { owner: boolean }): boolean {
-  return store.owner;
+export function contactsShown(store: { owner: boolean; settings: Pick<Settings, 'contacts'> | null }): boolean {
+  return store.owner && contactsOn(store.settings ?? {});
 }
 
 /** The column's width; the right panel leaves it this much room. */
@@ -25,7 +28,7 @@ class ContactsRail {
   folded = $state(readFolded());
 
   /** Unfolded for this machine's owner; App draws it only on a desktop-wide window. */
-  shown(store: { owner: boolean }): boolean {
+  shown(store: Parameters<typeof contactsShown>[0]): boolean {
     return contactsShown(store) && !this.folded;
   }
 

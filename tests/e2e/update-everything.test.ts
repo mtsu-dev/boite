@@ -43,7 +43,7 @@ test('a release found opens the card beside its rail button at once, without dow
   await page.settleAnimations();
   const place = await page.evaluate<{ left: number; foot: number }>(`(() => {
     const card = document.querySelector('${id('updates-card')}').getBoundingClientRect();
-    const rail = document.querySelector('${id('app-rail')}').getBoundingClientRect();
+    const rail = document.querySelector('${id('app-rail')}, .rail').getBoundingClientRect();
     const button = document.querySelector('${id('nav-updates')}').getBoundingClientRect();
     return { left: Math.round(card.left - rail.right), foot: Math.round(card.bottom - button.bottom) };
   })()`);

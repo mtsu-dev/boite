@@ -9,7 +9,7 @@
  * which Windows 11 makes it pay for at every start: see "Known cost" in
  * `docs/internals/performance.md`. Everywhere else the sidecar is the compiled core.
  *
- * `tauri build --config src-tauri/tauri.bundle.conf.json` wants
+ * The Windows bundle configuration wants
  * `src-tauri/binaries/boite-core-<target triple>.exe` for `bundle.externalBin`,
  * and `src-tauri/binaries/jobs-worker.js` plus
  * `src-tauri/binaries/guard-worker.js` for the `bundle.resources` entries that
@@ -18,7 +18,7 @@
  *
  * The shell exe in `src-tauri/target/release` runs whatever `boite-core.exe`
  * sits beside it (`resolve_core` in `src-tauri/src/local_core/resolve.rs`), which is what the
- * end to end suite drives, so the copy goes there too whenever that exe exists.
+ * end to end suite drives, so the adjacent files are staged there as well.
  * `tests/e2e/shell.test.ts` refuses a sidecar older than the core sources and
  * names the fix, `bun run stage:core`, which is this script after
  * `build-core.ts` (`build:core` on Windows, `build:core:exe` elsewhere).
@@ -30,6 +30,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { requirePinnedBun } from '../../../scripts/ci/bun-version.ts';
 import { readSignature, signatureProblem } from './runtime-signature.ts';
+import { allSidecarWorkers, sidecarWorkers } from './sidecar-workers.ts';
 import { shellTarget } from './targets.ts';
 
 /** Only the platforms whose compiled core this repository actually produces; `BOITE_TARGET` picks a cross build. */
@@ -42,7 +43,6 @@ const coreDist = join(repo, 'packages', 'core', 'dist');
 const binaries = join(shell, 'src-tauri', 'binaries');
 // `tauri build --target <triple>` writes under the triple's own directory.
 const release = join(shell, 'src-tauri', 'target', ...(cross ? [triple] : []), 'release');
-const shellExe = join(release, process.platform === 'win32' ? 'boite-shell.exe' : 'boite-shell');
 
 function refuse(message: string): never {
   console.error(`stage-sidecar: ${message}`);
@@ -57,8 +57,6 @@ function sizeOf(path: string, missing: string): number {
   }
 }
 
-/** The Worker files the compiled core loads by name from beside its executable. */
-const WORKERS = ['jobs-worker.js', 'guard-worker.js', 'artifact-retention-worker.js', 'linux-tcp-worker.js'];
 /** The `boite` shims a thread's PATH reaches: each runs `boite-core cli` from beside itself. */
 const SHIMS = ['boite', 'boite.cmd'];
 const shims = join(repo, 'packages', 'core', 'shims');
@@ -80,6 +78,15 @@ function buildLauncher(): string | null {
   return join(targetDir, ...(cross ? [triple] : []), 'release', 'boite.exe');
 }
 const launcher = buildLauncher();
+
+/**
+ * Linux only: `boite-launch`, which `compile.ts` builds beside the compiled
+ * core and which the core looks for beside its own executable before it ties an
+ * agent's group (packages/core/src/platform/linux-launcher.ts). Bundled as a
+ * second `externalBin` (tauri.bundle.linux.conf.json), so it lands in the same
+ * directory as the installed sidecar, mode 755.
+ */
+const groupLauncher = process.platform === 'linux' ? join(coreDist, 'boite-launch') : null;
 
 /** Windows only: the sidecar is the runtime, and the bundle it runs goes in this directory beside it. */
 const RUNTIME_SIDECAR = process.platform === 'win32';
@@ -160,7 +167,7 @@ function stageBundle(targetDir: string): void {
   // Chunk names carry a hash: what an earlier build left would never be loaded, only shipped.
   rmSync(bundle, { recursive: true, force: true });
   mkdirSync(bundle, { recursive: true });
-  const files = readdirSync(coreDist).filter((name) => (name.endsWith('.js') && !WORKERS.includes(name)) || name.endsWith('.jar'));
+  const files = readdirSync(coreDist).filter((name) => (name.endsWith('.js') && !allSidecarWorkers.includes(name)) || name.endsWith('.jar'));
   if (!files.includes('main.js')) refuse(`${join(coreDist, 'main.js')} does not exist. Build it first: bun run build:core`);
   if (!files.some((name) => name.endsWith('.jar'))) refuse(`${coreDist} has no scrcpy server .jar. Build it again: bun run build:core`);
   let bytes = 0;
@@ -173,14 +180,15 @@ function stageBundle(targetDir: string): void {
 
 /**
  * The one copy both destinations share: the sidecar under `exeName`,
- * every Worker beside it under its own name, which is the only name the core
+ * each platform's Workers beside it under their own names, which the core
  * looks for, and the `boite` shims the core puts on an agent's PATH, with
- * `boite.exe` on Windows.
+ * `boite.exe` on Windows and the group launcher under `launcherName` on Linux.
  */
-export function stageCore(targetDir: string, exeName: string): void {
+export function stageCore(targetDir: string, exeName: string, launcherName = 'boite-launch'): void {
   const exeSource = sidecar;
   const exeBytes = sizeOf(exeSource, `${exeSource} does not exist. Build it first: bun run build:core:exe`);
-  const workers = WORKERS.map((name) => {
+  const names = sidecarWorkers(process.platform);
+  const workers = names.map((name) => {
     const source = join(coreDist, name);
     return {
       name,
@@ -190,6 +198,9 @@ export function stageCore(targetDir: string, exeName: string): void {
   });
 
   mkdirSync(targetDir, { recursive: true });
+  for (const name of allSidecarWorkers) {
+    if (!names.includes(name)) rmSync(join(targetDir, name), { force: true });
+  }
   const exeTarget = join(targetDir, exeName);
   copyFileSync(exeSource, exeTarget);
   // Windows keeps the source's modification time on a copy, and the end to end suite reads it to refuse a stale sidecar.
@@ -214,29 +225,14 @@ export function stageCore(targetDir: string, exeName: string): void {
     copyFileSync(launcher, join(targetDir, 'boite.exe'));
     console.log(`stage-sidecar: ${join(targetDir, 'boite.exe')} (${bytes} bytes)`);
   }
+  if (groupLauncher) {
+    const bytes = sizeOf(groupLauncher, `${groupLauncher} does not exist. Build it first: bun run build:core:exe`);
+    const target = join(targetDir, launcherName);
+    copyFileSync(groupLauncher, target);
+    chmodSync(target, 0o755);
+    console.log(`stage-sidecar: ${target} (${bytes} bytes)`);
+  }
 }
 
-stageCore(binaries, `boite-core-${triple}${suffix}`);
-
-// Cargo may use a shared target directory. Snapshot its shell into this
-// checkout so a later build elsewhere cannot replace the executable under test.
-const metadata = Bun.spawnSync(['cargo', 'metadata', '--no-deps', '--format-version', '1', '--manifest-path', join(shell, 'src-tauri', 'Cargo.toml')], {
-  stdout: 'pipe', stderr: 'pipe', windowsHide: true,
-});
-if (metadata.exitCode !== 0) refuse(`cargo metadata failed: ${metadata.stderr.toString()}`);
-const target = JSON.parse(metadata.stdout.toString()).target_directory as string;
-const builtShell = join(target, ...(cross ? [triple] : []), 'release', `boite-shell${suffix}`);
-if (resolve(builtShell) !== resolve(shellExe) && existsSync(builtShell)) {
-  mkdirSync(release, { recursive: true });
-  copyFileSync(builtShell, shellExe);
-  console.log(`stage-sidecar: shell snapshot ${shellExe}`);
-}
-
-if (existsSync(shellExe)) {
-  stageCore(release, `boite-core${suffix}`);
-} else {
-  console.log(
-    `stage-sidecar: ${shellExe} does not exist, nothing staged beside it. ` +
-      'Build it with `bun run --cwd apps/shell tauri build --no-bundle`.',
-  );
-}
+stageCore(binaries, `boite-core-${triple}${suffix}`, `boite-launch-${triple}`);
+stageCore(release, `boite-core${suffix}`);

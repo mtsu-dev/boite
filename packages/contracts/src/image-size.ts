@@ -5,6 +5,7 @@
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const DIGITS = new Map([...ALPHABET].map((char, value) => [char.charCodeAt(0), value]));
+const AVIF_HEADER_CHARS = 8 * 1024;
 
 /**
  * The first bytes of a base64 string, decoded by hand: this module runs in the
@@ -98,6 +99,35 @@ function jpegSize(b: Uint8Array): Size | null | 'more' {
   }
 }
 
+/** A still AVIF's spatial extents, inside meta/iprp/ipco. */
+function avifSize(b: Uint8Array): Size | null {
+  let start = 0;
+  let end = b.length;
+  for (const kind of ['meta', 'iprp', 'ipco', 'ispe']) {
+    let found = false;
+    for (let at = start; at + 8 <= end;) {
+      const length = u32be(b, at);
+      if (length < 8 || at + length > end) return null;
+      if (ascii(b, at + 4, kind)) {
+        if (kind === 'ispe') {
+          const size = length === 20 ? sized(u32be(b, at + 12), u32be(b, at + 16)) : null;
+          // Grid images may have other extents. Leave ambiguous metadata to the decoder.
+          if (!size || found) return null;
+          start = at;
+        } else {
+          start = at + (kind === 'meta' ? 12 : 8);
+          end = at + length;
+        }
+        found = true;
+        if (kind !== 'ispe') break;
+      }
+      at += length;
+    }
+    if (!found) return null;
+  }
+  return sized(u32be(b, start + 12), u32be(b, start + 16));
+}
+
 function sizeOf(b: Uint8Array): Size | null | 'more' {
   if (b.length >= 24 && b[0] === 0x89 && ascii(b, 1, 'PNG\r\n\x1a\n') && ascii(b, 12, 'IHDR')) {
     return sized(u32be(b, 16), u32be(b, 20));
@@ -120,15 +150,21 @@ function sizeOf(b: Uint8Array): Size | null | 'more' {
 
 /**
  * The size an image is drawn at, read from the header of its base64 bytes:
- * PNG, GIF, WebP and JPEG, the last with its EXIF orientation applied as a
- * browser applies it. Only the start is decoded, a little more for a JPEG
- * whose metadata comes before its frame. Null for anything else.
+ * PNG, GIF, WebP, still AVIF and JPEG, the last with its EXIF orientation
+ * applied as a browser applies it. Decode more of the header for a JPEG or
+ * AVIF whose size comes late. Null for anything else.
  */
 export function imageSize(data: string): Size | null {
   let chars = 4096;
   for (;;) {
     const bytes = prefix(data, chars);
     if (bytes === null) return null;
+    if (ascii(bytes, 4, 'ftypavif')) {
+      const size = avifSize(bytes);
+      if (size !== null || data.length <= chars) return size;
+      const header = prefix(data, AVIF_HEADER_CHARS);
+      return header === null ? null : avifSize(header);
+    }
     const size = sizeOf(bytes);
     if (size !== 'more') return size;
     if (chars >= data.length) return null;

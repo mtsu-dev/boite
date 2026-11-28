@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Condvar, Mutex};
+use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -15,6 +15,8 @@ use crate::window::{show_main, Reveal, REVEAL_AFTER, REVEAL_ANYWAY};
 use crate::{quota_window, resident};
 
 pub(crate) mod health;
+#[cfg(target_os = "linux")]
+mod appimage;
 mod locate;
 mod resolve;
 mod spawn;
@@ -87,40 +89,52 @@ struct Slot {
     extended: u32,
 }
 
-/// Everything a start of the core depends on, decided once when the app is
-/// set up and never read from the environment again.
-#[derive(Clone)]
+/// Inputs for every start of the core in this shell. The command and hash are
+/// resolved once by the background resolver, before it probes a running core.
 pub(crate) struct Launch {
     /// The data directory, resolved once: the core is told it with
     /// `--data-dir`, so the shell and the core can never look in two places.
     directory: PathBuf,
-    /// An error here is only reported when a core has to be started, since a
-    /// running core can be adopted without one.
-    command: Result<CoreCommand, String>,
+    channel: Channel,
+    binary: OnceLock<LaunchBinary>,
     resources: Option<PathBuf>,
     resident: bool,
     /// The shell's own version. A running core that reports another version
     /// belongs to the install an update replaced, and is stopped.
     version: String,
-    /// The installed split bundle, even when a reinstall keeps the same version.
-    bundle_hash: Option<String>,
     /// How long a started core gets to answer `/health`.
     timeout: Duration,
 }
 
+struct LaunchBinary {
+    /// An error here is only reported when a core has to be started, since a
+    /// running core can be adopted without a command.
+    command: Result<CoreCommand, String>,
+    /// The installed split bundle, even when a reinstall keeps the same version.
+    bundle_hash: Option<String>,
+}
+
 impl Launch {
     pub(crate) fn new(channel: Channel, directory: PathBuf, resources: Option<PathBuf>, version: String) -> Self {
-        let command = core_command(channel, &directory);
-        let bundle_hash = command.as_ref().ok().and_then(CoreCommand::bundle_hash);
         Self {
-            command,
-            bundle_hash,
+            channel,
+            binary: OnceLock::new(),
             directory,
             resources,
             resident: resident_core(),
             version,
             timeout: START_TIMEOUT,
         }
+    }
+
+    fn binary(&self) -> &LaunchBinary {
+        self.binary.get_or_init(|| {
+            let started = Instant::now();
+            let command = core_command(self.channel, &self.directory);
+            let bundle_hash = command.as_ref().ok().and_then(CoreCommand::bundle_hash);
+            crate::phase("core-command", started);
+            LaunchBinary { command, bundle_hash }
+        })
     }
 
     /// How long a caller of `core_endpoint` may wait on one resolution: the
@@ -143,7 +157,6 @@ pub struct CoreState {
     /// Set while an update installs: the core was stopped so the installer can
     /// replace its files, and nothing may start it again from the old ones.
     held: AtomicBool,
-    #[cfg(unix)]
     install_lock: Mutex<Option<crate::update_stop::InstallLock>>,
 }
 
@@ -162,7 +175,6 @@ impl CoreState {
             adopted: Mutex::new(None),
             launch,
             held: AtomicBool::new(false),
-            #[cfg(unix)]
             install_lock: Mutex::new(None),
         }
     }
@@ -170,7 +182,7 @@ impl CoreState {
     /// Waits for startup before holding reconnects, then asks the core to hand its turns to the
     /// next one and stop. A core too old for that is asked for an idle-only stop, which
     /// cancellation can still call off.
-    pub(crate) fn wait_for_install(&self, control: &Mutex<crate::update_stop::InstallState>, idle_only: bool, still: impl Fn() -> Result<bool, String>, committed: impl Fn()) -> Result<bool, String> {
+    pub(crate) fn wait_for_install(&self, control: &Mutex<crate::update_stop::InstallState>, idle_only: bool, locks_data: bool, still: impl Fn() -> Result<bool, String>, committed: impl Fn()) -> Result<bool, String> {
         use crate::update_stop;
         if self.held.swap(true, Ordering::SeqCst) { return Err(HELD.into()); }
         let stopped = (|| {
@@ -178,10 +190,9 @@ impl CoreState {
             // start. New resolutions see the hold and cannot spawn a sidecar.
             wait_for_endpoint(&self.slot, self.launch.patience())?;
             reap_child(self);
-            // On Windows the updater exits once NSIS starts. Repair without
-            // a live core needs NSIS to take over the lock for the copy.
-            #[cfg(unix)]
-            if let Some(lock) = update_stop::lock_without_core(&self.launch.directory)? {
+            // Windows installers predating the lock still need live admission.
+            let offline = if locks_data { update_stop::lock_without_core(&self.launch.directory)? } else { None };
+            if let Some(lock) = offline {
                 let mut state = control.lock().map_err(|_| "update admission state is poisoned")?;
                 if state.cancelled() || !still()? { return Ok(false); }
                 *self.install_lock.lock().unwrap() = Some(lock);
@@ -192,8 +203,7 @@ impl CoreState {
             if !update_stop::stop_for_update(&self.launch.directory, control, idle_only, still, committed)? {
                 return Ok(false);
             }
-            #[cfg(unix)]
-            {
+            if locks_data {
                 reap_child(self);
                 let lock = update_stop::lock_without_core(&self.launch.directory)?
                     .ok_or("another core took the data directory after shutdown; nothing was installed")?;
@@ -211,7 +221,6 @@ impl CoreState {
 
     /// The install did not happen: the next caller starts the core again.
     pub(crate) fn release_hold(&self) {
-        #[cfg(unix)]
         self.install_lock.lock().unwrap().take();
         self.held.store(false, Ordering::SeqCst);
     }

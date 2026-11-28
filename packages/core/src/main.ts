@@ -1,17 +1,32 @@
 import {
   chmodSync,
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import type { Channel, Group, PairingGrant, PairingRole, TailscaleStatus } from '@boite/contracts';
-import type { connect } from './client.ts';
 import type { Core } from './core.ts';
 import { CORE_VERSION } from './version.ts';
 import { newToken } from './ids.ts';
 import { resolveDataDir } from './paths.ts';
+
+function hashBundle(path: string): string {
+  const hash = new Bun.CryptoHasher('sha256');
+  const chunk = Buffer.allocUnsafe(256 * 1024);
+  const fd = openSync(path, 'r');
+  try {
+    let bytes: number;
+    while ((bytes = readSync(fd, chunk, 0, chunk.length, null)) !== 0) hash.update(chunk.subarray(0, bytes));
+    return hash.digest('hex');
+  } finally {
+    closeSync(fd);
+  }
+}
 
 // Only what `boite-core cli` needs is imported above: every `boite` call an agent
 // makes starts here. The client, the contracts, the platform and the data lock
@@ -390,9 +405,9 @@ export function main(argv: string[]): void {
   // Commands do not need the server graph. Finish imports before taking its data lock.
   void Promise.all([
     import('./core.ts'), import('./server.ts'), import('./journal/vacuum.ts'), import('./listen-host.ts'), import('./errors.ts'),
-    import('./platform/index.ts'), import('./server-update/restore.ts'), import('./data-lock.ts'), import('node:crypto'),
+    import('./platform/index.ts'), import('./server-update/restore.ts'), import('./data-lock.ts'),
   ]).then(([{ Core }, { PREFERRED_PORTS, startServerOnStickyPort }, { vacuumAtStart, VACUUM_WHEN }, { listenHost }, { messageOf },
-    { processPlatform }, { openDataDir }, { lockDataDir }, { createHash }]) => {
+    { processPlatform }, { openDataDir }, { lockDataDir }]) => {
     let flags: Flags;
     let dataDir: string;
     let unlock: () => void;
@@ -422,7 +437,7 @@ export function main(argv: string[]): void {
       // loaded now; reading it on /health after a reinstall would describe new code.
       const entry = process.argv[1];
       const bundleHash = entry?.endsWith('.js') && existsSync(entry)
-        ? createHash('sha256').update(readFileSync(entry)).digest('hex') : undefined;
+        ? hashBundle(entry) : undefined;
       core = new Core({ dataDir, token, channel: flags.channel, bundleHash, onShutdown: () => shutdown(), dataDirKind: flags.dataDir || process.env.BOITE_DATA_DIR ? 'custom' : 'default' });
     } catch (error) {
       // A journal from a newer release, among others: say why and leave the data as it is.
@@ -517,6 +532,8 @@ export function main(argv: string[]): void {
       // a rejection anywhere in the chain must not skip unlock() and the exit.
       const deadline = setTimeout(() => {
         try { core.log('error', `shutdown did not finish in ${SHUTDOWN_TIMEOUT_MS} ms, exiting`, { source: 'core', event: 'core.shutdown.timeout', durationMs: SHUTDOWN_TIMEOUT_MS }); } catch { /* The unlock and exit below still run. */ }
+        // SIGKILL to every agent group now: the watcher would end them only after its grace (platform/posix-group-watch.ts).
+        try { core.procs.platform.killTiedGroups?.(); } catch { /* The exit below still runs. */ }
         unlock();
         process.exit(1);
       }, SHUTDOWN_TIMEOUT_MS);

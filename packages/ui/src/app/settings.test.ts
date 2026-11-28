@@ -3,6 +3,7 @@ import { store } from '../lib/store.svelte';
 import { query, test, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
+vi.mock('@tauri-apps/api/webview', () => ({ getCurrentWebview: () => ({ setZoom: () => Promise.resolve() }) }));
 
 test('the theme setting stamps the light palette and remembers the choice', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=nav-settings]').click();
@@ -69,7 +70,7 @@ test('the keybindings file moves a chord, takes one away, and the Keyboard page 
   expect(query('[data-testid=keybindings-path]').textContent).toBe('C:\\Users\\you\\AppData\\Local\\boite2\\keybindings.json');
   expect(query('[data-testid=keybinding-error]').textContent).toContain('"trace": "t" has no modifier');
 
-  query<HTMLButtonElement>('[data-testid=view-threads]').click();
+  query<HTMLButtonElement>('[data-testid=settings-back]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
 
@@ -118,6 +119,74 @@ test('a shortcut is recorded from the keys pressed, a taken one asks first, and 
   expect(store.bindings.pin.text).toBe(null);
 });
 
+test('the wheel zoom has no chord, records one from a turn of the wheel, and the interface follows it at once', async ({ app: _app }) => {
+  store.showSettings('keyboard');
+  await waitFor(() => document.querySelector('[data-testid=keyboard-page]') !== null);
+  const row = '[data-testid=keybinding-row][data-command=zoom-wheel]';
+  const keyOf = () => query(`${row} [data-testid=keybinding-key]`).textContent?.replace(/\s+/g, ' ').trim();
+  const capture = () => document.querySelector(`${row} [data-testid=keybinding-capture]`);
+  const press = (init: KeyboardEventInit) => window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+  const turn = (init: WheelEventInit) => {
+    const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -100, ...init });
+    document.body.dispatchEvent(event);
+    return event;
+  };
+  // In the shell, where the zoom listens; the page mounted outside it.
+  (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+  try {
+    expect(keyOf()).toBe('Not set');
+    expect(query(row).textContent).toContain('In the desktop app. Wheel up enlarges, wheel down shrinks.');
+    press({ key: 'Control', ctrlKey: true });
+    expect(turn({ ctrlKey: true }).defaultPrevented).toBe(false);
+    expect(localStorage.getItem('boite.zoom')).toBeNull();
+
+    query<HTMLButtonElement>(`${row} [data-testid=keybinding-edit]`).click();
+    await waitFor(() => capture()?.textContent?.includes('Hold the keys and turn the wheel') === true);
+    // A key is refused on the wheel's row, and so is a wheel turned with no modifier: the page does not scroll under it.
+    expect(press({ key: 'k', ctrlKey: true })).toBe(false);
+    await waitFor(() => document.querySelector(`${row} [role=alert]`)?.textContent?.includes('runs on the wheel') === true);
+    expect(turn({}).defaultPrevented).toBe(true);
+    await waitFor(() => document.querySelector(`${row} [role=alert]`)?.textContent?.includes('The wheel alone') === true);
+    expect(store.bindings['zoom-wheel'].text).toBeNull();
+    // Escape cancels.
+    press({ key: 'Escape' });
+    await waitFor(() => capture() === null);
+    expect(turn({}).defaultPrevented).toBe(false);
+    expect(store.bindings['zoom-wheel'].text).toBeNull();
+
+    query<HTMLButtonElement>(`${row} [data-testid=keybinding-edit]`).click();
+    await waitFor(() => capture() !== null);
+    press({ key: 'Control', ctrlKey: true });
+    await waitFor(() => capture()?.textContent?.replace(/\s+/g, '') === 'Ctrl+Wheel');
+    expect(turn({ ctrlKey: true }).defaultPrevented).toBe(true);
+    await waitFor(() => store.bindings['zoom-wheel'].text === 'mod+wheel');
+    await waitFor(() => keyOf() === 'Ctrl+Wheel');
+    expect(document.querySelector(`${row} [data-testid=keybinding-conflict]`)).toBeNull();
+    // The turn that recorded it zoomed nothing; the next one does.
+    expect(localStorage.getItem('boite.zoom')).toBeNull();
+    press({ key: 'Control', ctrlKey: true });
+    expect(turn({ ctrlKey: true }).defaultPrevented).toBe(true);
+    await waitFor(() => localStorage.getItem('boite.zoom') === '1.1');
+
+    // Cleared, the wheel is the page's again; reset leaves it with no chord too.
+    query<HTMLButtonElement>(`${row} [data-testid=keybinding-clear]`).click();
+    await waitFor(() => store.bindings['zoom-wheel'].custom && store.bindings['zoom-wheel'].text === null);
+    expect(keyOf()).toBe('Not set');
+    press({ key: 'Control', ctrlKey: true });
+    expect(turn({ ctrlKey: true }).defaultPrevented).toBe(false);
+    query<HTMLButtonElement>(`${row} [data-testid=keybinding-reset]`).click();
+    await waitFor(() => !store.bindings['zoom-wheel'].custom);
+    expect(keyOf()).toBe('Not set');
+    expect(turn({ ctrlKey: true }).defaultPrevented).toBe(false);
+    expect(localStorage.getItem('boite.zoom')).toBe('1.1');
+  } finally {
+    const { setZoom } = await import('../lib/zoom');
+    await setZoom(1);
+    delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    localStorage.removeItem('boite.zoom');
+  }
+});
+
 test('the checklist model sits with how agents answer on General, with no experiment on', async ({ app: _app }) => {
   expect(window.localStorage.getItem('boite.experiments')).toBeNull();
   query<HTMLButtonElement>('[data-testid=nav-settings]').click();
@@ -142,7 +211,13 @@ test('the checklist model sits with how agents answer on General, with no experi
   expect(query('#settings-notifications [data-testid=setting-notifications]')).toBeTruthy();
   expect(document.querySelector('#settings-conversations [data-testid=setting-notifications]')).toBeNull();
   expect(query('[data-testid=goal-tracker-model]').textContent).toContain('Automatic');
-  query<HTMLButtonElement>('[data-testid=view-threads]').click();
+  for (const id of ['setting-group-working-threads', 'setting-async-questions']) {
+    const control = query<HTMLInputElement>(`[data-testid=${id}]`);
+    const checked = control.checked;
+    document.getElementById(control.getAttribute('aria-describedby')!)!.click();
+    expect(control.checked).toBe(!checked);
+  }
+  query<HTMLButtonElement>('[data-testid=settings-back]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
 
@@ -157,7 +232,7 @@ test('the gear opens Settings on its home: a tile per page under its family, the
   // One tile per page under the nav's four families; a page merged into Diagnostics keeps a tile under its own name.
   const tiles = (family: string) => [...document.querySelectorAll<HTMLElement>(`[data-testid=settings-home-family][data-family=${family}] .tile`)].map((tile) => tile.dataset.testid?.replace('settings-home-', ''));
   expect(tiles('app')).toEqual(['general', 'keyboard', 'voice', 'appearance']);
-  expect(tiles('agents')).toEqual(['accounts', 'plugins', 'brain', 'limits', 'usage']);
+  expect(tiles('agents')).toEqual(['accounts', 'plugins', 'mcp', 'brain', 'limits', 'usage']);
   expect(tiles('connections')).toEqual(['browser', 'machines']);
   expect(tiles('advanced')).toEqual(['advanced', 'experiments', 'diagnostics', 'resources', 'task-manager']);
   // A tile says its page's state where there is one to read.
@@ -195,6 +270,10 @@ test('the gear opens Settings on its home: a tile per page under its family, the
   field.value = 'connections';
   field.dispatchEvent(new Event('input', { bubbles: true }));
   await waitFor(() => [...document.querySelectorAll('[data-testid=settings-search-result]')].some((result) => result.textContent?.includes('Browser profiles')));
+  // A setting inside a card is found by its own label: the retention of done threads sits in the deleted conversations card.
+  field.value = 'delete done threads';
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => [...document.querySelectorAll('[data-testid=settings-search-result]')].some((result) => result.textContent?.includes('Delete done threads after')));
   field.value = 'font';
   field.dispatchEvent(new Event('input', { bubbles: true }));
   await waitFor(() => document.querySelector('[data-testid=settings-search-results]') !== null);

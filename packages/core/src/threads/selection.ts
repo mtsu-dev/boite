@@ -1,6 +1,8 @@
+import { resolveModelSelection } from '@boite/contracts';
 import type { AccountId, AgentProfile, AgentSelection, ModelInfo, Protocol, ProviderDescriptor } from '@boite/contracts';
 import type { Core } from '../core.ts';
-import { antigravityLegacyFamily, isAntigravity } from '../drivers/antigravity.ts';
+import { antigravityVariant } from '../drivers/acp/antigravity-catalog.ts';
+import { isAntigravity } from '../drivers/antigravity.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
 
@@ -34,13 +36,21 @@ export function modelsFor(provider: ProviderDescriptor, accountId: AccountId): M
   return [...probed, ...provider.models.filter((model) => !known.has(model.id))];
 }
 
+export function selectionFor(provider: ProviderDescriptor, accountId: AccountId, model: string | null, effort?: string | null) {
+  return resolveModelSelection(modelsFor(provider, accountId), model, effort);
+}
+
 /**
- * Whether `models` offers `model`: listed, or for Antigravity a pre-1.4 id of
- * a listed family (`gemini-3.8-flash-low`), which the agent still runs.
+ * Whether `models` offers `model`: listed, aliased, or for Antigravity a pre-1.4
+ * leveled id of a listed base family when its catalog carries no explicit alias yet.
  */
 export function listsModel(provider: ProviderDescriptor, models: readonly ModelInfo[], model: string): boolean {
-  if (models.some((entry) => entry.id === model)) return true;
-  return isAntigravity(provider) && antigravityLegacyFamily(models.map((entry) => entry.id), model) !== null;
+  if (resolveModelSelection(models, model) !== undefined) return true;
+  if (!isAntigravity(provider)) return false;
+  const variant = antigravityVariant(model);
+  if (variant === undefined) return false;
+  const family = models.find(entry => entry.id === variant.family);
+  return family !== undefined && (family.effort === undefined || family.effort.levels.some(level => level.id === variant.effort));
 }
 
 /** Read missing native metadata before validating a new choice, including ACP's per-model scale. */
@@ -48,7 +58,7 @@ export function needsModelDiscovery(
   provider: ProviderDescriptor, accountId: AccountId, model: string | null, effort: string | null, speed: string | null,
 ): boolean {
   if (model === null || !PROBED_PROTOCOLS.includes(provider.protocol)) return false;
-  const listed = modelsFor(provider, accountId).find(entry => entry.id === model);
+  const listed = selectionFor(provider, accountId, model)?.model;
   const missingEffort = effort !== null && listed?.effort === undefined;
   if (provider.protocol === 'acp' && missingEffort) return true;
   return probedModelsOf(provider.protocol, provider.id, accountId) === null &&
@@ -62,6 +72,8 @@ export function needsModelDiscovery(
 export function checkModel(provider: ProviderDescriptor, accountId: AccountId, model: string | null): string | null {
   if (model === null) return null;
   const models = modelsFor(provider, accountId);
+  const resolved = resolveModelSelection(models, model);
+  if (resolved) return resolved.model.id;
   if (listsModel(provider, models, model)) return model;
   throw refused(
     PROBED_PROTOCOLS.includes(provider.protocol) && probedModelsOf(provider.protocol, provider.id, accountId) === null
@@ -83,7 +95,7 @@ export function checkEffort(
   effort: string | null,
 ): string | null {
   if (effort === null) return null;
-  const levels = modelsFor(provider, accountId).find((entry) => entry.id === model)?.effort?.levels ?? [];
+  const levels = selectionFor(provider, accountId, model)?.model?.effort?.levels ?? [];
   if (levels.some((level) => level.id === effort)) return effort;
   throw refused('the model does not offer this reasoning effort', {
     providerId: provider.id,
@@ -91,6 +103,13 @@ export function checkEffort(
     effort,
     expected: levels.length === 0 ? 'null: this model has no effort levels' : levels.map((level) => level.id),
   });
+}
+
+/** Validate and store the resolved model and the effort represented by an old ID. */
+export function checkSelection(provider: ProviderDescriptor, accountId: AccountId, model: string | null, effort: string | null, speed: string | null) {
+  const id = checkModel(provider, accountId, model);
+  const resolved = selectionFor(provider, accountId, model, effort);
+  return { model: id, effort: checkEffort(provider, accountId, id, resolved?.effort ?? effort), speed: checkSpeed(provider, accountId, id, speed) };
 }
 
 /** Keep an approved choice through catalog changes; new models and effort still need validation. */
@@ -117,7 +136,7 @@ export function checkStoredEffort(
   effort: string | null,
 ): void {
   if (effort === null) return;
-  const known = modelsFor(provider, accountId).find((entry) => entry.id === model)?.effort;
+  const known = selectionFor(provider, accountId, model)?.model?.effort;
   if (known === undefined) return;
   checkEffort(provider, accountId, model, effort);
 }
@@ -141,13 +160,13 @@ export function botDefaultModel(provider: ProviderDescriptor, accountId: Account
 
 export function checkSpeed(provider: ProviderDescriptor, accountId: string, model: string | null, speed: string | null): string | null {
   if (speed === null) return null;
-  const options = modelsFor(provider, accountId).find(entry => entry.id === model)?.speeds ?? [];
+  const options = selectionFor(provider, accountId, model)?.model?.speeds ?? [];
   if (options.some(option => option.id === speed)) return speed;
   throw refused('the model does not offer this speed', { providerId: provider.id, model, speed, expected: options.map(option => option.id) });
 }
 
 /** Like stored effort, a validated speed survives the loss of the in-memory catalog. */
 export function checkStoredSpeed(provider: ProviderDescriptor, accountId: AccountId, model: string | null, speed: string | null): void {
-  if (speed === null || modelsFor(provider, accountId).find(entry => entry.id === model)?.speeds === undefined) return;
+  if (speed === null || selectionFor(provider, accountId, model)?.model?.speeds === undefined) return;
   checkSpeed(provider, accountId, model, speed);
 }

@@ -1,54 +1,66 @@
 <script lang="ts">
-  import { ArchiveRestore, Folder, GitMerge, GitPullRequest, GitPullRequestClosed, Puzzle } from '@lucide/svelte';
-  import type { ThreadSummary } from '@boite/contracts';
-  import type { ProjectEntry } from '../lib/project-view.svelte';
+  import { ArchiveRestore, Ellipsis, Folder, GitMerge, GitPullRequest, GitPullRequestClosed, Puzzle, Trash2 } from '@lucide/svelte';
+  import type { Project, ThreadSummary } from '@boite/contracts';
+  import type { Store } from '../lib/store.svelte';
   import { archivedTime } from '../lib/archive';
   import { contextMenu } from '../lib/context-menu.svelte';
-  import { separator } from '../lib/menu';
+  import { separator, type MenuItem } from '../lib/menu';
   import { canDeleteThread } from '../lib/thread-removal';
   import { ThreadRestore } from '../lib/thread-restore.svelte';
   import { agentLabel, ago, exactTime, projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
-  import { workspace } from '../lib/workspace.svelte';
+  import { workspace, type Machine } from '../lib/workspace.svelte';
   import { longPress } from '../lib/long-press';
   import MachineIcon from './MachineIcon.svelte';
+  import ProviderLogo from './ProviderLogo.svelte';
+  import Menu from './Menu.svelte';
 
   /**
-   * A done or archived conversation, drawn like a thread row and on its column: the title
-   * (the agent only in its tooltip), when it was put away, and under it the pull request it ended
-   * with, which opens on the forge. No menu button: a right click, or a long
-   * press on a phone, opens the row's menu. Restoring stays one hover away.
+   * A done or archived conversation, drawn like a thread row and on its columns (ThreadCard.svelte's classic row):
+   * the agent's mark, the title on the live titles' edge, when it was put away where a live row ends on its time,
+   * and under it the pull request it ended
+   * with, which opens on the forge. The row reads the conversation and its
+   * actions keep restoration separate.
    */
-  let { entry, now, showMachine = false, showProject = false, onopen }: {
-    entry: ProjectEntry & { thread: ThreadSummary };
+  let { owner, thread, now, machine, project, onopen }: {
+    owner: Store;
+    thread: ThreadSummary;
     now: number;
-    showMachine?: boolean;
-    /** Only in a list that spans several projects: under a project's header it would repeat it. */
-    showProject?: boolean;
+    machine?: Machine;
+    /** In a list that spans several projects, where the header does not name it already. */
+    project?: Project;
     onopen?: () => void;
   } = $props();
   const lock = new ThreadRestore();
-  const deleting = $derived(lock.deleting !== null);
-  const owner = $derived(entry.machine.store);
-  const thread = $derived(entry.thread);
+  const deleting = $derived(lock.deleting === thread.id);
   const open = $derived(workspace.active === owner && owner.openThread?.id === thread.id);
   const agent = $derived(agentLabel(owner, thread));
+  const reason = $derived(thread.archiveReason);
+  const at = $derived(reason?.archivedAt ?? archivedTime(thread));
   /** The merge that archived it, else the pull request its branch last had. */
-  const pr = $derived(thread.archiveReason?.type === 'pr-merged'
-    ? { number: thread.archiveReason.number, url: thread.archiveReason.url, state: 'MERGED' as const }
+  const pr = $derived(reason?.type === 'pr-merged'
+    ? { number: reason.number, url: reason.url, state: 'MERGED' as const }
     : thread.pullRequest ?? null);
   const prLabel = $derived(pr ? fill(pr.state === 'MERGED' ? strings.sidebar.prMerged : pr.state === 'CLOSED' ? strings.sidebar.prClosed : strings.sidebar.prOpen, { number: String(pr.number) }) : '');
   /** The plugin that marked it done (`threads.archive`), so a row that went by itself says why. */
-  const plugin = $derived(thread.archiveReason?.type === 'plugin' ? thread.archiveReason.pluginName : null);
-  const byPlugin = $derived(plugin === null ? null : fill(strings.sidebar.archivedByPlugin, { name: plugin }));
-  const meta = $derived(showProject || pr !== null || byPlugin !== null);
+  const plugin = $derived(reason?.type === 'plugin' ? reason : null);
+  const byPlugin = $derived(plugin && fill(strings.sidebar.archivedByPlugin, { name: plugin.pluginName }));
+  const meta = $derived(project || pr || plugin);
+  const offline = $derived(owner.connection !== 'ready');
+  const items = $derived<MenuItem[]>([
+    { id: 'open', label: strings.common.open, disabled: deleting },
+    ...(thread.archived ? [{ id: 'restore', label: strings.sidebar.reopenThread, glyph: ArchiveRestore, disabled: lock.busy || offline, testid: 'archived-menu-restore' }] : []),
+    ...(pr ? [{ id: 'pr', label: prLabel, title: pr.url }] : []),
+    { id: 'copy', label: strings.sidebar.copyPath, title: thread.cwd },
+    ...(canDeleteThread(thread) ? [separator(), { id: 'delete', label: strings.common.delete, glyph: Trash2, danger: true, disabled: lock.busy || offline, testid: 'archived-delete' }] : [])
+  ]);
 
-  function restore(): void {
-    void lock.restore(owner, thread.id);
+  async function restore(): Promise<void> {
+    await lock.restore(owner, thread.id);
   }
   /** The row stays until the list reloads, its lock with it. */
-  function remove(): void {
-    void lock.remove(owner, thread, true);
+  async function remove(): Promise<void> {
+    await lock.remove(owner, thread, true);
   }
   function select(): void {
     // Being deleted, or gone already: there is no thread left to open.
@@ -56,49 +68,36 @@
     onopen?.();
     void workspace.select(owner, thread.id);
   }
-  /** The row's own menu, over the whole card: the pull request link under it would otherwise show the browser's. */
-  function menu(event: MouseEvent): void {
-    const offline = owner.connection !== 'ready';
-    contextMenu.open(
-      event,
-      [
-        { id: 'open', label: strings.common.open, disabled: deleting },
-        { id: 'restore', label: strings.sidebar.reopenThread, disabled: lock.busy || offline },
-        ...(pr ? [{ id: 'pr', label: prLabel, title: pr.url }] : []),
-        // On hover: a worktree path printed beside the label squeezes it into a column of letters.
-        { id: 'copy', label: strings.sidebar.copyPath, title: thread.cwd },
-        ...(canDeleteThread(thread) ? [separator(), { id: 'delete', label: strings.common.delete, danger: true, disabled: lock.busy || offline }] : [])
-      ],
-      (action) => {
-        if (action === 'open') select();
-        if (action === 'restore') restore();
-        if (action === 'pr' && pr) window.open(pr.url, '_blank', 'noopener,noreferrer');
-        if (action === 'copy') void owner.copy(thread.cwd);
-        if (action === 'delete') remove();
-      }
-    );
+  function pick(action: string): void {
+    if (action === 'open') select();
+    if (action === 'restore') void restore();
+    if (action === 'pr' && pr) window.open(pr.url, '_blank', 'noopener,noreferrer');
+    if (action === 'copy') void owner.copy(thread.cwd);
+    if (action === 'delete') void remove();
   }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="done-thread" class:open class:meta data-testid="done-thread" data-thread-id={thread.id} data-machine-id={entry.machine.id} oncontextmenu={menu} use:longPress>
-  <button type="button" class="ghost row" data-testid="done-thread-open" title="{thread.title} · {agent}" disabled={deleting} onclick={select}>
+<div class="done-thread" class:open class:restorable={thread.archived} data-testid="done-thread" data-thread-id={thread.id} data-machine-id={machine?.id ?? workspace.machines.find(m => m.store === owner)?.id}
+  oncontextmenu={(event) => contextMenu.open(event, items, pick)} use:longPress={(target) => !!target.closest('.row')}>
+  <button type="button" class="ghost row" data-testid="done-thread-open" data-preload-thread={thread.id} title="{thread.title} · {agent}" disabled={deleting} onclick={select}>
     <span class="headline">
-      {#if showMachine}
-        <span class="machine" title={entry.machine.label} aria-label={entry.machine.label}><MachineIcon icon={entry.machine.icon} os={owner.core?.os} /></span>
+      <span class="provider" aria-hidden="true"><ProviderLogo providerId={thread.providerId} size={14} /></span>
+      {#if machine}
+        <span class="machine" title={machine.label} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} /></span>
       {/if}
       <span class="title ui-label">{thread.title}</span>
       <!-- The project shows below, outside the button: named here too, so two same-titled threads read apart. -->
-      {#if showProject}<span class="visually-hidden">{projectName(entry.project)}</span>{/if}
+      {#if project}<span class="visually-hidden">{projectName(project)}</span>{/if}
       <!-- Put away, it carries no live state, a turn still running included: when it was put away. -->
-      <time datetime={new Date(archivedTime(thread)).toISOString()} title={exactTime(archivedTime(thread))}>{ago(archivedTime(thread), now)}</time>
+      {#if thread.archived}<time datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at, now)}</time>{/if}
     </span>
   </button>
   {#if meta}
     <div class="metadata">
-      {#if showProject}<span class="project-name" title={entry.project.path}><Folder size={12} /><span class="ui-label">{projectName(entry.project)}</span></span>{/if}
+      {#if project}<span class="project-name" title={project.path}><Folder size={12} /><span class="ui-label">{projectName(project)}</span></span>{/if}
       <!-- The puzzle and the plugin's name; the sentence is for the tooltip and screen readers. -->
-      {#if byPlugin}<span class="by-plugin" data-testid="done-thread-plugin" title={byPlugin}><Puzzle size={12} /><span class="ui-label" aria-hidden="true">{plugin}</span><span class="visually-hidden">{byPlugin}</span></span>{/if}
+      {#if plugin}<span class="by-plugin" data-testid="done-thread-plugin" title={byPlugin}><Puzzle size={12} /><span class="ui-label" aria-hidden="true">{plugin.pluginName}</span><span class="visually-hidden">{byPlugin}</span></span>{/if}
       {#if pr}
         <a class="pr {pr.state.toLowerCase()}" data-testid="done-thread-pr" data-state={pr.state} href={pr.url} target="_blank" rel="noopener noreferrer" title={pr.url}>
           {#if pr.state === 'MERGED'}<GitMerge size={12} />{:else if pr.state === 'CLOSED'}<GitPullRequestClosed size={12} />{:else}<GitPullRequest size={12} />{/if}<span class="ui-label">{prLabel}</span>
@@ -106,21 +105,28 @@
       {/if}
     </div>
   {/if}
-  <button type="button" class="ghost small icon restore" data-testid="done-thread-restore" title={strings.sidebar.reopenThread}
-    aria-label={fill(strings.sidebar.reopenNamedThread, { title: thread.title })}
-    disabled={lock.busy || owner.connection !== 'ready'} onclick={restore}><ArchiveRestore size={14} /></button>
+  <div class="actions">
+    {#if thread.archived}<button type="button" class="ghost small icon restore" data-testid="done-thread-restore" title={strings.sidebar.reopenThread}
+      aria-label={fill(strings.sidebar.reopenNamedThread, { title: thread.title })} disabled={lock.busy || offline} onclick={() => void restore()}><ArchiveRestore size={14} /></button>{/if}
+    <Menu {items} onpick={pick} label={strings.sidebar.threadMenu} placement="bottom" align="end" variant="ghost" testid="done-thread-menu"><Ellipsis size={15} /></Menu>
+  </div>
 </div>
 
 <style>
   .done-thread {
-    /* The thread row's own measures (ThreadCard.svelte), so both lists share one column and one height. */
-    --pad-x: 8px;
+    /* The classic thread row's measures (ThreadCard.svelte): its sides, its 34 px line, the agent's mark stepped out
+       under the project's tile, so a done title starts where a live one does and its time ends where theirs end. */
+    --pad-x: 10px;
+    --provider-shift: 4px;
+    --act: max(32px, var(--control-sm));
+    --act-room: calc(var(--act) + 3px);
     position: relative;
     font-size: 13.5px;
     border-radius: var(--radius-md);
     transition: background var(--dur-2) var(--ease-out-quint);
     -webkit-touch-callout: none;
   }
+  .done-thread.restorable { --act-room: calc(2 * var(--act) + 3px); }
   .done-thread:hover, .done-thread:focus-within { background: var(--color-hover); }
   .done-thread.open { background: var(--color-active); }
   .row {
@@ -129,16 +135,17 @@
     align-items: stretch;
     width: 100%;
     height: auto;
-    min-height: 32px;
-    padding: 6px var(--pad-x);
+    min-height: var(--row);
+    padding: 7px var(--pad-x);
     gap: 4px;
     background: transparent;
   }
-  /* The pull request line sits over the row's bottom padding, so the whole card stays one target, as on a thread row. */
-  .meta .row { min-height: 54px; padding: 6px var(--pad-x) 28px; }
+  .row::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
   .row:hover:not(:disabled) { background: transparent; }
   .row:active:not(:disabled) { transform: none; }
-  .headline { display: flex; align-items: center; min-width: 0; min-height: 20px; gap: 8px; }
+  .headline { display: flex; align-items: center; min-width: 0; min-height: 20px; gap: 6px; margin-left: calc(-1 * var(--provider-shift)); }
+  /* Put away: the mark a step back, like the title, and both wake under the pointer. */
+  .provider { display: inline-flex; flex: none; margin-right: 4px; opacity: 0.5; transition: opacity var(--dur-2) var(--ease-out-quint); }
   .machine { display: inline-flex; align-items: center; flex: none; color: var(--color-muted-foreground); }
   /* Done or archived, put away: a step quieter than the live rows above it (lighter ink, regular weight), and it
      wakes under the pointer. */
@@ -153,16 +160,17 @@
     font-weight: 400;
     transition: color var(--dur-2) var(--ease-out-quint);
   }
-  .done-thread:hover .title, .done-thread:focus-within .title, .done-thread.open .title { color: var(--color-foreground); }
-  time { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .done-thread:is(:hover, :focus-within, .open) .title { color: var(--color-foreground); }
+  .done-thread:is(:hover, :focus-within, .open) .provider { opacity: 1; }
+  time { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; transition: opacity var(--dur-2) var(--ease-out-quint); }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .metadata {
-    position: absolute;
-    left: var(--pad-x);
-    right: var(--pad-x);
-    bottom: 8px;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    /* Under the title, past the mark. */
+    padding: 0 var(--pad-x) 8px calc(var(--pad-x) + 20px);
+    margin-top: -3px;
     gap: 9px;
     min-width: 0;
     pointer-events: none;
@@ -175,6 +183,8 @@
   .by-plugin { display: inline-flex; flex: 0 1 auto; align-items: center; gap: 4px; min-width: 0; }
   .by-plugin .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pr {
+    position: relative;
+    z-index: 1;
     display: inline-flex;
     flex: none;
     align-items: center;
@@ -184,23 +194,30 @@
     text-decoration: none;
     border-radius: var(--radius-sm);
   }
-  .pr.merged { color: var(--color-success); }
   /* The badge's softened red (PullRequestBadge.svelte): a closed pull request is read, never shouted. */
   .pr.closed { color: color-mix(in oklch, var(--color-danger) 60%, var(--color-muted-foreground)); }
   .pr:hover span, .pr:focus-visible span { text-decoration: underline; text-underline-offset: 3px; }
-  /* Restoring takes the time's place under the pointer, the way a thread row shows its menu. */
-  .restore { position: absolute; top: calc(16px - var(--control-sm) / 2); right: 3px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
-  .done-thread:hover .restore, .done-thread:focus-within .restore { opacity: 1; }
-  .done-thread:hover time, .done-thread:focus-within time,
-  .done-thread:hover :global(.when), .done-thread:focus-within :global(.when) { opacity: 0; }
-  /* No hover on a touch screen: the time stays, restoring is in the long-press menu. */
+  /* Centred on the title's line, at the row's end. They show under the pointer and take the time's place, which fades
+     where it stands, while the title's last letters melt away under them, as on a live row. */
+  .actions { position: absolute; display: flex; align-items: center; top: calc(var(--row) / 2 - var(--act) / 2); right: 3px; opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
+  .done-thread:is(:hover, :focus-within) .actions { opacity: 1; }
+  .done-thread:is(:hover, :focus-within) time { opacity: 0; }
+  .done-thread:is(:hover, :focus-within) .headline { mask-image: linear-gradient(to left, transparent calc(var(--act-room) - var(--pad-x)), black calc(var(--act-room) - var(--pad-x) + 12px)); }
+  /* No pointer to wait for: the buttons always show, and the title's line, its time included, ends before them. */
   @media (hover: none), (pointer: coarse) {
-    .restore { display: none; }
-    .done-thread:hover time, .done-thread:focus-within time,
-    .done-thread:hover :global(.when), .done-thread:focus-within :global(.when) { opacity: 1; }
+    .actions { opacity: 1; }
+    .headline { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
+    .done-thread:is(:hover, :focus-within) time { opacity: 1; }
+    .done-thread:is(:hover, :focus-within) .headline { mask-image: none; }
   }
   @media (max-width: 720px) {
-    .row { min-height: var(--touch-target); }
+    /* A phone's live rows (MobileThreadRow.svelte) sit further in: the same title edge there too. */
+    .done-thread { --pad-x: 16px; }
+    .actions { opacity: 1; }
+    .headline { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
+    .done-thread:is(:hover, :focus-within) time { opacity: 1; }
+    .done-thread:is(:hover, :focus-within) .headline { mask-image: none; }
+    .actions :is(.restore, :global(.trigger)) { min-height: var(--touch-target); min-width: var(--touch-target); }
     .title { font-size: var(--text-base); }
   }
 </style>

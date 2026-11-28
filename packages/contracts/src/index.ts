@@ -37,10 +37,12 @@ import type { GroupRpcEvents, GroupRpcMethods } from './group';
 import type { HooksRpcEvents, HooksRpcMethods } from './hooks';
 import type { ImportsRpcEvents, ImportsRpcMethods } from './imports';
 import type { KeybindingsRpcEvents, KeybindingsRpcMethods } from './keybindings';
+import type { TranscriptsRpcEvents, TranscriptsRpcMethods } from './transcripts';
 import type { MessagesRpcEvents, MessagesRpcMethods } from './messages';
 import type { PairingRpcMethods } from './pairing';
 import type { PanelRpcEvents, PanelRpcMethods } from './panel';
 import type { PermissionsRpcEvents, PermissionsRpcMethods } from './permissions';
+import type { McpRpcEvents, McpRpcMethods } from './mcp';
 import type { PluginsRpcEvents, PluginsRpcMethods } from './plugins';
 import type { ProjectsRpcEvents, ProjectsRpcMethods } from './projects';
 import type { ProvidersRpcEvents, ProvidersRpcMethods } from './providers';
@@ -66,6 +68,9 @@ export * from './providers';
 export * from './local-acp';
 export * from './accounts';
 export * from './plugins';
+export * from './mcp';
+export * from './mcp-presets';
+export * from './mcp-input';
 export * from './plugin-source';
 export * from './projects';
 export * from './threads';
@@ -75,6 +80,7 @@ export * from './prompt-suggestions';
 export * from './usage';
 export * from './turns';
 export * from './messages';
+export * from './message-search';
 export * from './permissions';
 export * from './questions';
 export * from './secrets';
@@ -85,6 +91,7 @@ export { defaultSettings } from './settings-defaults';
 export * from './subscription-proxy';
 export * from './keybindings';
 export * from './imports';
+export * from './transcripts';
 export * from './core';
 export * from './agent-door';
 export * from './state';
@@ -126,10 +133,11 @@ export { IMAGE_MIME_TYPES, IMAGE_MAX_EDGE, ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER
 export type { ImageMimeType } from './attachment-limits.ts';
 
 export { PREVIEW_REFERENCES_PER_TURN, previewReferencesError, previewPrompt } from './preview';
-export { previewToolOutputs, previewToolPart, TOOL_OUTPUT_INLINE_CHARS, TOOL_OUTPUT_PREVIEW_CHARS } from './message-preview';
+export { extractToolPatches, previewToolOutputs, previewToolPart, projectToolDiffs, toolFamily, toolInputDiff, TOOL_OUTPUT_INLINE_CHARS, TOOL_OUTPUT_PREVIEW_CHARS, type ToolFamily } from './message-preview';
+export { BINARY_PATCH_VERIFY_BUDGET, checkGitBinaryHunk, isGitBase85Line, type BinaryHunkStatus } from './git-binary';
 export { forTransport, projectLiveMessage, projectLivePart, projectMessage, MESSAGE_SENT_MAX_BYTES, type TransportOptions } from './transport.ts';
 export { boundedMessageWindow } from './message-window.ts';
-export { StreamGate, partChannel, type StreamChannel } from './stream-channels.ts';
+export { FOLDED_CHANNELS, StreamGate, partChannel, type StreamChannel } from './stream-channels.ts';
 export { lastAgentText, notificationExcerpt, requestExcerpt, requestKind } from './notification-text';
 export { nativeAgentsOfTool, collectNativeAgents } from './native-agents.ts';
 export { collectProcessAgents, processAgentCommand } from './process-agents.ts';
@@ -147,6 +155,7 @@ export interface RpcMethods extends
   ProvidersRpcMethods,
   AccountsRpcMethods,
   PluginsRpcMethods,
+  McpRpcMethods,
   ProjectsRpcMethods,
   ThreadsRpcMethods,
   UsageRpcMethods,
@@ -161,6 +170,7 @@ export interface RpcMethods extends
   SubscriptionProxyRpcMethods,
   KeybindingsRpcMethods,
   ImportsRpcMethods,
+  TranscriptsRpcMethods,
   CoreRpcMethods,
   AgentDoorRpcMethods,
   StateRpcMethods,
@@ -196,6 +206,7 @@ export interface RpcEvents extends
   ProvidersRpcEvents,
   AccountsRpcEvents,
   PluginsRpcEvents,
+  McpRpcEvents,
   ProjectsRpcEvents,
   ThreadsRpcEvents,
   PromptSuggestionsRpcEvents,
@@ -210,6 +221,7 @@ export interface RpcEvents extends
   SubscriptionProxyRpcEvents,
   KeybindingsRpcEvents,
   ImportsRpcEvents,
+  TranscriptsRpcEvents,
   CoreRpcEvents,
   PanelRpcEvents,
   TodosRpcEvents,
@@ -230,9 +242,9 @@ export { attachmentError, answerAttachmentError, decodedBytes } from './attachme
 export { AUTO_COMPACT_MOMENTS, AUTO_COMPACT_TOKENS, DEFAULT_AUTO_COMPACT, AUTO_GOAL_MIN_CHARS, CACHE_KEEPALIVE_HOURS, MODEL_FAVORITES_MAX, checkSettingsPatch, compareModelFavorites, keepLaterFavorites, type AutoCompact, type AutoCompactMoment, type CacheKeepalive } from './settings-validation.ts';
 export { checkRpcParams } from './rpc-params.ts';
 export { defaultTitleModel } from './title-models.ts';
-export { ChangeLog, listCursorProblem } from './list-changes.ts';
+export { ChangeLog, LIST_CHANGES_IDS, listCursorProblem, THREAD_LIST_PAGE_BYTES, ThreadListPages } from './list-changes.ts';
 export { GOAL_TRACKER_DEFAULTS, GOAL_CHECKLIST_MAX_ITEMS, GOAL_CHECKLIST_SOURCE_MAX, GOAL_CHECKLIST_TEXT_MAX, defaultTrackerModel, trackerEffort } from './goal-tracker.ts';
-export { DEVICE_METHODS, DEVICE_EVENTS, AGENT_EVENTS, AGENT_METHODS, SUBSCRIBED_EVENTS, accessRefusal, agentHearsEvent, pluginMayCall, deviceBound, eventThreadId, mayHearEvent, PLUGIN_SELF_EVENTS, type Caller } from './access.ts';
+export { DEVICE_HOME_CREDENTIAL_STORES, DEVICE_SECRET_DIRS, DEVICE_SECRET_FILE, DEVICE_METHODS, DEVICE_EVENTS, AGENT_EVENTS, AGENT_METHODS, SUBSCRIBED_EVENTS, accessRefusal, agentHearsEvent, pluginMayCall, deviceBound, eventThreadId, mayHearEvent, PLUGIN_SELF_EVENTS, type Caller } from './access.ts';
 export {
   APP_LANGUAGES, MACHINE_SETTINGS, PLUGIN_ADD_SECTION, REQUESTABLE_SETTINGS, REQUESTABLE_SETTING_KEYS, SETTINGS_PAGES, botCard, checkClientPreferences, checkSettingRequest, settledExperiment, currentSetting, effectiveSetting, experimentOf, isExperimentKey, isMachineSetting, isSettingsPage, readSettings,
   sameClientPreferences, settingAnswerText, settledMachineSetting, settledSetting,
@@ -260,9 +272,9 @@ export {
 export { SPEECH_CATALOGUE, SPEECH_CUSTOM_ID, SPEECH_DEFAULT_MODEL, isSpeechModelId, speechUrlProblem, type SpeechCatalogueModel } from './speech-models.ts';
 
 export { sideQuestionSnapshot } from './side-question-snapshot.ts';
-export { deriveThreadCapabilities, protocolSupportsSteering, type ThreadCapabilitySnapshot } from './thread-capabilities.ts';
-export { resumeAnchor, snapshotOptionsProblem } from './thread-sync.ts';
-export { previewImageData, type ImagePreviews } from './file-preview.ts';
+export { acpSteeringKind, deriveThreadCapabilities, providerSupportsSteering, type ThreadCapabilitySnapshot } from './thread-capabilities.ts';
+export { resumeAnchor, snapshotOptionsProblem, type MessageSync } from './thread-sync.ts';
+export { IMAGE_INLINE_CHARS, previewImageData, type ImagePreviews } from './file-preview.ts';
 export { imageSize } from './image-size.ts';
 export {
   VIEW_ROUTE, VIEW_MAX_BYTES, VIEW_BLOCK_MAX_BYTES, VIEW_WIDTH, VIEW_NARROW_WIDTH, VIEW_BLEED, VIEW_DEFAULT_HEIGHT, VIEW_TITLE_MAX,
@@ -275,3 +287,5 @@ export { effectiveCompaction, type CompactionTarget, type CompactionPolicy } fro
 export { composerBatch } from './composer-batch';
 export { composerActivity, isComposerActivity, stableComposerValue } from './composer-activity';
 export { permissionAutoDecision } from './permissions';
+
+export * from './model-selection.ts';

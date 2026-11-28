@@ -98,7 +98,7 @@ export class ChildWorktrees {
     if (!record) return;
     const thread = this.#core.threads.require(threadId);
     const parent = thread.parentThreadId ? this.#core.journal.getThread(thread.parentThreadId) : null;
-    // A subagent whose parent is on another machine branches from its project's HEAD here.
+    // A child in another repository starts from its execution project's default branch.
     const elsewhere = !thread.parentThreadId && this.#core.delegation.remote.parentOf(threadId) !== undefined;
     if ((!parent && !elsewhere) || thread.projectId === null) throw refused(`the subagent's worktree ${record.path} has no parent conversation to branch from`);
     const project = this.#core.projects.require(thread.projectId);
@@ -108,15 +108,18 @@ export class ChildWorktrees {
         return this.#mark(threadId, { ...record, state: 'active' });
       }
       if (record.state === 'active' || record.state === 'kept') {
-        // The folder went but the branch may hold work: check it out again as it is.
-        await this.#core.worktrees.ensure(threadId, project, record.branch, record.path);
+        if (!await this.#core.worktrees.recover(threadId, project, record.branch, record.path)) {
+          throw refused(`branch ${record.branch} is gone; restore it before sending another turn`);
+        }
         return this.#mark(threadId, { ...record, state: 'active' });
       }
       if (record.state === 'pending' && record.base !== null) {
         await this.#core.worktrees.resumePreparation(threadId, project, record.branch, record.path, record.base, assertActive);
         return this.#mark(threadId, { ...record, state: 'active' });
       }
-      const base = this.#core.sharedCompute?.journal.worker(threadId)?.input.baseCommit ?? await this.#core.worktrees.head(threadId, parent && parent.projectId === thread.projectId ? parent.cwd : project.path);
+      const base = this.#core.sharedCompute?.journal.worker(threadId)?.input.baseCommit ?? await (parent?.projectId === thread.projectId
+        ? this.#core.worktrees.head(threadId, parent.cwd)
+        : this.#core.worktrees.defaultBase(threadId, project.path));
       await this.#core.worktrees.add(threadId, project, record.branch, record.path, {
         assertActive,
         beforeMutation: () => {
@@ -165,10 +168,13 @@ export class ChildWorktrees {
       // A warm agent process keeps the folder as its working directory; Windows refuses to delete it then.
       this.#core.threads.releaseAgent(threadId);
       await this.#core.procs.stopAndWait(threadId);
-      const removed = await this.#core.worktrees.remove(threadId, project, { branch: record.branch, path: record.path }, undefined, threadId);
+      const afterStop = await this.#core.worktrees.changes(threadId, record.path, record.base);
+      if (afterStop.commits > 0 || afterStop.dirty) return this.#save(threadId, { ...record, ...afterStop, state: 'kept' });
+      const removed = await this.#core.worktrees.remove(threadId, project, { branch: record.branch, path: record.path, base: record.base }, undefined, threadId);
+      const retained = !removed && existsSync(record.path) ? await this.#core.worktrees.changes(threadId, record.path, record.base) : afterStop;
       this.#save(threadId, removed
         ? { branch: record.branch, path: record.path, base: record.base, state: 'removed', commits: 0, dirty: false }
-        : { ...record, state: 'kept', commits: 0, dirty: false, error: 'git could not remove it; the log says why' });
+        : { ...record, ...retained, state: 'kept', error: 'git could not remove it; the log says why' });
     } catch (error) {
       this.#save(threadId, { ...record, state: 'kept', error: messageOf(error) });
     }

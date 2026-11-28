@@ -1,10 +1,11 @@
-import type { BrowserProfile } from './browser';
+import type { BrowserBuiltinProfiles, BrowserProfile } from './browser';
 import type { AccountId, ProviderId, RequestId } from './ids';
 import type { ExperimentId, FinishedExperimentId } from './experiments.ts';
 import type { ClientPreferences, SettingAsk, SettingRequestParams } from './setting-requests.ts';
 import type { AutoCompact, CacheKeepalive } from './settings-validation.ts';
 import type { SubscriptionProxy } from './subscription-proxy';
 import type { ThreadSummary } from './threads';
+import type { TranscriptStorage } from './transcripts';
 
 export type CompactionTarget = 'agent' | 'subagent' | 'bot';
 
@@ -48,6 +49,12 @@ export interface Settings {
   quotaOrder?: AccountId[];
   /** Days after deletion before history is purged. 0 keeps it indefinitely. Missing means 30. */
   threadDeletionRetentionDays?: number;
+  /**
+   * What this machine keeps of a conversation as it ages (`transcripts.ts`).
+   * Missing until the user picks a mode: nothing is compacted, and
+   * `threadDeletionRetentionDays` alone decides when a deleted conversation goes.
+   */
+  transcriptStorage?: TranscriptStorage;
   /** Days after marking done before deletion. 0 disables it. Missing means 3. */
   threadDoneRetentionDays?: number;
   /** New worktrees only. Missing means project mode; existing checkouts keep their path. */
@@ -61,6 +68,12 @@ export interface Settings {
   browserProfiles?: BrowserProfile[];
   /** The profile a new browser tab opens in. Missing or unknown means `default`; never `private`. */
   browserDefaultProfile?: string;
+  /**
+   * What the built-in profiles keep, which `browserProfiles` does not list:
+   * the engine of `default`. Missing means `app`. Owner-only, like
+   * `browserProfiles`: no agent method reads or writes it.
+   */
+  browserBuiltinProfiles?: BrowserBuiltinProfiles;
   /** HTTPS origin served by the reverse proxy, used in phone pairing links. */
   publicUrl?: string | null;
   /** Minutes a Claude process stays warm after a turn. 0 releases it at once. */
@@ -219,7 +232,7 @@ export interface Settings {
   /**
    * A turn that failed on a subscription usage limit resumes by itself once
    * that limit's window resets: one new turn per window and thread, with a
-   * short continue prompt (docs/internals/usage.md). Missing reads as off.
+   * short continue prompt (docs/internals/usage.md). Missing reads as on.
    */
   autoResumeLimitedThreads?: boolean;
   /**
@@ -277,6 +290,15 @@ export interface Settings {
    * older one. Missing reads as `project`.
    */
   coordinationReach?: CoordinationReach;
+  /**
+   * Contacts (`docs/contacts.md`): the Contacts page, invitations, links to
+   * other owners' Boites and what agents ask of them. True turns them on on
+   * this machine; missing or false, they are off, as the admin policy's
+   * `network.contacts: false` holds them, and the contacts already stored wait.
+   * Per machine, never synced. The first start that knows it writes `false`,
+   * or `true` on a data directory that already holds a contact.
+   */
+  contacts?: boolean;
 }
 
 export const AGENT_BOT_CREATION = ['ask', 'free'] as const;
@@ -311,6 +333,27 @@ export function agentDefaultsToWrite(stored: unknown, journalExisted: boolean): 
     ...(held.agentBotCreation === undefined ? { agentBotCreation: defaults.agentBotCreation } : {}),
     ...(held.coordinationReach === undefined ? { coordinationReach: defaults.coordinationReach } : {}),
   };
+}
+
+/** Whether contacts are on in these settings: only an explicit `true`. */
+export function contactsOn(settings: Pick<Settings, 'contacts'>): boolean {
+  return settings.contacts === true;
+}
+
+/** The reason a refusal carries while the owner's switch holds contacts off. */
+export const CONTACTS_OFF_REASON = 'contacts-off';
+
+/** What a call refused by the switch says, and the way an agent asks the owner for it. */
+export const CONTACTS_OFF_MESSAGE = 'contacts are off on this machine (Settings, General, What agents may do alone); ask the owner to turn them on with: boite settings request contacts true --why "<reason>"';
+
+/**
+ * The `contacts` key a stored settings object lacks, with the value the first
+ * start writes: on where a contact is already stored, so a link in use keeps
+ * working, off everywhere else. Empty once stored.
+ */
+export function contactsDefaultToWrite(stored: unknown, hasContacts: boolean): Partial<Pick<Settings, 'contacts'>> {
+  const held = typeof stored === 'object' && stored !== null ? stored as Partial<Settings> : {};
+  return held.contacts === undefined ? { contacts: hasContacts } : {};
 }
 
 /** What a refused agent reads: the setting that holds it back and the command that asks the owner to open it. */

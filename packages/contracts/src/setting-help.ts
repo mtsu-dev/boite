@@ -14,6 +14,7 @@ export const SETTING_HELP: Readonly<Record<string, string>> = {
   "autoGoals": "A long prompt starts a reviewed goal on itself. The goal comes with its checklist and a card on the project board, and the agent may start one when a prompt lists several requests. Remove the goal from the goal bar to drop it.",
   "threadDoneRetentionDays": "Counted from Mark done, an automatic archive after a PR merge or a plugin's archive. 3 days by default; 0 disables deletion. Manual archives are kept. Deleted conversations remain recoverable for the configured deletion retention.",
   "threadDeletionRetentionDays": "Counted from deletion. 0 keeps conversations indefinitely. Shortening the delay also applies to conversations already deleted.",
+  "transcriptStorage": "What this machine keeps of a conversation as it ages. Delete: a deleted conversation is compacted at once and erased after 7 days. Classic: a deleted conversation is compacted after 7 days and kept for audits, its images erased after 30 days. Storage: everything stays, compacted after 30 days without activity. Custom sets each delay. A compacted conversation keeps every message, the reasoning, every tool call and every error; long tool outputs are shortened. Usage and costs are kept in every mode.",
   "worktreeStorage": "In each project: Inside each project, under .boite/worktrees. One shared folder: Each project gets its own subfolder. Projects with the same name stay separate. New worktrees only. Existing ones stay where they are.",
   "focusGuard": "A window an agent opens stays behind the one you are using.",
   "muteAgents": "Sounds agents play stay silent.",
@@ -40,5 +41,6 @@ export const SETTING_HELP: Readonly<Record<string, string>> = {
   "groupBots": "A mochi of another machine of the group may look after the projects of this machine its owner entrusted to it: list, read and steer their threads and answer their questions. Never tool permissions, deleting threads or this machine's settings. Turning it off cuts them off at once. Off by default.",
   "agentBotCreation": "Create mochis without asking: A mochi created this way has full access to this machine.",
   "coordinationReach": "This project: An agent lists, reads and writes to the conversations of its own project only. This machine: An agent lists, reads and writes to the conversations of every project on this machine. All my machines: An agent lists, reads and writes to the conversations of every project, here and on the machines you trust.",
+  "contacts": "Agents work with other people's Boites, and Contacts shows in the rail.",
   "experiment.draft-backdrop": "An animated scene in the manner of an early 2000s console behind the empty new thread screen. Pick it under Appearance. Respects reduced motion.",
 };

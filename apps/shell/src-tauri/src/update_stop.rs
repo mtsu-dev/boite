@@ -2,25 +2,24 @@
 //! 30 seconds at most, stops, and resumes after the restart. A core too old for that handoff
 //! keeps the earlier rule: it stays usable until it grants an idle stop.
 use std::io::{Read, Write};
-#[cfg(unix)]
 use std::fs::{OpenOptions, TryLockError};
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
-#[cfg(unix)]
 use serde::Deserialize;
 
 use crate::local_core::health::{health, read_core_file, same_core, HEALTH_TIMEOUT};
-#[cfg(unix)]
-use {crate::local_core::{health::CoreStart, starting::read_starting}, crate::platform::file_identity};
+use crate::local_core::{health::CoreStart, starting::read_starting};
 use crate::platform::process::Watched;
 
 #[cfg(unix)]
 mod install_lock;
 #[cfg(unix)]
 pub(crate) use install_lock::InstallLock;
+#[cfg(windows)]
+pub(crate) type InstallLock = std::fs::File;
 #[cfg(all(test, unix))]
 pub(crate) mod legacy_core;
 
@@ -84,7 +83,6 @@ pub(crate) fn launch_if_allowed(check: impl FnOnce() -> Result<(), String>, laun
 /// and its own shutdown, with a margin.
 pub(crate) const HANDOFF_EXIT: Duration = Duration::from_secs(60);
 
-#[cfg(unix)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LockRecord {
@@ -95,7 +93,6 @@ struct LockRecord {
     os_lock: bool,
 }
 
-#[cfg(unix)]
 fn core_is_running(directory: &Path) -> Result<bool, String> {
     let core = read_core_file(&directory.join("core.json"))?;
     Ok(core.is_some_and(|core| core.pid.is_some_and(|pid| same_core(pid, &core.start())))
@@ -104,20 +101,29 @@ fn core_is_running(directory: &Path) -> Result<bool, String> {
 
 /// Holds the same lock startup takes. A legacy PID record can still exclude
 /// us even without an OS lock. A live core must use authenticated admission.
-/// The shell then publishes itself as the live owner, which keeps out a core
-/// older than the OS lock as well (`InstallLock`).
-#[cfg(unix)]
+/// On Unix the shell publishes itself as the live owner so a legacy core cannot unlink the lock.
 pub(crate) fn lock_without_core(directory: &Path) -> Result<Option<InstallLock>, String> {
     if core_is_running(directory)? { return Ok(None); }
     let path = directory.join("core.lock");
     let failed = |error: std::io::Error| format!("cannot lock {} for the update: {error}", path.display());
-    let mut lock = OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path).map_err(failed)?;
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // Windows pins the pathname while this handle is open. The whole-file
+        // lock overlaps the single byte the core locks near the end of the file range.
+        options.share_mode(3);
+    }
+    let mut lock = options.open(&path).map_err(failed)?;
     match lock.try_lock() {
         Ok(()) => {}
         Err(TryLockError::WouldBlock) => return Ok(None),
         Err(TryLockError::Error(error)) => return Err(failed(error)),
     }
-    if !file_identity::still_at(&lock, &path).map_err(failed)? || core_is_running(directory)? {
+    #[cfg(unix)]
+    if !crate::platform::file_identity::still_at(&lock, &path).map_err(failed)? { return Ok(None); }
+    if core_is_running(directory)? {
         return Ok(None);
     }
     let mut record = Vec::new();
@@ -127,8 +133,13 @@ pub(crate) fn lock_without_core(directory: &Path) -> Result<Option<InstallLock>,
     {
         return Ok(None);
     }
-    let pid = std::process::id();
-    InstallLock::publish(lock, path.clone(), pid, crate::platform::process::start_key(pid)).map_err(failed)
+    #[cfg(unix)]
+    {
+        let pid = std::process::id();
+        InstallLock::publish(lock, path.clone(), pid, crate::platform::process::start_key(pid)).map_err(failed)
+    }
+    #[cfg(windows)]
+    Ok(Some(lock))
 }
 
 enum Admission { Accepted, Busy, Unsupported }

@@ -465,6 +465,37 @@ The synthetic turns are spread over many threads at once, so the slots hold
 folds more turns into each row. What is left is about half the slots read and
 half the thread ranking, which still sums the turns themselves.
 
+## Message search
+
+Schema 54 adds `message_search_keys` and two FTS5 indexes, `messages_fts` (word
+and prefix) and `messages_fts_infix` (trigram). On SQLite 3.43+, both tables use
+`content='', contentless_delete=1` so message bodies are not stored twice; on
+older system SQLite builds (such as macOS 13 with SQLite 3.39.5), both fall back
+to standard FTS5 tables so startup migration still succeeds. For
+`messages_fts_infix`, builds lacking `trigram remove_diacritics 1` (SQLite
+3.34 to 3.44, including macOS 13 to 15) fall back to plain `tokenize='trigram'`
+so substring search remains active, and the table is skipped only if the
+`trigram` tokenizer itself is unavailable. `threads.search` runs in a worker on
+a read-only connection, ranks at most four candidates per thread
+(`position <= 4`) in one bounded query (`LIMIT` 400 to 1,600) per pass without
+`OFFSET` rescans or nested `MATCH` joins, overlays `streaming_parts` by
+`part_index` on top of `messages.parts`, and skips the prefix and infix passes
+once the exact pass fills the page with higher-scoring matches. Very long
+threads with many matches for a common word may stop inspecting candidates
+beyond their top four BM25 hits per pass. While a response streams,
+`refreshStreamMessageSearch` updates the message's FTS rows only on flushes
+where a text part changed, skipping tool and thinking deltas.
+
+`bun bench/message-search.ts` builds synthetic 120,000-message journals of
+~900-byte messages (`125.3 MB` before migration 54, WAL truncated before and
+after; most of the +272 MB growth is the trigram index) and times migration 54
+plus representative queries. On 2026-11-27, Linux, Bun 1.4.2 (SQLite 3.53.2):
+
+| Journal shape | Size after migration 54 | Migration 54 (blocking startup tx) | Common word (`deploy`) | Short + word (`the error`) | Substring (`ploy`) | Worst-case 3-pass (`test the build`) | Miss (`xyzzynotfound`) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 120,000 messages, 20 threads | 397.2 MB | 11.92 s | 162.5 ms | 188.4 ms | 170.9 ms | 170.9 ms (4 hits) | 0.8 ms |
+| 120,000 messages, 500 threads | 397.4 MB | 10.58 s | 203.9 ms | 368.5 ms | 325.0 ms | 123.3 ms (20 hits) | 1.6 ms |
+
 ## Local and remote connections
 
 The core decides per connection. A WebSocket whose `Host` header is
@@ -631,12 +662,20 @@ the turn's other events, which no channel holds back.
 - Returning to a recent thread selects its cached history synchronously. The
   subscription, unread acknowledgement and fresh snapshot run in the background.
   Unchanged messages and turns keep their identities through revalidation.
+  If the snapshot only proves part of the held window, bounded pages
+  start revalidating the rest at once. The snapshot's replacements appear
+  while those reads are in flight. The completed window can wait for idle
+  to reconcile, up to 100 ms or until visibility changes. Navigation
+  cancels that wait.
   The cache retains up to 16 visits, at most 4 MiB of text per thread and
-  16 MiB in total, with a 2,000-message bound per thread. A leave counts the
-  thread it leaves and keeps that size beside the entry, so it never measures
-  the other visits again (`ReadingCache` in `reading-cache.ts`). Once the page
-  is idle, a plain copy replaces the deep `$state` proxy the timeline drew,
-  which weighed several times its data.
+  16 MiB in total, with a 2,000-message bound per thread. The open thread
+  maintains the weight of its held messages in blocks of 64. Those blocks
+  stay with the held window, so a return can reuse them. A leave reuses the
+  weights to reserve space or reject an oversized page. The cache
+  projects eligible pages at idle or on a quick return. An unchanged page
+  keeps its reactive row projection, message placement and slot totals within
+  the visit bounds. Off-screen Markdown preparation starts at idle.
+  Compacted pages and visits without a prepared projection keep a plain copy.
 - Once a machine is ready and the page idle (`requestIdleCallback`, else
   1 s), its first sidebar threads are read ahead into the same cache
   (`IdlePreloads` in `lib/store/thread-preload.ts`): up to 4, one at a time,
@@ -708,12 +747,20 @@ the turn's other events, which no channel holds back.
   file carries that file in its input and again in its diff. The card's line
   reads from the preview; a card with deferred documents stays folded and shows
   its document chip. Opening it retrieves the whole call with
-  `messages.toolPart`, `messages.toolOutput` on older cores. A proposed plan
+  `messages.toolPart`, `messages.toolOutput` on older cores. On a core
+  advertising `features.diffOnlyToolParts`, `messages.toolPart` accepts
+  `diffsOnly: true` to strip non-diff inputs, outputs and attachments before
+  the 16 MiB frame check. `threads.get` and `messages.list` also accept
+  `omitThinking: true` to strip unchecked reasoning text and `omitTools: true`
+  (or `'running'`) to drop tool calls before page and frame limits are
+  measured, while `messages.list` accepts `fullText: true` to re-read complete
+  prose without lifting `compactToolParts`. A proposed plan
   whose input was cut is completed as soon as it is drawn. Running tools remain
-  complete. Older cores that ignore the preview options still return full
-  content; disclosures fall back to their existing history methods if needed.
-  An expanded output refreshes after compact revalidation: matching preview
-  prefixes cannot prove that the omitted text stayed unchanged.
+  complete unless `omitTools` drops them. Older cores that ignore the preview
+  options still return full content; disclosures fall back to their existing
+  history methods if needed. An expanded output refreshes after compact
+  revalidation: matching preview prefixes cannot prove that the omitted text
+  stayed unchanged.
 - File links arrive with their name, MIME type and decoded byte count. Their
   base64 data loads through `messages.attachment` when opened or downloaded.
   Video and audio players ask for a file ticket within 400 px of the screen;
@@ -994,8 +1041,7 @@ did: `toLocaleString` with a locale builds a new formatter per call.
 Every catalogue and the quota window are chunks of their own too, so a page
 downloads and parses only the language it speaks (`docs/internals/language.md`). Nine
 components the first frame does not draw load the same way
-(`lib/deferred-parts.ts`, the terminal drawer and, outside the shell, the
-phone's navigation, which the boot screen waits for): the image viewer, the
+(`lib/deferred-parts.ts`): the image viewer, the
 diff, the quota overview, the coordination panel, the updates notice, the
 robot face and the dictation button, prefetched in the idle pass. The
 dictation button draws a disabled microphone of the same size until its chunk
@@ -1006,6 +1052,12 @@ files at a time. Geist Mono ships as latin, latin-ext and rest subsets with
 its weight axis; its latin cut carries the arrows and box drawing a terminal
 draws. The text faces (Inter, Atkinson Hyperlegible Next, Source Sans 3, IBM
 Plex Sans) ship as latin and latin-ext.
+
+The HTML paints a localized Starting message with inline styles while it
+preloads the stylesheets. The entry applies them before mounting the app.
+Mobile pairing can open with the conversations navigation, chat, sidebar and
+Agents views still unloaded. The service worker precaches those views when
+it installs so a subsequent offline launch can still use them.
 
 A part whose chunk has not landed says it is loading, one whose chunk failed
 offers a retry, and every failed part asks again when the browser is back
@@ -1165,9 +1217,17 @@ message in that database.
 
 The entry loads the CLI for commands and the Core/server graph for server
 startup. Version metadata lives in `packages/core/src/version.ts`.
-The compiled launcher awaits the main module before dispatch, including with
-ESM bytecode. `packages/core/test/main-entry.test.ts` checks command imports,
-port refusal, the compiled binary and graceful lock release.
+The compiled launcher awaits the main module before dispatch. Its embedded ESM
+bytecode is split into chunks so the core can load the startup code separately
+from commands and drivers. The compiler limits bytecode depth to one. Compiling
+fewer nested functions ahead of time reduces the embedded bytecode cache.
+`packages/core/test/main-entry.test.ts` checks command imports, port refusal,
+the compiled binary and graceful lock release.
+
+Composer writes load the Zod schema when needed. The load happens before the
+outbox read, so validation and its compare-and-swap write run together.
+`packages/core/test/startup-imports.test.ts` checks that importing the core
+leaves Zod unloaded.
 
 Activity restoration selects threads with saved activities. Coordination
 recovery selects active threads and threads with potentially pending letters.
@@ -1590,7 +1650,7 @@ rows mount and style as they come. The load of the machine was not controlled.
 
 ## What a tap costs
 
-`bench/ui-latency.ts` times a phone's navigation in headless Chrome at
+`bench/mobile-navigation.ts` times a phone's navigation in headless Chrome at
 390 x 844, on the in-memory fake client: from the finger coming down (held
 40 ms, then lifted) or the Back, to the first DOM change, to the first frame
 after it, and to the end of the move it starts. `--cpu 4` slows the page four
@@ -1615,7 +1675,7 @@ What makes a Back quick:
   WebView's history.
 
 First frame, median of 5 runs in ms, two interleaved rounds of the build before
-(`24f44f9fd`) and after, `bun bench/ui-latency.ts --bundle <dir> --cpu <n>
+(`24f44f9fd`) and after, `bun bench/mobile-navigation.ts --bundle <dir> --cpu <n>
 --runs 5`, 2026-11-19, on a shared 16-thread Ryzen under load from other jobs:
 
 | Step | CPU 4x before | CPU 4x after | CPU 1x before | CPU 1x after |
@@ -1793,9 +1853,10 @@ What the UI held without bound:
 - The open thread's live end. Messages arriving on the subscribed thread were
   appended for as long as it stayed open, while a thread left keeps 4 MiB in
   the reading cache. Now, while the list follows the bottom,
-  `store/live-end.ts` weighs the live end each time a message arrives (never
-  on a delta) and, past twice the reading cache's per-thread bound (8 MiB or
-  2,000 messages), keeps the newest 4 MiB or 1,000 messages with their turns
+  `store/live-end.ts` checks the budget on message arrival. It reuses the
+  weights of unchanged messages in blocks of 64. Past the reading cache's
+  live window bound (8 MiB of UTF-16 data or 2,000 messages), it keeps the newest 4 MiB or
+  1,000 messages with their turns
   and sets `messagesBefore` to the first one kept: scrolling up reads the rest
   again from the core. The heights and rises the list measured for the rows
   that left go with them.

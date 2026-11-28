@@ -7,7 +7,7 @@ them. In the table, Ctrl means Ctrl on Windows and Linux and Cmd on macOS.
 
 | Shortcut | What it does |
 | --- | --- |
-| Ctrl+K | Open the command palette |
+| Ctrl+K | Search threads, messages, projects and commands |
 | Ctrl+N | Start a new thread in the open project |
 | Ctrl+Enter | Send the message, then open a fresh draft with the same choices |
 | Ctrl+Shift+S | Stash the composer text, or take it back |
@@ -58,6 +58,21 @@ itself.
 - Back to the default resets one command, Remove the shortcut leaves it with
   no key, and Reset all resets everything.
 
+### Resize the interface with the wheel
+
+Interface size with the wheel, in General, has no shortcut until you give it
+one. Click it, hold Ctrl (or Alt, or several keys) and turn the mouse wheel:
+the wheel itself is the key. From then on, in the desktop app, turning the
+wheel up with those keys held enlarges the interface and turning it down
+shrinks it, one step of the Zoom row of Settings, Appearance per notch.
+
+- The keys must be exactly those: Ctrl and the wheel leaves Ctrl, Alt and the
+  wheel alone.
+- With Ctrl and the wheel on Windows or Linux, a trackpad pinch resizes the
+  interface too.
+- A picture you are viewing keeps its own wheel and zooms itself.
+- The wheel alone, or with Shift only, scrolls and is refused.
+
 ### Edit the shortcuts file
 
 The Keyboard page shows the Shortcuts file, with Open the file and Copy the
@@ -79,7 +94,8 @@ apply. A file that is not valid JSON applies nothing until you fix it.
 ## What you cannot change
 
 - Ctrl+Q, which quits the desktop app when held.
-- The zoom of the desktop app: Ctrl+=, Ctrl+- and Ctrl+0.
+- The zoom keys of the desktop app: Ctrl+=, Ctrl+- and Ctrl+0. Its wheel is
+  yours to set, above.
 - A full-screen program in the terminal still receives its Ctrl-letter keys.
 
 ## Pointer behaviours worth knowing

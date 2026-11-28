@@ -55,6 +55,10 @@ same agent.
 - Asks before acting: the agent requests permission in the chat before it runs
   a command or edits a file. pi never asks.
 
+When Antigravity starts helpers (`/swarm` or its own subagents) and pauses to
+wait for them, the conversation keeps working until they report and Antigravity
+writes its answer. Stop ends Antigravity and its helpers.
+
 Every agent keeps its conversation when you close and reopen Boite, and you can
 [switch agent or model](models.md) in the middle of a conversation.
 
@@ -68,6 +72,8 @@ starts the agent. It then appears in the model picker like the others.
 
 Each card in Settings, Providers has a switch. An agent that is turned off
 disappears from the model picker. Nothing is uninstalled and your sign-in stays.
+If you own the machine, press the turned-off provider label below the
+conversation to open Providers on a computer or phone.
 
 ## Going further
 

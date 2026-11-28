@@ -21,13 +21,13 @@ function worktreeSwitch(): HTMLButtonElement | null {
 test('the app mounts against the fake core, lists the seeded threads and opens the latest', async ({ app: _app }) => {
   await waitFor(() => store.threads.length === 4);
   await waitFor(() => (document.body.textContent ?? '').includes('Finish the trace tab'));
+  await waitFor(() => document.querySelector('[data-testid=composer-input]') !== null);
 
   const text = document.body.textContent ?? '';
   expect(text).toContain('boite');
   expect(text).toContain('Port the scheduler');
   // One machine that is connected needs no word about it.
   expect(text).not.toContain('1 machine connected');
-  expect(document.querySelector('[data-testid=composer-input]')).not.toBeNull();
   expect(document.querySelectorAll('[data-testid=thread-row]').length).toBe(4);
   // The most recent thread opens on its own; nothing to click first.
   expect(store.openThread?.id).toBe('t-descriptors');
@@ -41,7 +41,7 @@ test('Alt+digit reaches the history unfolded under an idle project, after the li
     expect(sidebarRows.list.map(entry => entry.threadId)).toEqual(drawn());
     await store.open('t-trace');
     await store.archive('t-descriptors', true);
-    projectThreadView.shelfOpen = true;
+    projectThreadView.folds.idle = true;
     const row = '[data-testid=idle-project][data-project-id="p-notes"]';
     await waitFor(() => document.querySelector(`${row} [data-testid$=-toggle]`) !== null);
     query<HTMLButtonElement>(`${row} [data-testid$=-toggle]`).click();
@@ -49,7 +49,7 @@ test('Alt+digit reaches the history unfolded under an idle project, after the li
     await waitFor(() => sidebarRows.list.at(-1)?.threadId === 't-descriptors');
     expect(sidebarRows.list.map(entry => entry.threadId)).toEqual([...store.threadsOf('p-boite').map(() => expect.any(String)), 't-descriptors']);
   } finally {
-    projectThreadView.shelfOpen = false;
+    projectThreadView.folds.idle = false;
     projectThreadView.done = [];
     projectThreadView.archived = [];
   }
@@ -70,11 +70,10 @@ test('the page leaves the service worker its notification words on boot', async 
 
 test('the app opens on a new thread in the project last worked in', async () => {
   await mountOnFake('/?fake=1&open=landing');
-  await waitFor(() => store.draft !== null);
+  await waitFor(() => document.querySelector('[data-testid=composer-input]') !== null);
   expect(store.openThread).toBeNull();
   // Nothing remembered on this device yet: the project of the most recent thread.
   expect(store.draft?.projectId).toBe('p-notes');
-  expect(document.querySelector('[data-testid=composer-input]')).not.toBeNull();
 
   store.startDraft('p-boite');
   unmountApp();

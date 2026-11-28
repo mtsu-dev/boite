@@ -14,6 +14,8 @@ import { thrown } from './settle.ts';
 /** The checks that load a page need a Chromium-based browser; the rest runs with none, as a machine without one would. */
 const browser = findChromium().path;
 const real = browser ? test : test.skip;
+/** One try of a check in this file; two of them stay under the 120 s an RPC waits. */
+const CHECK_MS = 50_000;
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 
 let harness: TestCore;
@@ -28,11 +30,13 @@ async function start(withBrowser: boolean): Promise<void> {
   harness = await startTestCore(); client = await harness.connect();
   // Every check starts a browser of its own, and a loaded Windows runner took past the 20-second limit to start one:
   // the page then goes out unchecked and a refusal this file expects never comes (2026-10-13, twice). These tests
-  // are about what a check finds, so they give it a minute; the product keeps its limit.
+  // are about what a check finds, so they give it more time; the product keeps its limit. A macOS runner's browser
+  // still answered nothing in a minute (2026-11-24, merge queue run 45475263259): a check that comes back unchecked
+  // gets one fresh browser, so only a browser that fails twice fails these tests. Both tries fit the 120 s an RPC waits.
   const probe = harness.core.browser.probe.bind(harness.core.browser);
-  harness.core.browser.probe = (url, widths) => probe(url, widths, 60_000);
+  harness.core.browser.probe = async (url, widths) => await probe(url, widths, CHECK_MS) ?? probe(url, widths, CHECK_MS);
   const checkView = harness.core.browser.checkView.bind(harness.core.browser);
-  harness.core.browser.checkView = (url, options) => checkView(url, options, 60_000);
+  harness.core.browser.checkView = async (url, options) => await checkView(url, options, CHECK_MS) ?? checkView(url, options, CHECK_MS);
   ({ threadId } = await echoThread(harness, client));
   agent = await connect(harness.url, harness.core.agents.tokenFor(threadId));
   await client.call('turns.start', { threadId, prompt: 'Explain it with a drawing' });
@@ -63,6 +67,8 @@ test('the session guide sends a visual to the chat\'s own Mermaid, TeX and view 
   expect(guide).toContain(CHAT_VISUALS);
   for (const header of ['```mermaid', 'flowchart', 'sequenceDiagram', 'xychart-beta with "quoted" labels', 'pie', 'gantt', 'timeline', 'quadrantChart', 'sankey-beta', 'mindmap', '`$$`', 'never single `$`', '```view fence of HTML, SVG, CSS and script', 'interactive or animated', 'no fixed color']) expect(CHAT_VISUALS).toContain(header);
   expect(CHAT_VISUALS).toMatch(/when asked for a visual or when a picture explains better than text/);
+  // A list, a choice, a measure or a few numbers need no page: the plain-line fences come before a view.
+  for (const fence of ['```steps', '```options', '```bars', '```stats', '`title | detail`', '`label | value | note`', 'leading `* ` highlights', 'prefer them to a view']) expect(CHAT_VISUALS).toContain(fence);
   // Then the page a block does not suit: its help is read before a page, not before every visual.
   expect(guide.indexOf(CHAT_VISUALS)).toBeLessThan(guide.indexOf(VIEW_GUIDE_LINE));
   expect(VIEW_GUIDE_LINE).toMatch(/^A larger page, or one kept as a file, needs `boite view/);
@@ -75,12 +81,14 @@ test('the session guide sends a visual to the chat\'s own Mermaid, TeX and view 
   expect(agentGuide(true, false, skills)).toContain('boite-prove-it: d2\nFile: /p');
   expect(agentGuide(true, true, skills)).toContain('; skill boite-report-issue: /r');
   // Two lines of the session prompt, which every turn of every thread pays for: 419 before the ```view fence, whose 130
-  // spare a small page its command and its help (549 measured 2026-10-26).
-  expect(CHAT_VISUALS.length + VIEW_GUIDE_LINE.length).toBeLessThan(550);
+  // spare a small page its command and its help (549 measured 2026-10-26), then 167 for the plain-line fences, which
+  // spare a list its page (716 measured 2026-11-25).
+  expect(CHAT_VISUALS.length + VIEW_GUIDE_LINE.length).toBeLessThan(720);
   const help = await cli('view', 'help');
   expect(help.code).toBe(0);
   expect(help.output).toContain(VIEW_HELP);
-  for (const told of ['--color-foreground', '--series-1', 'Nothing remote loads', 'one file each', 'data-reduced-motion', 'do not announce it']) expect(VIEW_HELP).toContain(told);
+  expect(help.output).toContain('Leave color-scheme to Boite');
+  for (const told of ['--color-foreground', '--series-1', 'Nothing remote loads', 'one file each', 'data-reduced-motion', 'do not announce it', '```stats fence', 'units that compare']) expect(VIEW_HELP).toContain(told);
   // The app's look is explained, the kit is listed, and a full page is one command away.
   for (const told of ['The look', 'One accent', 'input[type=range]', '.segmented', '.stat', '.series-1', 'Never write a fixed color', 'boite view example', 'advice']) expect(VIEW_HELP).toContain(told);
   const example = await cli('view', 'example');
@@ -223,6 +231,15 @@ test('a page of many small style blocks is read in one pass', () => {
   const built = buildView('<style>a{color:red}</style>'.repeat(32_000), join(harness.dataDir, 'views'), harness.dataDir);
   expect(performance.now() - started).toBeLessThan(1_000);
   expect(built.problems).toEqual([]);
+});
+
+test('color scheme advice detects linked and inline styles and ignores examples in the page text', () => {
+  const build = (source: string) => buildView(source, harness.dataDir, harness.dataDir);
+  write('scheme.css', ':root { COLOR-SCHEME /* theme */ : normal !important }');
+  expect(build('<link rel="stylesheet" href="scheme.css">').hasColorScheme).toBe(true);
+  expect(build('<html style="color-scheme: normal !important">').hasColorScheme).toBe(true);
+  expect(build('<meta content="light" name="color-scheme">').hasColorScheme).toBe(true);
+  expect(build('<p>color-scheme: normal</p><style>/* :root { color-scheme: normal } */</style>').hasColorScheme).toBe(false);
 });
 
 test('boite view publishes a page as an artifact that opens only on the view route, under its sandbox', async () => {
@@ -423,6 +440,24 @@ real('view check scripts run on a fresh page at each width and leave only local 
     expect(existsSync(join(harness.dataDir, 'artifacts'))).toBe(false);
     expect(existsSync(join(harness.dataDir, 'view-checks')) ? readdirSync(join(harness.dataDir, 'view-checks')) : []).toEqual([]);
   } finally { off(); }
+}, 180_000);
+
+real('view check keeps the app scheme when the page declares its own', async () => {
+  await restartWithBrowser();
+  write('scheme.html', '<style>:root{color-scheme:normal} p{color:var(--color-foreground)}</style><p>hello</p>');
+  write('scheme.js', 'return getComputedStyle(document.documentElement).colorScheme;');
+
+  for (const scheme of ['dark', 'light']) {
+    const checked = await cli('view', 'check', 'scheme.html', '--scheme', scheme, '--script', 'scheme.js', '--json');
+    expect(checked.code).toBe(0);
+    const result = JSON.parse(checked.output) as SavedCheck;
+    expect(result.checked).toBe(true);
+    expect(result.captures.map(({ width, value }) => ({ width, value }))).toEqual([
+      { width: 816, value: scheme },
+      { width: 330, value: scheme },
+    ]);
+    expect(result.advice).toEqual([expect.stringContaining('color-scheme')]);
+  }
 }, 180_000);
 
 real('view check keeps screenshots after a script error, returns failure and never overwrites a capture', async () => {

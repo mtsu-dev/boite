@@ -57,7 +57,7 @@ test('an empty Claude HTTP response falls back to the same account CLI without s
   writeFileSync(join(directory, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 'fixture-token' } }));
   const accounts = spyOn(harness.core.accounts, 'list').mockReturnValue([account]);
   const fetcher = spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ five_hour: null, seven_day: null }));
-  const sdk = await import('@anthropic-ai/claude-agent-sdk');
+  const sdk = await import('@anthropic-ai/claude-agent-sdk/core');
   const prompts: unknown[] = [];
   let closed = false;
   const query = spyOn(sdk, 'query').mockImplementation(({ prompt, options }) => {
