@@ -85,7 +85,13 @@ export class ActivityStore {
       if (review?.reviewerThreadId) { this.#reviewers.add(review.reviewerThreadId); review.reviewerThreadId = null; changed = true; }
       if (saved.goal?.checklist && this.tracker.adopt(thread.id, saved.goal.checklist)) changed = true;
       for (const run of saved.loop?.history ?? []) {
-        if (run.status === 'running') { run.status = 'error'; run.summary = 'Core restarted before this iteration finished.'; run.finishedAt = Date.now(); changed = true; }
+        if (run.status !== 'running') continue;
+        const turn = core.journal.getTurn(run.turnId);
+        if (turn?.threadId === thread.id && core.threads.handoff.requeues(turn)) {
+          this.#ownTurns.set(turn.id, { kind: 'loop', generation: 0, iteration: run.iteration });
+          continue;
+        }
+        run.status = 'error'; run.summary = 'Core restarted before this iteration finished.'; run.finishedAt = Date.now(); changed = true;
       }
       this.#states.set(thread.id, saved);
       if (changed) this.#save(thread.id);

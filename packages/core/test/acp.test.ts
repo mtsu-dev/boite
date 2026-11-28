@@ -16,6 +16,7 @@ import { toolOutputText } from '../src/drivers/acp/turn.ts';
 import { sessionNotificationOf } from '../src/drivers/acp/updates.ts';
 import { stderrLines } from '../src/drivers/lines.ts';
 import { forgetProbes, getDriver, setDriver } from '../src/drivers/index.ts';
+import { withVacantCheckout } from '../src/checkout-removal.ts';
 import * as threadCwd from '../src/threads/cwd.ts';
 import { CAPACITY_CONTINUE_PROMPT, CAPACITY_RETRY, STOP_DEADLINE } from '../src/threads/turn-attempts.ts';
 import { echoThread, startTestCore, startTurn, waitFor } from './harness.ts';
@@ -254,12 +255,16 @@ test.each([
   ['core restart of a subagent', 'acknowledged'],
   ['core restart of a subagent followed by Stop', 'acknowledged'],
   ['core restart while delivering the subagent Stop result', 'acknowledged'],
+  ['core restart while delivering the subagent Stop result to a paused team', 'acknowledged'],
+  ['targeted subagent Stop', 'acknowledged after persistence rollback'],
   ['core restart of a subagent', 'acknowledged during handoff with terminal persistence unavailable'],
   ['core restart of a workflow step', 'acknowledged'],
   ['core restart of a workflow step followed by a queued goal', 'acknowledged'],
   ['core restart of a workflow step after goal admission', 'acknowledged'],
   ['core restart of a workflow step after prompt admission', 'acknowledged'],
+  ['core restart of a workflow step after loop admission', 'acknowledged'],
   ['workflow step completion with a clean checkout', 'completed'],
+  ['workflow step completion during checkout removal', 'completed'],
   ['core restart of a workflow step', 'acknowledged during handoff with terminal persistence unavailable'],
   ['core restart of a workflow step', 'completed with terminal persistence unavailable'],
   ['core restart of a paused workflow step', 'completed with terminal persistence unavailable'],
@@ -275,12 +280,16 @@ test.each([
   const switchAgain = interruption === 'core restart after switching away again';
   const switchAway = interruption === 'core restart after switching away' || switchAgain;
   const switchBack = interruption === 'core restart after switching back' || switchAgain;
-  const restartAfterStop = interruption === 'core restart while delivering the subagent Stop result';
-  const subagent = interruption.startsWith('core restart of a subagent') || restartAfterStop;
+  const restartAfterStop = interruption.startsWith('core restart while delivering the subagent Stop result');
+  const restartPausedTeam = interruption === 'core restart while delivering the subagent Stop result to a paused team';
+  const targetedStop = interruption === 'targeted subagent Stop';
+  const subagent = interruption.startsWith('core restart of a subagent') || restartAfterStop || targetedStop;
   const stopFollowUp = interruption === 'core restart of a subagent followed by Stop' || restartAfterStop;
   const restartGoal = interruption === 'core restart of a workflow step after goal admission';
-  const restartPrompt = interruption === 'core restart of a workflow step after prompt admission';
-  const checkout = interruption === 'workflow step completion with a clean checkout';
+  const restartLoop = interruption === 'core restart of a workflow step after loop admission';
+  const restartPrompt = interruption === 'core restart of a workflow step after prompt admission' || restartLoop;
+  const removingCheckout = interruption === 'workflow step completion during checkout removal';
+  const checkout = interruption === 'workflow step completion with a clean checkout' || removingCheckout;
   const queuedGoal = interruption === 'core restart of a workflow step followed by a queued goal' || restartGoal;
   const pausedWorkflow = interruption === 'core restart of a paused workflow step';
   const workflow = interruption.startsWith('core restart of a workflow step') || pausedWorkflow || checkout ? await acpWorkflowStep(client, checkout) : undefined;
@@ -323,6 +332,7 @@ test.each([
   await waitFor(() => fakeLog().includes('session/cancel'));
   if (noLoad) expect(core.threads.require(threadId).sessionId).toBeNull();
   if (queuedGoal) queued[0]!.text = '/goal Read the follow-up';
+  if (restartLoop) queued[0]!.text = '/loop 1x Read the follow-up';
   await setPaused(true);
   if (workflow && pausedWorkflow) {
     const paused = await client.call('workflows.control', { threadId: workflow.rootId, runId: workflow.runId, action: 'pause' });
@@ -338,6 +348,16 @@ test.each([
   const check = blockedFolderCheck ? spyOn(threadCwd, 'folderPresent').mockImplementationOnce(() => {
     checkingFolder.resolve();
     return folder.promise;
+  }) : undefined;
+  const checkoutReserved = Promise.withResolvers<void>();
+  const releaseCheckout = Promise.withResolvers<void>();
+  const removeCheckout = core.worktrees.remove.bind(core.worktrees);
+  const remove = removingCheckout ? spyOn(core.worktrees, 'remove').mockImplementation(async (...args) => {
+    if (args[0] === threadId) await withVacantCheckout(core, args[1], args[2].path, async () => {
+      checkoutReserved.resolve();
+      await releaseCheckout.promise;
+    }, [], threadId);
+    return removeCheckout(...args);
   }) : undefined;
   const putTurn = core.journal.putTurn.bind(core.journal);
   let handoff: unknown;
@@ -363,7 +383,7 @@ test.each([
     spyOn(core.updates, 'wantsPause').mockReturnValueOnce(true);
     expect(core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
     await waitFor(() => stop.mock.calls.length > 0);
-  } else if (retrySettlement || blockedFolderCheck) {
+  } else if (retrySettlement && !targetedStop || blockedFolderCheck) {
     const restart = async () => {
       if (switchAway || switchBack) await client.call('threads.update', { threadId, accountId: otherAccountId });
       if (switchBack) expect(await client.call('threads.update', { threadId, accountId, requireSavedSession: true })).toMatchObject({ sessionId: originalSession });
@@ -382,7 +402,7 @@ test.each([
       await closeForHandoff(first);
     };
     restartCore = duringHandoff ? restart() : (blockedFolderCheck ? checkingFolder.promise : rolledBack.promise).then(restart);
-  } else if (checkout) {
+  } else if (checkout || targetedStop) {
     // Let the turn finish on its own while the composer is paused.
   } else if (interruption === 'core restart' || subagent || workflow) {
     restartCore = closeForHandoff(first);
@@ -394,6 +414,17 @@ test.each([
   let next: TestCore | undefined;
   let last: TestCore | undefined;
   try {
+    if (targetedStop) {
+      await rolledBack.promise;
+      const rootId = core.threads.require(threadId).parentThreadId!;
+      expect(await client.call('delegation.stop', { threadId: rootId, agentId: threadId })).toEqual({ stopped: 1 });
+      await waitFor(() => core.journal.getTurn(id)?.finishedAt != null);
+      expect(core.journal.getTurn(id)).toMatchObject({ status: 'stopped' });
+      expect(core.journal.getTurn(id)?.execution?.queuedInputSession).toBeUndefined();
+      expect(core.delegation.get(rootId).settlement).toBe('settled');
+      expect(core.journal.db.query("SELECT request_id FROM delegation_messages WHERE sender_id = ? AND request_id = ?").all(threadId, `result:${id}`)).toHaveLength(1);
+      return;
+    }
     if (restartCore !== undefined) {
       await restartCore;
       if (blockedFolderCheck) {
@@ -432,9 +463,21 @@ test.each([
 
     if (checkout) {
       const worktree = core.delegation.worktrees.get(threadId)!;
-      await waitFor(() => core.delegation.worktrees.get(threadId)?.state === 'removed');
-      expect(existsSync(worktree.path)).toBe(false);
-      await setPaused(false);
+      if (removingCheckout) {
+        await checkoutReserved.promise;
+        expect(core.worktrees.reservations.holder(worktree.path)).toBe(worktree.path);
+        await setPaused(false);
+        const checked = Promise.withResolvers<void>();
+        const off = core.bus.onCommitted((name, payload) => {
+          if (name === 'composer.updated' && (payload as ComposerRecord).id === threadId && (payload as ComposerRecord).value?.input.paused) checked.resolve();
+        });
+        try { await Promise.race([checked.promise, Bun.sleep(100)]); }
+        finally { off(); releaseCheckout.resolve(); }
+      } else {
+        await waitFor(() => core.delegation.worktrees.get(threadId)?.state === 'removed');
+        expect(existsSync(worktree.path)).toBe(false);
+        await setPaused(false);
+      }
       await waitFor(() => core.journal.listTurns(threadId)[previousTurns + 1]?.status === 'done'
         || core.composer.storage.get('inputs', threadId).value?.input.paused === true);
       expect(core.journal.listTurns(threadId)[previousTurns + 1]?.status).toBe('done');
@@ -445,6 +488,7 @@ test.each([
       try {
         await setPaused(false);
         await waitFor(() => core.composer.storage.get('inputs', threadId).value?.input.queued.length === 0);
+        if (restartLoop) await waitFor(() => core.activity.get(threadId).loop?.history?.[0]?.status === 'running');
         const admitted = core.journal.listTurns(threadId).at(-1)!;
         expect(admitted).toMatchObject({ status: 'queued', startedAt: null });
         await closeForHandoff(next!);
@@ -455,8 +499,11 @@ test.each([
         expect(core.journal.listTurns(threadId)).toHaveLength(previousTurns + 2);
         const messages = [...core.journal.walkTurnMessages(threadId, admitted.id)];
         expect(messages.find(message => message.role === 'user')?.parts).toEqual([
-          expect.objectContaining({ type: 'text', text: expect.stringContaining(queued[0]!.text) }),
+          expect.objectContaining({ type: 'text', text: expect.stringContaining(restartLoop ? '/loop Read the follow-up' : queued[0]!.text) }),
         ]);
+        if (restartLoop) expect(core.activity.get(threadId).loop).toMatchObject({
+          status: 'complete', iterations: 1, history: [{ turnId: admitted.id, status: 'done' }],
+        });
         expect(core.workflows.get(workflow.rootId, workflow.runId).status).toBe('done');
       } finally { hold.mockRestore(); }
       return;
@@ -495,7 +542,13 @@ test.each([
         try {
           expect(await client.call('delegation.stop', { threadId: rootId, agentId: threadId })).toEqual({ stopped: 1 });
           expect(letters()).toEqual([]);
-          const closing = closeForHandoff(next!);
+          const closing = restartPausedTeam ? (async () => {
+            const draining = core.drain(0);
+            core.journal.db.query("UPDATE delegation_messages SET status = 'received', data = json_set(data, '$.status', 'received') WHERE root_id = ? AND sender_id = ?").run(rootId, threadId);
+            await draining;
+            await next!.server.stop();
+            await core.close();
+          })() : closeForHandoff(next!);
           await waitFor(() => core.stopping);
           settling.resolve();
           await closing;
@@ -503,6 +556,11 @@ test.each([
         last = await startTestCore({ dataDir: first.dataDir });
         core = last.core;
         client = await last.connect();
+        if (restartPausedTeam) {
+          expect(core.delegation.config(rootId)).toMatchObject({ paused: true, pausedBy: 'restart' });
+          expect(letters()).toEqual([]);
+          await client.call('delegation.configure', { threadId: rootId, config: { ...core.delegation.config(rootId), paused: false } });
+        }
         await waitFor(() => letters().length > 0);
       } else expect(await client.call('delegation.stop', { threadId: rootId, agentId: threadId })).toEqual({ stopped: 1 });
       expect(letters()).toEqual([expect.objectContaining({ origin: 'result', to: { coreId: 'local', threadId: rootId } })]);
@@ -553,6 +611,8 @@ test.each([
     expect(setModeCount('plan')).toBe(interruption === 'permission restart' ? 1 : 0);
   } finally {
     folder.resolve(true);
+    releaseCheckout.resolve();
+    remove?.mockRestore();
     check?.mockRestore();
     persist?.mockRestore();
     await last?.stop();

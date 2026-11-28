@@ -341,12 +341,19 @@ export class Composer {
         // As `turns.start`: the project's folder is only reported (a shared worktree outlives it); the turn's own cwd decides.
         if (!discoveryFailure && current.projectId) void this.#core.projects.requireFolder(current.projectId).catch(() => undefined);
         const worktrees = this.#core.delegation.worktrees;
+        const managed = worktrees.get(id)?.path === current.cwd;
+        if (managed && worktrees.isSettling(id)) {
+          // Settlement can reserve the checkout before the scheduler admits a turn.
+          await Promise.race([this.#stopped, worktrees.settle(id)]);
+          continue;
+        }
         const admissionFailure = discoveryFailure ?? await ensureThreadCwd(this.#core, current).catch((error: unknown) => {
-          // The runner waits for settlement and opens its managed checkout again if needed.
+          // The runner opens its managed checkout again if cleanup removed it.
           const worktree = worktrees.get(id);
-          if (worktree?.path === current.cwd && (worktree.state === 'removed' || worktrees.isSettling(id))) return undefined;
+          if (worktree?.path === current.cwd && worktree.state === 'removed') return undefined;
           return { error };
         });
+        if (managed && worktrees.isSettling(id)) continue;
         const activity = composerActivity(item.text);
         this.#atomic(() => {
           const target = this.#core.journal.getThread(id);

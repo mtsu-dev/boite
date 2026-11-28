@@ -1,4 +1,5 @@
 import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type Attachment, type RpcEventName, type RpcEvents, type ThreadId, type ThreadSummary, type Turn, type TurnId, type Usage } from '@boite/contracts';
+import { admittedComposerTurn } from '../composer-storage.ts';
 import { messageExcerpt } from '../continuation.ts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
@@ -462,7 +463,7 @@ export class RestartHandoff {
     if (thread.parentThreadId) {
       if (operation !== undefined) return null;
       if (was === 'running') return 'composer';
-      return this.#core.composer.storage.admittedTurn(threadId, turnId) ? 'resume' : null;
+      return admittedComposerTurn(this.#core, threadId, turnId) ? 'resume' : null;
     }
     return operation === undefined || operation === 'resume' || (was === 'running' && operation === 'background') ? 'resume' : null;
   }

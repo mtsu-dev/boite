@@ -83,20 +83,27 @@ export function sendChildResult(core: Core, turn: Turn, child: ThreadSummary, pa
 }
 
 /** Finish pending result deliveries without stopping or settling any newer turn. */
-export async function recoverComposerResults(core: Core): Promise<void> {
-  await Promise.all(pendingComposerResults(core).map(async turn => {
+export async function recoverComposerResults(core: Core, rootId?: string): Promise<void> {
+  const recover = async (turn: Turn): Promise<void> => {
     const child = core.journal.getThread(turn.threadId);
+    if (rootId !== undefined && child?.parentThreadId !== rootId) return;
     const delegation = core.delegation;
     const parent = child?.parentThreadId ? core.journal.getThread(child.parentThreadId) : null;
     const link = child && !child.parentThreadId ? delegation.remote.parentOf(child.id) : undefined;
     const config = parent ? delegation.config(parent.id) : null;
-    if (!child || child.archived || (parent ? parent.archived || !config?.enabled || config.paused : !link)) {
+    if (!child || child.archived || (parent ? parent.archived || !config?.enabled : !link)) {
       clearComposerResult(core, turn.id);
       return;
     }
+    if (config?.paused) return;
     if (taskTurn(core, child.id)?.id === turn.id) await delegation.worktrees.settle(child.id);
-    if (!core.stopping && !core.journal.isClosed()) sendChildResult(core, turn, child, parent?.id ?? link!.parentId, link !== undefined, [], sentBack(core, child.id, turn));
-  }));
+    if (core.stopping || core.journal.isClosed() || !hasComposerResult(core, turn.id)) return;
+    sendChildResult(core, turn, child, parent?.id ?? link!.parentId, link !== undefined, [], sentBack(core, child.id, turn));
+  };
+  try { await Promise.all(pendingComposerResults(core).map(recover)); }
+  catch (error) {
+    if (!core.stopping && !core.journal.isClosed()) core.log('warn', `delegation results recovery failed: ${messageOf(error)}`);
+  }
 }
 
 /**

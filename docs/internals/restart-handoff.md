@@ -57,9 +57,11 @@ server listens, each eligible entry is handled separately:
   stops the child. A prompt already admitted by the composer keeps its queued
   turn on a delegated thread. If a queued goal or loop was admitted before its
   first turn, the step still waits for it, and the activity requires an explicit
-  resume. A targeted Stop's pending result is delivered after worktree
-  settlement even if the next core has to finish the delivery. Usage
-  and session data can still be recorded if the provider reports them after Stop.
+  resume. An already queued loop turn keeps its iteration until it finishes.
+  The composer waits for worktree cleanup before admitting a follow-up there.
+  A targeted Stop's pending result waits for worktree settlement and for the
+  parent team to resume if startup paused it. Usage and session data can
+  still be recorded if the provider reports them after Stop.
   Older cores that support interrupted queued input read a completed outcome as
   an interruption and can still recover the other turns in the handoff.
 

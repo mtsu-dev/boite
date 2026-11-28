@@ -242,6 +242,7 @@ export class Delegation {
   /** The tick skips a held team's mail, so a resume hands over its backlog now. */
   #handOver(rootId: string): void {
     for (const row of this.#core.journal.db.query("SELECT DISTINCT recipient_id FROM delegation_messages WHERE root_id = ? AND status = 'received'").all(rootId) as { recipient_id: string }[]) this.#kick(row.recipient_id);
+    this.#track(recoverComposerResults(this.#core, rootId));
   }
   validateConfig(value: DelegationConfig, previous?: DelegationConfig): DelegationConfig { return checkConfig(this.#core, value, previous); }
   /** A workflow needs no enabled team: its steps and its summary stop only for a team the owner paused. */
@@ -586,7 +587,8 @@ export class Delegation {
     if (live.length === 0) closeQuestions(this.#core, thread.id, `the core, since the subagent's turn ended ${turn.status}`);
     if (root) {
       const config = this.config(root.id);
-      if (!config.enabled || config.paused || root.archived) return clearComposerResult(this.#core, turn.id);
+      if (!config.enabled || root.archived) return clearComposerResult(this.#core, turn.id);
+      if (config.paused) return;
     }
     // Ended to wait on its own background work: what it says is a checkpoint, the result follows.
     if (live.length > 0) this.#wakeDeadlines.delete(thread.id);
@@ -742,6 +744,8 @@ export class Delegation {
   }
   /** Stops one child: final until an explicit new instruction, so no restart continues it, and a parent elsewhere hears so. True when it was at work. */
   #halt(id: string): boolean {
+    const running = this.#core.journal.runningTurn(id);
+    if (running) this.#core.threads.handoff.recordUserStop(running.id);
     this.remote.halted(id);
     endRestart(this.#core, id);
     // A child at rest on its own background work is at work too: stopping it ends that work.
@@ -818,9 +822,7 @@ export class Delegation {
   /** Once the server listens after a restart handoff: the children it cut go on (`delegation/restart.ts`). */
   resumeAfterRestart(): number {
     if (this.#closed || this.#core.journal.isClosed()) return 0;
-    this.#track(recoverComposerResults(this.#core).catch(error => {
-      if (this.#live()) this.#core.log('warn', `delegation results recovery failed: ${messageOf(error)}`);
-    }));
+    this.#track(recoverComposerResults(this.#core));
     const resumed = resumeRestartCuts(this.#core);
     // Children whose background work the restart cut: their parents or runs hear of it, as when it ends without waking them.
     for (const threadId of this.#core.threads.agentState.backgroundHistory.takeInterrupted()) this.#backgroundChanged(threadId);
