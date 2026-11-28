@@ -395,6 +395,8 @@ test("the rail's Add rests out of sight beside the mochis and stays while its me
     const add = query<HTMLButtonElement>('[data-testid=rail-add]');
     // Hidden by its style alone (AppRail.svelte, touch-quiet.test.ts): still a named button in the tree.
     expect(add.classList.contains('tucked')).toBe(true);
+    // Its slot with it: hidden, Add gives its room to the mochis (touch-quiet.test.ts).
+    expect(add.parentElement!.classList.contains('tucked')).toBe(true);
     expect(add.getAttribute('aria-hidden')).toBeNull();
     expect(add.getAttribute('aria-label')).toBe(strings.app.rail.add);
     expect(add.getAttribute('aria-expanded')).toBe('false');
@@ -420,6 +422,7 @@ test("with no mochi or team in the rail yet, its Add always shows: nothing else 
   await waitFor(() => document.querySelector('[data-testid=rail-add]') !== null);
   expect(document.querySelector('[data-testid=rail-bot], [data-testid=rail-team]')).toBeNull();
   expect(query('[data-testid=rail-add]').classList.contains('tucked')).toBe(false);
+  expect(query('[data-testid=rail-add]').parentElement!.classList.contains('tucked')).toBe(false);
 });
 
 test("a right click on a team's rail picture opens the team's menu, and its picks reach the team", async () => {
