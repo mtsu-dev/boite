@@ -14,6 +14,7 @@ import { turnSwitch } from './switch-notice.ts';
 import { writeTurnError } from './turn-error.ts';
 import { folderPresent, restoreThreadCwd, ThreadCwdGone } from './cwd.ts';
 import { abortable } from '../abortable.ts';
+import type { QueuedInputOutcome } from './handoff.ts';
 
 export { STOP_DEADLINE } from './turn-attempts.ts';
 
@@ -172,24 +173,27 @@ export class TurnRunner {
     }
 
     const { thread, running } = state;
+    const queuedInput: QueuedInputOutcome | undefined = result.queuedInputCancelled && result.sessionId !== null
+      ? { queuedInputSession: result.sessionId }
+      : result.queuedInputInterrupted ? { queuedInputInterrupted: true } : undefined;
+    if (running.execution && queuedInput) this.threads.handoff.recordQueuedInputOutcome(turnId, queuedInput);
     try { await this.#finishCheckpoint(state); }
     catch (error) { reportSettlementError(this.#core, threadId, turnId, 'checkpoint', error); }
-    const queuedInputSession = result.queuedInputCancelled ? result.sessionId : null;
     const finished: Turn = {
       ...running,
       status: result.status === 'done' ? 'done' : result.status,
       finishedAt: Date.now(),
       usage: result.usage,
       error: result.error ?? null,
-      ...(running.execution && queuedInputSession !== null
-        ? { execution: { ...running.execution, queuedInputSession } } : {}),
-      ...(running.execution && result.queuedInputInterrupted
-        ? { execution: { ...running.execution, queuedInputInterrupted: true } } : {}),
+      ...(running.execution && queuedInput ? { execution: { ...running.execution, ...queuedInput } } : {}),
       ...(result.checkpoint ? { checkpoint: result.checkpoint } : {}),
       ...(result.agentTotals ? { agentTotals: result.agentTotals } : {}),
     };
     const settlement = { queued, running, thread, result, started, finished };
-    const completion = await settleTurn(this.#core, settlement).finally(() => this.#attempts.close(threadId));
+    const completion = await settleTurn(this.#core, settlement).finally(() => {
+      if (queuedInput) this.threads.handoff.releaseQueuedInputOutcome(turnId);
+      this.#attempts.close(threadId);
+    });
     // No in-memory events or after-finish effects run before the transaction
     // commits. Even a failure in the thread write cannot publish completion twice.
     if (completion === null) {

@@ -99,10 +99,14 @@ export class ThreadRecovery {
         continue;
       }
       if (previous === 'running' && inherited.get(turn.id) === 'running') {
-        // Killed during a restart handoff: the next turn of the thread resumes it, so this is no failure.
-        this.#core.journal.db.transaction(() => this.#closeStopped(turn, 'handed-over'))();
+        const queuedInput = handoff.inheritedQueuedInputOutcome(turn.id);
+        const recovered = turn.execution && queuedInput
+          ? { ...turn, execution: { ...turn.execution, ...queuedInput } }
+          : turn;
+        this.#core.journal.db.transaction(() => this.#closeStopped(recovered, 'handed-over'))();
         counts.handedOver += 1;
-        this.#core.logs.info(`Turn ${turn.id} was stopped by a restart handoff; the thread's next turn resumes it`, { source: 'turns', event: 'turn.recovery.handed-over', threadId: turn.threadId, turnId: turn.id });
+        const next = queuedInput ? 'the composer queue owns the follow-up' : "the thread's next turn resumes it";
+        this.#core.logs.info(`Turn ${turn.id} was stopped by a restart handoff; ${next}`, { source: 'turns', event: 'turn.recovery.handed-over', threadId: turn.threadId, turnId: turn.id });
         continue;
       }
       const blocker = previous === 'running' ? this.#core.threads.autoContinue.crashBlocker(turn) : null;

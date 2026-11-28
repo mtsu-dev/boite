@@ -128,31 +128,43 @@ test('shutdown cancels persistence backoff without replaying the turn', async ()
   const h = await startTestCore();
   const putTurn = h.core.journal.putTurn.bind(h.core.journal);
   let failures = 0;
-  let attemptsWhileStopping = 0;
+  let attemptsWhileClosing = 0;
+  const closing = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const closeBrowser = h.core.browser.close.bind(h.core.browser);
+  let closeStarted = false;
+  const browser = spyOn(h.core.browser, 'close').mockImplementation(async () => {
+    closeStarted = true;
+    closing.resolve();
+    await release.promise;
+    await closeBrowser();
+  });
   h.core.journal.putTurn = turn => {
     if (turn.status === 'done') {
       failures++;
-      if (h.core.stopping) attemptsWhileStopping++;
+      if (closeStarted) attemptsWhileClosing++;
       throw new Error('terminal unavailable');
     }
     putTurn(turn);
   };
-  const record = spyOn(h.core.logs, 'record');
+  let stop: Promise<void> | undefined;
   try {
     const client = await h.connect();
     const { threadId } = await echoThread(h, client);
     await client.call('turns.start', { threadId, prompt: 'shutdown' });
     await waitFor(() => failures > 0);
-    // No wall clock: a stalled Windows runner took 5.3 s to stop here while
-    // the next three tests, which have no backoff, took 6.4, 6.1 and 2.8 s
-    // against 0.4 s. A backoff that kept sleeping tries once more after the
-    // core began stopping, and keeps the drain waiting to its deadline.
-    await h.stop();
-    expect(attemptsWhileStopping).toBe(0);
-    const drained = record.mock.calls.find(([, , context]) => context?.event === 'scheduler.drain.finished');
-    expect(drained?.[2]?.data).toEqual({ running: 1, left: 0 });
+    stop = h.stop();
+    await closing.promise;
+    // Close can still be waiting for a subsystem when a retry wakes up.
+    await waitFor(() => attemptsWhileClosing > 0 || h.core.scheduler.state().running.length === 0);
+    expect(attemptsWhileClosing).toBe(0);
     expect(h.core.scheduler.state().running).toHaveLength(0);
-  } finally { h.core.journal.putTurn = putTurn; record.mockRestore(); await h.stop(); }
+  } finally {
+    release.resolve();
+    h.core.journal.putTurn = putTurn;
+    await (stop ?? h.stop());
+    browser.mockRestore();
+  }
 });
 
 

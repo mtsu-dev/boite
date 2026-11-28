@@ -17,7 +17,7 @@ import { sessionNotificationOf } from '../src/drivers/acp/updates.ts';
 import { stderrLines } from '../src/drivers/lines.ts';
 import { forgetProbes, getDriver, setDriver } from '../src/drivers/index.ts';
 import * as threadCwd from '../src/threads/cwd.ts';
-import { CAPACITY_CONTINUE_PROMPT, CAPACITY_RETRY } from '../src/threads/turn-attempts.ts';
+import { CAPACITY_CONTINUE_PROMPT, CAPACITY_RETRY, STOP_DEADLINE } from '../src/threads/turn-attempts.ts';
 import { startTestCore, startTurn, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
@@ -241,6 +241,9 @@ test.each([
   ['permission restart', 'acknowledged'], ['permission restart', 'rejected'], ['permission restart', 'capacity'], ['agent update', 'capacity'],
   ['core restart', 'acknowledged'], ['core restart', 'completed'], ['core restart', 'explicit stop'], ['core restart', 'explicit stop before acknowledgement'],
   ['core restart', 'acknowledged after persistence rollback'],
+  ['core restart', 'acknowledged with terminal persistence unavailable'],
+  ['core restart', 'acknowledged during handoff with terminal persistence unavailable'],
+  ['core restart', 'rejected with terminal persistence unavailable'],
   ['direct Stop', 'explicit stop before acknowledgement'],
 ] as const)('ACP leaves the queue paused after cancellation during %s (%s)', async (interruption, outcome) => {
   const shutdown = Promise.withResolvers<void>();
@@ -250,9 +253,10 @@ test.each([
   let { core } = first;
   const capacity = outcome === 'capacity';
   const completed = outcome === 'completed';
+  const rejected = outcome.startsWith('rejected');
   const explicitStop = outcome === 'explicit stop' || outcome === 'explicit stop before acknowledgement';
   if (capacity) Object.assign(core.providers.require('acp-fake'), { quirks: ['antigravity'] });
-  const directive = capacity ? ' [capacity-on-cancel]' : outcome === 'rejected' ? ' [error-on-cancel]'
+  const directive = capacity ? ' [capacity-on-cancel]' : rejected ? ' [error-on-cancel]'
     : completed || outcome === 'explicit stop' ? ' [ignore-cancel] [finish-on-gate]' : '';
   const prompt = `[parallel-tools] [confirm-on-gate]${directive}`;
   const { id } = await client.call('turns.start', { threadId, prompt });
@@ -270,14 +274,16 @@ test.each([
   await waitFor(() => fakeLog().includes('session/cancel'));
   await setPaused(true);
   const stop = spyOn(core.threads.runner.handles.get(threadId)!, 'stop');
-  const retrySettlement = outcome === 'acknowledged after persistence rollback';
+  const duringHandoff = outcome === 'acknowledged during handoff with terminal persistence unavailable';
+  const unavailable = outcome.endsWith('terminal persistence unavailable');
+  const retrySettlement = unavailable || outcome === 'acknowledged after persistence rollback';
   const rolledBack = Promise.withResolvers<void>();
   const putTurn = core.journal.putTurn.bind(core.journal);
   let terminalWrites = 0;
   const persist = retrySettlement ? spyOn(core.journal, 'putTurn').mockImplementation(turn => {
-    if (turn.id === id && turn.status === 'stopped') {
+    if (turn.id === id && (turn.status === 'stopped' || turn.status === 'error')) {
       terminalWrites += 1;
-      if (terminalWrites === 1) {
+      if (terminalWrites === 1 || unavailable) {
         rolledBack.resolve();
         throw new Error('injected terminal write failure');
       }
@@ -296,11 +302,18 @@ test.each([
     expect(core.threads.runner.requestPause(threadId, 'acp-fake')).toBe(true);
     await waitFor(() => stop.mock.calls.length > 0);
   } else if (retrySettlement) {
-    restartCore = rolledBack.promise.then(async () => {
-      expect(core.requestHandoffShutdown(0)).toBe('accepted');
+    const restart = async () => {
+      const deadline = { ...STOP_DEADLINE };
+      try {
+        // An agent still answering over stdio needs time to report cancellation.
+        if (unavailable) Object.assign(STOP_DEADLINE, { ms: duringHandoff ? 2_000 : 20, forceMs: 20 });
+        expect(core.requestHandoffShutdown(0)).toBe('accepted');
+      } finally { Object.assign(STOP_DEADLINE, deadline); }
       await shutdown.promise;
+      if (unavailable) expect(core.journal.getTurn(id)?.status).toBe('running');
       await closeForHandoff(first);
-    });
+    };
+    restartCore = duringHandoff ? restart() : rolledBack.promise.then(restart);
   } else if (interruption === 'core restart') {
     restartCore = closeForHandoff(first);
     await waitFor(() => stop.mock.calls.length > 0);
@@ -320,12 +333,13 @@ test.each([
     expect(core.composer.storage.get('inputs', threadId).value?.input).toMatchObject({ paused: true, queued });
     expect(core.journal.listTurns(threadId)).toHaveLength(1);
     const execution = core.journal.getTurn(id)?.execution;
-    expect(execution?.queuedInputSession).toEqual(outcome === 'acknowledged' || retrySettlement ? expect.any(String) : undefined);
-    expect(execution?.queuedInputInterrupted).toBe(outcome === 'rejected' || capacity ? true : undefined);
+    expect(execution?.queuedInputSession).toEqual(outcome === 'acknowledged' || (retrySettlement && !rejected) ? expect.any(String) : undefined);
+    expect(execution?.queuedInputInterrupted).toBe(rejected || capacity ? true : undefined);
     expect(countLogLines(fakeLog(), 'session/prompt')).toBe(1);
     expect(countLogLines(fakeLog(), 'session/cancel')).toBe(1);
     expect(core.threads.runner.retryOf(threadId)).toBeNull();
-    if (retrySettlement) expect(terminalWrites).toBe(2);
+    if (unavailable) expect(terminalWrites).toBeGreaterThan(1);
+    else if (retrySettlement) expect(terminalWrites).toBe(2);
 
     await setPaused(false);
     await waitFor(() => core.journal.listTurns(threadId)[1]?.status === 'done');

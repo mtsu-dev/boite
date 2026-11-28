@@ -667,13 +667,15 @@ export class Core {
   /** Share both an active wait and its completion across shutdown phases. */
   #drainPromise: Promise<void> | null = null;
   #stopping = false;
+  #closing = false;
 
   get stopping(): boolean { return this.#stopping; }
 
-  /** True once shutdown begins draining work, after any restart handoff grace. */
-  get draining(): boolean { return this.#drainPromise !== null; }
+  /** True once shutdown starts draining work or closing subsystems. */
+  get draining(): boolean { return this.#drainPromise !== null || this.#closing; }
 
   async close(): Promise<void> {
+    this.#closing = true;
     this.composer.stop();
     const closingAt = performance.now();
     await this.browser.close();

@@ -44,6 +44,10 @@ server listens, each eligible entry is handled separately:
   provider's capabilities and the usual per-turn limits.
 - A turn left running when the old core was killed is closed as stopped, without
   an error part, then gets the same continuation.
+- If an ACP attempt ended after a queued-input cancellation was requested, the
+  handoff keeps its acknowledgement or interruption when the terminal write
+  misses the deadline. Recovery closes the turn as stopped and leaves the
+  follow-up to the composer, which respects its pause.
 
 A core that dies without a handoff (a crash, a kill, the shell's Quit) leaves
 its work to [automatic resumes](#turns-that-stop-before-their-answer).
