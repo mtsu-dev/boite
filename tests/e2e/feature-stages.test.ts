@@ -54,12 +54,13 @@ for (const [name, size] of [['desktop', DESKTOP], ['phone', PHONE]] as const) {
     await page.evaluate(`window.__boiteTest.workspace.active.showSettings('experiments')`);
     await page.waitFor(`document.querySelector('[data-testid="experiments-page"] [data-testid="experiment-draft-backdrop"]')?.getBoundingClientRect().width > 0`);
     expect(await page.evaluate(`[...document.querySelectorAll('[data-testid="experiments-page"] input[data-testid^="experiment-"]')].map((node) => [node.dataset.testid, node.checked])`)).toEqual([
+      // This device's switches come first, in their card, then the machine's.
       ['experiment-draft-backdrop', false],
+      ['experiment-teams', false],
+      ['experiment-session-import', false],
       // A machine switch shows its setting: the fake core's seed has Contacts on.
       ['experiment-contacts', true],
-      ['experiment-teams', false],
       ['experiment-auto-goal', false],
-      ['experiment-session-import', false],
       ['experiment-background-compaction', false],
       ['experiment-device-stream', false],
     ]);

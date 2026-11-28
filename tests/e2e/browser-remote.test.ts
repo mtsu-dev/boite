@@ -138,14 +138,14 @@ test('a device the agent opens shows the same cover naming the machine, and Show
   await size(1280, 900);
 }, 60_000);
 
-test('with the live stream on in Settings > System, Show plays the device as video on a canvas', async () => {
+test('with the live stream on in Settings > Experiments, Show plays the device as video on a canvas', async () => {
   await page.click('[data-testid=nav-settings]');
-  await page.click('[data-testid=settings-tab-advanced]');
-  await page.waitFor(`document.querySelector('${id('device-stream-on')}')`);
-  expect(await page.evaluate<boolean>(`document.querySelector('${id('device-stream-on')}').checked`)).toBe(false);
-  await page.click(id('device-stream-on'));
+  await page.click('[data-testid=settings-tab-experiments]');
+  await page.waitFor(`document.querySelector('${id('experiment-device-stream')}')?.disabled === false`);
+  expect(await page.evaluate<boolean>(`document.querySelector('${id('experiment-device-stream')}').checked`)).toBe(false);
+  await page.click(id('experiment-device-stream'));
   await page.waitFor(`${store}.settings?.deviceStream === true`);
-  await page.evaluate(`document.querySelector('${id('device-stream-settings')}').scrollIntoView({ block: 'center' })`);
+  await page.evaluate(`document.querySelector('#settings-device-stream').scrollIntoView({ block: 'center' })`);
   await capture('device-stream-settings-desktop.png');
   await page.click('[data-testid=settings-back]');
   // Back on the thread's chat: its row may be gone, the docked panel takes the list's column on a desktop.
