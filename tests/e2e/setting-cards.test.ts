@@ -43,6 +43,7 @@ test('an agent reads the app\'s language and this device\'s experiments, and a s
     ['experiment.draft-backdrop', false, 'Fond des nouvelles conversations'],
     ['experiment.teams', false, 'Équipes'],
     ['experiment.session-import', false, 'Import de sessions'],
+    ['experiment.discord-presence', false, 'Statut Discord'],
   ]);
   expect(read.settings.find(reading => reading.key === 'experiments')).toBeUndefined();
 
