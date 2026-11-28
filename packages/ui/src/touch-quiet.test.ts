@@ -71,10 +71,11 @@ test("the rail's Add shows only under a pointer on the rail, fading as the edge 
   // Hidden by its opacity, never taken out of the tree: it keeps its name for a screen reader.
   expect(body(hidden[0]!.selector)).not.toMatch(/display:\s*none|visibility:\s*hidden/);
   expect(style).not.toMatch(/\.add\.tucked[^{]*\{[^}]*(display:\s*none|visibility:\s*hidden)/);
-  // The pointer over the rail, the keyboard in it or the menu it opened bring it back.
+  // The pointer over the rail, the keyboard in it or the menu it opened bring it back; on the mochis it stays away,
+  // as its room does (below).
   const shown = tucked.find((rule) => /opacity:\s*1\s*;/.test(body(rule.selector)))!.selector;
-  expect(shown).toMatch(/\.app-rail:hover \.rail-button\.add\.tucked/);
-  expect(shown).toMatch(/\.app-rail:has\(:global\(:focus-visible\)\) \.rail-button\.add\.tucked/);
+  expect(shown).toMatch(/\.app-rail:hover:not\(:has\(\.bots:hover\)\) \.rail-button\.add\.tucked/);
+  expect(shown).toMatch(/\.app-rail:has\(:global\(:focus-visible\)\):not\(:has\(\.bots :global\(:focus-visible\)\)\) \.rail-button\.add\.tucked/);
   expect(shown).toMatch(/\.rail-button\.add\.tucked\[aria-expanded='true'\]/);
   // The scrollbars' thumbs' duration and curve, which reduced motion cuts (motion.css).
   const thumb = /\.edge-scrollbar-thumb \{[^}]*transition:[^;]*?(var\(--dur-\d\)) (var\(--ease-[\w-]+\))/.exec(bare(appCss()))!;
@@ -97,10 +98,11 @@ test("hidden, the rail's Add gives its room to the mochis: its slot takes back i
   expect(style).toMatch(/\.rail-button, \.bot \{[^}]*height: var\(--rail-button\);/);
   // By its margin alone: the slot keeps its size, so Add fades where it stands when the rail has room, and stays in the tree.
   expect(body(folded)).not.toMatch(/(^|[\s;])height:|display:\s*none|visibility:\s*hidden/);
-  // Given back by what shows Add: the pointer over the rail, the keyboard in it or the menu Add opened.
+  // Given back by what shows Add: the pointer over the rail, the keyboard in it or the menu Add opened. Not while
+  // they are on the mochis: the list would lose its end under them, and the mochi pointed at would pass behind Add.
   const open = slot.find((rule) => /margin-bottom:\s*0\s*;/.test(body(rule.selector)))!.selector;
-  expect(open).toMatch(/\.app-rail:hover \.slot\.tucked/);
-  expect(open).toMatch(/\.app-rail:has\(:global\(:focus-visible\)\) \.slot\.tucked/);
+  expect(open).toMatch(/\.app-rail:hover:not\(:has\(\.bots:hover\)\) \.slot\.tucked/);
+  expect(open).toMatch(/\.app-rail:has\(:global\(:focus-visible\)\):not\(:has\(\.bots :global\(:focus-visible\)\)\) \.slot\.tucked/);
   expect(open).toMatch(/\.slot\.tucked:has\(\.rail-button\.add\[aria-expanded='true'\]\)/);
   // On Add's own duration and curve, which reduced motion cuts (motion.css).
   const thumb = /\.edge-scrollbar-thumb \{[^}]*transition:[^;]*?(var\(--dur-\d\)) (var\(--ease-[\w-]+\))/.exec(bare(appCss()))!;
